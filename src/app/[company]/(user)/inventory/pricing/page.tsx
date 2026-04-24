@@ -1,0 +1,1257 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTenant } from "@/context/TenantContext";
+import { apiFetch } from "@/lib/apiFetch";
+import ProductLookupModal from "@/components/product/ProductLookupModal";
+import { usePagination } from "@/hooks/usePagination";
+import { useProductLookup } from "@/hooks/useProductLookup";
+import type { ProductLookupItem } from "@/lib/product-lookup";
+
+type ActivePricingRow = {
+  id: string | number;
+  variant_id: number | string;
+  product_name?: string | null;
+  product_code?: string | null;
+  sku: string;
+  color?: string | null;
+  description?: string | null;
+  category_name?: string | null;
+  source_type?: "vendor" | "own";
+  base_cost?: number | string;
+  operational_cost?: number | string;
+  landed_price?: number | string;
+  margin_amount?: number | string;
+  tax_amount?: number | string;
+  unit_price?: number | string;
+  final_selling_price?: number | string;
+  active_from: string;
+  expires_at?: string | null;
+  is_active: boolean;
+};
+
+type EntryRow = {
+  variant_id: number;
+  product_id: number;
+  product_code?: string | null;
+  product_name: string;
+  sku: string;
+  product_type?: string | null;
+  color?: string | null;
+  base_cost: string;
+  operational_cost: string;
+  margin_value: string;
+  tax_id?: string;
+  tax_percent?: string;
+};
+
+type ApiErrorPayload = {
+  message?: string;
+  errorCount?: number;
+  errorReport?: string;
+  errorReportFileName?: string;
+};
+
+type UploadPreviewRow = {
+  variant_id: string;
+  sku?: string;
+  base_cost: number | string;
+  operational_cost: number | string;
+  landed_price: number | string;
+  margin_amount: number | string;
+  tax_amount: number | string;
+  unit_price: number | string;
+  selling_price: number | string;
+};
+
+function asText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function asDate(value: unknown): string {
+  return asText(value).slice(0, 10);
+}
+
+function fmtMoney(value: number | string | null): string {
+  if (value == null) return "-";
+  const n = Number(value);
+  if (!Number.isFinite(n)) return asText(value);
+  return n.toFixed(2);
+}
+
+function todayYyyyMmDd(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function toNumberOrNull(value: string): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+function calculatePreviewRow(options: {
+  baseCostText: string;
+  operationalCostText: string;
+  marginType: "percentage" | "amount";
+  marginValueText: string;
+  taxPercentText: string;
+}) {
+  const base = toNumberOrNull(options.baseCostText);
+  const operational = toNumberOrNull(options.operationalCostText || "0");
+  const marginValue = toNumberOrNull(options.marginValueText || "0");
+  const taxPercent = toNumberOrNull(options.taxPercentText || "0");
+  if (base == null || operational == null || marginValue == null || taxPercent == null) {
+    return {
+      landed: null,
+      marginAmount: null,
+      unitPrice: null,
+      taxAmount: null,
+      selling: null,
+    };
+  }
+  const landed = base + operational;
+  if (landed <= 0) {
+    return {
+      landed: null,
+      marginAmount: null,
+      unitPrice: null,
+      taxAmount: null,
+      selling: null,
+    };
+  }
+  const marginAmount =
+    options.marginType === "percentage" ? landed * (marginValue / 100) : marginValue;
+  const unitPrice = landed + marginAmount;
+  const taxAmount = unitPrice * (taxPercent / 100);
+  const selling = unitPrice + taxAmount;
+  return {
+    landed: Math.round(landed * 100) / 100,
+    marginAmount: Math.round(marginAmount * 100) / 100,
+    unitPrice: Math.round(unitPrice * 100) / 100,
+    taxAmount: Math.round(taxAmount * 100) / 100,
+    selling: Math.round(selling * 100) / 100,
+  };
+}
+
+function triggerBrowserDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function decodeBase64ToBlob(base64Text: string, mimeType: string): Blob {
+  const binary = atob(base64Text);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+export default function PricingPage() {
+  const { company } = useTenant();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    items: lookupItems,
+    loading: lookupLoading,
+    filters: lookupFilters,
+    setFilters: setLookupFilters,
+    page: lookupPage,
+    setPage: setLookupPage,
+    totalPages: lookupTotalPages,
+    itemsPerPage: lookupItemsPerPage,
+    paginatedItems: lookupPaginatedItems,
+    totalCount: lookupTotalCount,
+    categoryOptions: lookupCategoryOptions,
+    resetFilters: resetLookupFilters,
+  } = useProductLookup({ enabled: Boolean(company) });
+
+  const [rows, setRows] = useState<ActivePricingRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [pricingFilter, setPricingFilter] = useState<"priced" | "unpriced" | "both">("unpriced");
+
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [uploadPreviewOpen, setUploadPreviewOpen] = useState(false);
+  const [uploadPreviewRows, setUploadPreviewRows] = useState<UploadPreviewRow[]>([]);
+  const [selectProductsModalOpen, setSelectProductsModalOpen] = useState(false);
+  const [selectedVariantMap, setSelectedVariantMap] = useState<Record<string, boolean>>({});
+
+  const [effectiveDate, setEffectiveDate] = useState(todayYyyyMmDd());
+  const [expiresAt, setExpiresAt] = useState("");
+  const [entryRows, setEntryRows] = useState<EntryRow[]>([]);
+  const [marginType, setMarginType] = useState<"percentage" | "amount">("percentage");
+  const [taxOptions, setTaxOptions] = useState<
+    Array<{ id: number; tax_name: string; total_percentage: number }>
+  >([]);
+  const [entrySearch, setEntrySearch] = useState("");
+  const [entryTypeFilter, setEntryTypeFilter] = useState("");
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
+  const [bulkBaseCost, setBulkBaseCost] = useState("");
+  const [bulkOperationalCost, setBulkOperationalCost] = useState("");
+  const [bulkMarginValue, setBulkMarginValue] = useState("");
+  const [bulkTaxPercent, setBulkTaxPercent] = useState("");
+  const entryHeaderCheckboxRef = useRef<HTMLInputElement>(null);
+
+  async function loadPricing() {
+    setLoading(true);
+    try {
+      const response = await apiFetch("/api/pricing", company);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || "Failed to fetch pricing");
+      setRows(payload.pricing || []);
+    } catch (error: any) {
+      setStatusMessage(error.message || "Failed to fetch pricing");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+
+  async function loadTaxes() {
+    try {
+      const response = await apiFetch("/api/product-lookup?type=taxes", company);
+      const payload = await response.json();
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message || "Failed to fetch taxes");
+      }
+      setTaxOptions(payload.data || []);
+    } catch (error: any) {
+      setStatusMessage(error.message || "Failed to fetch taxes");
+    }
+  }
+
+  async function handleTemplateDownload() {
+    setDownloading(true);
+    setStatusMessage("");
+    try {
+      const query = new URLSearchParams({ pricingFilter });
+      const response = await apiFetch(`/api/pricing/template?${query.toString()}`, company);
+      if (!response.ok) {
+        const payload = await response.json();
+        throw new Error(payload.message || "Failed to download template");
+      }
+      const blob = await response.blob();
+      triggerBrowserDownload(blob, "pricing-update-template.xlsx");
+    } catch (error: any) {
+      setStatusMessage(error.message || "Failed to download template");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleUploadPricing() {
+    if (!selectedFile) {
+      setStatusMessage("Select an .xlsx file first.");
+      return;
+    }
+
+    setPreviewing(true);
+    setStatusMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const response = await apiFetch("/api/pricing/upload?preview=true", company, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as ApiErrorPayload & {
+        updatedRows?: number;
+        previewRows?: UploadPreviewRow[];
+      };
+
+      if (!response.ok) {
+        if (payload.errorReport) {
+          const blob = decodeBase64ToBlob(
+            payload.errorReport,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          );
+          triggerBrowserDownload(blob, payload.errorReportFileName || "pricing-upload-errors.xlsx");
+        }
+        throw new Error(payload.message || "Pricing upload failed");
+      }
+
+      setUploadPreviewRows(payload.previewRows || []);
+      setUploadPreviewOpen(true);
+    } catch (error: any) {
+      setStatusMessage(error.message || "Pricing upload failed");
+    } finally {
+      setPreviewing(false);
+    }
+  }
+
+  async function confirmUploadPricing() {
+    if (!selectedFile) {
+      setStatusMessage("Select an .xlsx file first.");
+      return;
+    }
+
+    setUploading(true);
+    setStatusMessage("");
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const response = await apiFetch("/api/pricing/upload", company, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as ApiErrorPayload & { updatedRows?: number };
+
+      if (!response.ok) {
+        if (payload.errorReport) {
+          const blob = decodeBase64ToBlob(
+            payload.errorReport,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          );
+          triggerBrowserDownload(blob, payload.errorReportFileName || "pricing-upload-errors.xlsx");
+        }
+        throw new Error(payload.message || "Pricing upload failed");
+      }
+
+      setStatusMessage(`Uploaded ${payload.updatedRows || 0} pricing rows successfully.`);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploadPreviewRows([]);
+      setUploadPreviewOpen(false);
+      setBulkModalOpen(false);
+      await loadPricing();
+    } catch (error: any) {
+      setStatusMessage(error.message || "Pricing upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!company) return;
+    loadPricing();
+    loadTaxes();
+  }, [company]);
+
+  const sortedPricingRows = useMemo(() => {
+    return [...rows].sort((a, b) => Number(b.is_active) - Number(a.is_active));
+  }, [rows]);
+
+  const {
+    currentPage: currentPricingPage,
+    itemsPerPage: pricingItemsPerPage,
+    setItemsPerPage: setPricingItemsPerPage,
+    totalItems: totalPricingItems,
+    totalPages: totalPricingPages,
+    pageNumbers: pricingPageNumbers,
+    showingFrom: pricingShowingFrom,
+    showingTo: pricingShowingTo,
+    paginatedData: paginatedPricingRows,
+    goToPage: goToPricingPage,
+    goToPreviousPage: goToPreviousPricingPage,
+    goToNextPage: goToNextPricingPage,
+  } = usePagination({
+    data: sortedPricingRows,
+    initialItemsPerPage: 20,
+    resetDeps: [rows.length],
+  });
+
+  useEffect(() => {
+    setSelectedEntryIds((prev) =>
+      prev.filter((id) => entryRows.some((row) => String(row.variant_id) === id))
+    );
+  }, [entryRows]);
+
+  const entryTypeOptions = useMemo(() => {
+    const values = new Set<string>();
+    entryRows.forEach((row) => {
+      const value = String(row.product_type || "");
+      if (value) values.add(value);
+    });
+    return Array.from(values);
+  }, [entryRows]);
+
+  const filteredEntryRows = useMemo(() => {
+    const searchValue = entrySearch.trim().toLowerCase();
+    return entryRows.filter((row) => {
+      const name = row.product_name || "";
+      const code = row.product_code || "";
+      const sku = row.sku || "";
+      const rowType = String(row.product_type || "");
+      const matchesSearch = searchValue
+        ? `${name} ${code} ${sku}`.toLowerCase().includes(searchValue)
+        : true;
+      const matchesType = entryTypeFilter ? rowType === entryTypeFilter : true;
+      return matchesSearch && matchesType;
+    });
+  }, [entryRows, entrySearch, entryTypeFilter]);
+
+  const filteredEntryIds = useMemo(
+    () => filteredEntryRows.map((row) => String(row.variant_id)),
+    [filteredEntryRows]
+  );
+
+  const allFilteredEntrySelected =
+    filteredEntryIds.length > 0 && filteredEntryIds.every((id) => selectedEntryIds.includes(id));
+  const someFilteredEntrySelected =
+    filteredEntryIds.length > 0 && filteredEntryIds.some((id) => selectedEntryIds.includes(id));
+
+  useEffect(() => {
+    if (!entryHeaderCheckboxRef.current) return;
+    entryHeaderCheckboxRef.current.indeterminate =
+      someFilteredEntrySelected && !allFilteredEntrySelected;
+  }, [someFilteredEntrySelected, allFilteredEntrySelected]);
+
+  const toggleAllFilteredEntries = (checked: boolean) => {
+    if (checked) {
+      setSelectedEntryIds((prev) => Array.from(new Set([...prev, ...filteredEntryIds])));
+    } else {
+      setSelectedEntryIds((prev) => prev.filter((id) => !filteredEntryIds.includes(id)));
+    }
+  };
+
+  const toggleEntryRow = (id: string, checked: boolean) => {
+    setSelectedEntryIds((prev) => {
+      if (checked) return Array.from(new Set([...prev, id]));
+      return prev.filter((item) => item !== id);
+    });
+  };
+
+  const applyBulkPricing = () => {
+    if (!selectedEntryIds.length) return;
+    const hasBase = asText(bulkBaseCost) !== "";
+    const hasOperational = asText(bulkOperationalCost) !== "";
+    const hasMargin = asText(bulkMarginValue) !== "";
+    const hasTax = asText(bulkTaxPercent) !== "";
+
+    if (!hasBase && !hasOperational && !hasMargin && !hasTax) return;
+
+    setEntryRows((prev) =>
+      prev.map((row) => {
+        if (!selectedEntryIds.includes(String(row.variant_id))) return row;
+        const next: EntryRow = { ...row };
+        if (hasBase) next.base_cost = bulkBaseCost;
+        if (hasOperational) next.operational_cost = bulkOperationalCost;
+        if (hasMargin) next.margin_value = bulkMarginValue;
+        if (hasTax) {
+          next.tax_percent = bulkTaxPercent;
+          next.tax_id = "";
+        }
+        return next;
+      })
+    );
+  };
+
+  const bulkPricingVisible = selectedEntryIds.length > 0;
+
+  const allFilteredSelected =
+    lookupPaginatedItems.length > 0 &&
+    lookupPaginatedItems.every((row) => selectedVariantMap[String(row.variant_id)]);
+
+  function toggleSelectAll(checked: boolean, rowsToToggle: ProductLookupItem[]) {
+    if (!checked) {
+      setSelectedVariantMap({});
+      return;
+    }
+    const map: Record<string, boolean> = {};
+    rowsToToggle.forEach((row) => {
+      map[String(row.variant_id)] = true;
+    });
+    setSelectedVariantMap(map);
+  }
+
+  function toggleVariantSelection(item: ProductLookupItem) {
+    setSelectedVariantMap((prev) => {
+      const key = String(item.variant_id);
+      if (prev[key]) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return { ...prev, [key]: true };
+    });
+  }
+
+  function openCreateModal() {
+    setCreateModalOpen(true);
+    setEffectiveDate(todayYyyyMmDd());
+    setExpiresAt("");
+    setEntryRows([]);
+    setSelectedVariantMap({});
+    resetLookupFilters();
+    setMarginType("percentage");
+    setEntrySearch("");
+    setEntryTypeFilter("");
+    setSelectedEntryIds([]);
+    setBulkBaseCost("");
+    setBulkOperationalCost("");
+    setBulkMarginValue("");
+    setBulkTaxPercent("");
+  }
+
+  function applySelectedProducts() {
+    const selected = lookupItems.filter((row) => selectedVariantMap[String(row.variant_id)]);
+    setEntryRows((prev) => {
+      const existing = new Set(prev.map((r) => String(r.variant_id)));
+      const next = [...prev];
+      selected.forEach((row) => {
+        if (existing.has(String(row.variant_id))) return;
+        next.push({
+          variant_id: row.variant_id,
+          product_id: row.product_id,
+          product_code: row.product_code || row.code,
+          product_name: row.name,
+          sku: row.sku,
+          product_type: row.type || null,
+          color: row.color,
+          base_cost: "",
+          operational_cost: "0",
+          margin_value: "",
+          tax_id: "",
+          tax_percent: "0",
+        });
+      });
+      return next;
+    });
+    setSelectProductsModalOpen(false);
+  }
+
+  function updateRow(variantId: number, patch: Partial<EntryRow>) {
+    setEntryRows((prev) =>
+      prev.map((row) =>
+        row.variant_id === variantId ? { ...row, ...patch } : row
+      )
+    );
+  }
+
+  async function savePricingRows(addAnother: boolean) {
+    if (!effectiveDate) {
+      setStatusMessage("Effective Date is required.");
+      return;
+    }
+    if (effectiveDate < todayYyyyMmDd()) {
+      setStatusMessage("Effective Date cannot be in the past.");
+      return;
+    }
+    if (entryRows.length === 0) {
+      setStatusMessage("Select at least one product.");
+      return;
+    }
+    const invalidBase = entryRows.find((r) => asText(r.base_cost) === "");
+    if (invalidBase) {
+      setStatusMessage(`Base Cost is required for Variant ${invalidBase.variant_id}`);
+      return;
+    }
+    if (marginType === "percentage") {
+      const invalidMargin = entryRows.find((r) => {
+        const valueText = asText(r.margin_value);
+        if (valueText === "") return false;
+        const n = Number(valueText);
+        return Number.isFinite(n) && n >= 100;
+      });
+      if (invalidMargin) {
+        setStatusMessage(
+          `Margin Value must be less than 100 for Variant ${invalidMargin.variant_id}`
+        );
+        return;
+      }
+    }
+
+    setSaving(true);
+    setStatusMessage("");
+    try {
+      const response = await apiFetch("/api/pricing", company, {
+        method: "POST",
+        body: JSON.stringify({
+          rows: entryRows.map((row) => ({
+            variant_id: row.variant_id,
+            base_cost: row.base_cost,
+            operational_cost: asText(row.operational_cost) || "0",
+            margin_type: marginType,
+            margin_value: asText(row.margin_value) || "0",
+            tax_id: row.tax_id || null,
+            tax_percent: asText(row.tax_percent) || "0",
+            effective_date: effectiveDate,
+            expires_at: expiresAt || null,
+          })),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || "Failed to create pricing");
+
+      setStatusMessage("Pricing created successfully.");
+      await loadPricing();
+
+      if (addAnother) {
+        setEntryRows([]);
+        setSelectedVariantMap({});
+      } else {
+        setCreateModalOpen(false);
+      }
+    } catch (error: any) {
+      setStatusMessage(error.message || "Failed to create pricing");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">Product Pricing</h1>
+          <p className="text-sm text-gray-500">Multi-product pricing in one form.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={openCreateModal}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+          >
+            + Add Pricing Form
+          </button>
+          <button
+            onClick={() => setBulkModalOpen(true)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
+          >
+            Bulk Import Excel
+          </button>
+        </div>
+      </div>
+
+      {statusMessage ? (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700">
+          {statusMessage}
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-gray-50 text-gray-600">
+              <tr>
+                <th className="px-4 py-3 font-medium">Product Code</th>
+                <th className="px-4 py-3 font-medium">Product Name</th>
+                <th className="px-4 py-3 font-medium">SKU</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Base Cost</th>
+                <th className="px-4 py-3 font-medium">Operational Cost</th>
+                <th className="px-4 py-3 font-medium">Landed Price</th>
+                <th className="px-4 py-3 font-medium">Margin Amount</th>
+                <th className="px-4 py-3 font-medium">Tax Amount</th>
+                <th className="px-4 py-3 font-medium">Unit Price</th>
+                <th className="px-4 py-3 font-medium">Selling Price</th>
+                <th className="px-4 py-3 font-medium">Effective Date</th>
+                <th className="px-4 py-3 font-medium">Expires At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td className="px-4 py-6 text-gray-500" colSpan={13}>
+                    Loading...
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-gray-500" colSpan={13}>
+                    No pricing rows found.
+                  </td>
+                </tr>
+              ) : (
+                paginatedPricingRows.map((row) => (
+                  <tr key={row.id} className="border-t border-gray-100">
+                    <td className="px-4 py-3">{row.product_code || "-"}</td>  
+                    <td className="px-4 py-3">{row.product_name || "-"}</td>
+                    <td className="px-4 py-3">{row.sku}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                          row.is_active
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {row.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">{fmtMoney(row.base_cost)}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.operational_cost)}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.landed_price)}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.margin_amount)}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.tax_amount)}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.unit_price)}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.final_selling_price)}</td>
+                    <td className="px-4 py-3">{asDate(row.active_from)}</td>
+                    <td className="px-4 py-3">{asDate(row.expires_at) || "-"}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-gray-100 px-4 py-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-gray-600">
+              Showing <span className="font-medium">{pricingShowingFrom}</span> to{" "}
+              <span className="font-medium">{pricingShowingTo}</span> of{" "}
+              <span className="font-medium">{totalPricingItems}</span> results
+            </p>
+            <div className="flex items-center gap-2">
+              <label htmlFor="pricing-items-per-page" className="text-xs text-gray-600">
+                Rows per page
+              </label>
+              <select
+                id="pricing-items-per-page"
+                value={pricingItemsPerPage}
+                onChange={(e) => setPricingItemsPerPage(Number(e.target.value))}
+                className="rounded border border-gray-300 px-2 py-1 text-xs"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center justify-between">
+            <div className="flex flex-1 justify-between sm:hidden">
+              <button
+                type="button"
+                onClick={goToPreviousPricingPage}
+                disabled={currentPricingPage === 1}
+                className="rounded border border-gray-300 px-3 py-1 text-xs disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={goToNextPricingPage}
+                disabled={currentPricingPage === totalPricingPages}
+                className="rounded border border-gray-300 px-3 py-1 text-xs disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+
+            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
+              <nav aria-label="Pricing pagination" className="isolate inline-flex -space-x-px rounded-md shadow-sm">
+                <button
+                  type="button"
+                  onClick={goToPreviousPricingPage}
+                  disabled={currentPricingPage === 1}
+                  className="relative inline-flex items-center rounded-l-md px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+
+                {pricingPageNumbers.map((page, idx) =>
+                  page === "..." ? (
+                    <span
+                      key={`pricing-ellipsis-${idx}`}
+                      className="relative inline-flex items-center px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300"
+                    >
+                      ...
+                    </span>
+                  ) : (
+                    <button
+                      key={`pricing-page-${page}`}
+                      type="button"
+                      onClick={() => goToPricingPage(page)}
+                      aria-current={currentPricingPage === page ? "page" : undefined}
+                      className={`relative inline-flex items-center px-3 py-2 text-xs font-medium ring-1 ring-inset ring-gray-300 ${
+                        currentPricingPage === page
+                          ? "z-10 bg-blue-600 text-white"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  )
+                )}
+
+                <button
+                  type="button"
+                  onClick={goToNextPricingPage}
+                  disabled={currentPricingPage === totalPricingPages}
+                  className="relative inline-flex items-center rounded-r-md px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </nav>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {bulkModalOpen ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
+          <div className="relative w-full max-w-xl rounded-xl bg-white p-5 shadow-lg">
+            <button
+              onClick={() => setBulkModalOpen(false)}
+              className="absolute right-3 top-3 text-lg text-gray-500 hover:text-gray-700"
+              aria-label="Close"
+            >
+              x
+            </button>
+            <h2 className="text-sm font-semibold text-gray-900">Bulk Import via Excel</h2>
+
+            <div className="mt-3 space-y-2">
+              <label className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                Product Filter
+              </label>
+              <select
+                value={pricingFilter}
+                onChange={(e) => setPricingFilter(e.target.value as "priced" | "unpriced" | "both")}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="priced">Priced</option>
+                <option value="unpriced">Unpriced</option>
+                <option value="both">Both</option>
+              </select>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleTemplateDownload}
+                disabled={downloading}
+                className="inline-flex text-xs text-gray-600 underline hover:text-gray-800 disabled:opacity-60"
+              >
+                {downloading ? "Preparing..." : "Download Excel Template"}
+              </button>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+                className="block w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              />
+
+              <button
+                onClick={handleUploadPricing}
+                disabled={uploading || previewing}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {previewing ? "Preparing Preview..." : "Upload"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {uploadPreviewOpen ? (
+        <div className="fixed inset-0 z-[100001] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-5xl rounded-xl bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-semibold">Upload Preview</h3>
+                <p className="text-xs text-gray-500">
+                  Review calculated values before saving.
+                </p>
+              </div>
+              <button
+                onClick={() => setUploadPreviewOpen(false)}
+                className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-[420px] overflow-auto rounded-lg border border-gray-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="sticky top-0 bg-gray-50 text-gray-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Variant ID</th>
+                    <th className="px-3 py-2 font-medium">SKU</th>
+                    <th className="px-3 py-2 font-medium">Base Cost</th>
+                    <th className="px-3 py-2 font-medium">Operational Cost</th>
+                    <th className="px-3 py-2 font-medium">Landed Price</th>
+                    <th className="px-3 py-2 font-medium">Margin Amount</th>
+                    <th className="px-3 py-2 font-medium">Tax Amount</th>
+                    <th className="px-3 py-2 font-medium">Unit Price</th>
+                    <th className="px-3 py-2 font-medium">Selling Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uploadPreviewRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-3 py-6 text-center text-gray-500">
+                        No preview rows.
+                      </td>
+                    </tr>
+                  ) : (
+                    uploadPreviewRows.map((row) => (
+                      <tr key={row.variant_id} className="border-t border-gray-100">
+                        <td className="px-3 py-2">{row.variant_id}</td>
+                        <td className="px-3 py-2">{row.sku || "-"}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.base_cost)}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.operational_cost)}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.landed_price)}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.margin_amount)}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.tax_amount)}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.unit_price)}</td>
+                        <td className="px-3 py-2">{fmtMoney(row.selling_price)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setUploadPreviewOpen(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmUploadPricing}
+                disabled={uploading}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {uploading ? "Saving..." : "Confirm & Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createModalOpen ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-[1200px] max-w-[95vw] h-[700px] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-end justify-between gap-3 px-6 py-4 border-b bg-gray-50">
+              <div>
+                <h2 className="text-lg font-semibold">Add Pricing</h2>
+                <p className="text-xs text-gray-500">Select multiple products and update row-wise pricing.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectProductsModalOpen(true);
+                  resetLookupFilters();
+                }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+              >
+                Select Products
+              </button>
+            </div>
+
+            <div className="px-6 py-4 border-b">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Effective Date
+                  </label>
+                  <input
+                    type="date"
+                    value={effectiveDate}
+                    onChange={(e) => setEffectiveDate(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Expires At (optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                    Margin Type
+                  </label>
+                  <select
+                    value={marginType}
+                    onChange={(e) => {
+                      const nextType = e.target.value === "amount" ? "amount" : "percentage";
+                      setMarginType(nextType);
+                      setEntryRows((prev) => prev.map((row) => ({ ...row, margin_value: "" })));
+                    }}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="percentage">Percentage</option>
+                    <option value="amount">Amount</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-b bg-white">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                <div className="flex flex-col sm:flex-row gap-2 w-full">
+                  <div className="flex-1">
+                    <input
+                      value={entrySearch}
+                      onChange={(e) => setEntrySearch(e.target.value)}
+                      placeholder="Search by product name, code, or SKU..."
+                      className="border p-2 rounded w-full"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      value={entryTypeFilter}
+                      onChange={(e) => setEntryTypeFilter(e.target.value)}
+                      className="border p-2 rounded min-w-[150px]"
+                    >
+                      <option value="">All Types</option>
+                      {entryTypeOptions.map((type) => (
+                        <option key={type} value={type}>
+                          {type}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-hidden">
+              <div className="h-full overflow-auto">
+                {bulkPricingVisible && (
+                  <div className="sticky top-0 z-20 bg-white border-b px-4 py-3 flex flex-col lg:flex-row lg:items-center gap-3 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="number"
+                        value={bulkBaseCost}
+                        onChange={(e) => setBulkBaseCost(e.target.value)}
+                        placeholder="Base Cost"
+                        className="border p-2 rounded w-28"
+                      />
+                      <input
+                        type="number"
+                        value={bulkOperationalCost}
+                        onChange={(e) => setBulkOperationalCost(e.target.value)}
+                        placeholder="Operational Cost"
+                        className="border p-2 rounded w-36"
+                      />
+                      <input
+                        type="number"
+                        value={bulkMarginValue}
+                        onChange={(e) => setBulkMarginValue(e.target.value)}
+                        placeholder="Margin Value"
+                        className="border p-2 rounded w-28"
+                      />
+                      <input
+                        type="number"
+                        value={bulkTaxPercent}
+                        onChange={(e) => setBulkTaxPercent(e.target.value)}
+                        placeholder="Tax %"
+                        className="border p-2 rounded w-24"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={applyBulkPricing}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 h-[38px] rounded font-medium"
+                      >
+                        Apply to Selected
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEntryIds([])}
+                        className="border border-gray-300 text-gray-700 px-4 h-[38px] rounded font-medium hover:bg-gray-50"
+                      >
+                        Clear Selection
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <table className="min-w-full text-left text-sm">
+                  <thead
+                    className={`bg-gray-50 text-gray-600 sticky ${
+                      bulkPricingVisible ? "top-[56px]" : "top-0"
+                    } z-10`}
+                  >
+                    <tr>
+                      <th className="px-3 py-2 text-center w-10">
+                        <input
+                          ref={entryHeaderCheckboxRef}
+                          type="checkbox"
+                          checked={allFilteredEntrySelected}
+                          onChange={(e) => toggleAllFilteredEntries(e.target.checked)}
+                          disabled={filteredEntryIds.length === 0}
+                        />
+                      </th>
+                      <th className="px-3 py-2 font-medium">Product Code</th>
+                      <th className="px-3 py-2 font-medium">Product Name</th>
+                      <th className="px-3 py-2 font-medium">SKU</th>
+                      <th className="px-3 py-2 font-medium">Base Cost</th>
+                      <th className="px-3 py-2 font-medium">Operational Cost</th>
+                      <th className="px-3 py-2 font-medium">Margin Value</th>
+                      <th className="px-3 py-2 font-medium">Tax %</th>
+                      <th className="px-3 py-2 font-medium">Margin Amount</th>
+                      <th className="px-3 py-2 font-medium">Tax Amount</th>
+                      <th className="px-3 py-2 font-medium">Unit Price</th>
+                      <th className="px-3 py-2 font-medium">Landed Price</th>
+                      <th className="px-3 py-2 font-medium">Selling Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entryRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={13} className="px-3 py-6 text-center text-gray-500">
+                          No products selected.
+                        </td>
+                      </tr>
+                    ) : filteredEntryRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={13} className="px-3 py-6 text-center text-gray-500">
+                          No products match the current filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredEntryRows.map((row) => {
+                        const calc = calculatePreviewRow({
+                          baseCostText: row.base_cost,
+                          operationalCostText: row.operational_cost,
+                          marginType,
+                          marginValueText: row.margin_value,
+                          taxPercentText: row.tax_percent || "0",
+                        });
+                        return (
+                          <tr key={row.variant_id} className="border-t border-gray-100">
+                            <td className="px-3 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedEntryIds.includes(String(row.variant_id))}
+                                onChange={(e) =>
+                                  toggleEntryRow(String(row.variant_id), e.target.checked)
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2">{row.product_code}</td>
+                            <td className="px-3 py-2">{row.product_name}</td>
+                            <td className="px-3 py-2">{row.sku}</td>
+                            <td className="px-3 py-2">
+                              <input
+                                value={row.base_cost}
+                                onChange={(e) =>
+                                  updateRow(row.variant_id, { base_cost: e.target.value })
+                                }
+                                className="w-28 rounded border border-gray-300 px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                value={row.operational_cost}
+                                onChange={(e) =>
+                                  updateRow(row.variant_id, {
+                                    operational_cost: e.target.value,
+                                  })
+                                }
+                                className="w-28 rounded border border-gray-300 px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <input
+                                value={row.margin_value}
+                                onChange={(e) =>
+                                  updateRow(row.variant_id, { margin_value: e.target.value })
+                                }
+                                className="w-24 rounded border border-gray-300 px-2 py-1"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <select
+                                value={row.tax_id || ""}
+                                onChange={(e) => {
+                                  const selected = taxOptions.find(
+                                    (tax) => String(tax.id) === e.target.value
+                                  );
+                                  updateRow(row.variant_id, {
+                                    tax_id: e.target.value,
+                                    tax_percent: selected
+                                      ? String(selected.total_percentage || 0)
+                                      : "0",
+                                  });
+                                }}
+                                className="w-36 rounded border border-gray-300 px-2 py-1"
+                              >
+                                <option value="">No Tax</option>
+                                {taxOptions.map((tax) => (
+                                  <option key={tax.id} value={String(tax.id)}>
+                                    {tax.tax_name} ({tax.total_percentage}%)
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.marginAmount)}</td>
+                            <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.taxAmount)}</td>
+                            <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.unitPrice)}</td>
+                            <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.landed)}</td>
+                            <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.selling)}</td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="px-6 py-3 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setCreateModalOpen(false)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => savePricingRows(true)}
+                disabled={saving}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 disabled:opacity-60"
+              >
+                Create & Add New
+              </button>
+              <button
+                onClick={() => savePricingRows(false)}
+                disabled={saving}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {selectProductsModalOpen ? (
+        <ProductLookupModal
+          open={selectProductsModalOpen}
+          onClose={() => setSelectProductsModalOpen(false)}
+          onAddSelected={applySelectedProducts}
+          errorMessage={statusMessage}
+          items={lookupPaginatedItems}
+          loading={lookupLoading}
+          filters={lookupFilters}
+          onFiltersChange={(next) => {
+            setLookupFilters(next);
+            setLookupPage(1);
+          }}
+          categoryOptions={lookupCategoryOptions}
+          page={lookupPage}
+          totalPages={lookupTotalPages}
+          itemsPerPage={lookupItemsPerPage}
+          totalCount={lookupTotalCount}
+          onPageChange={setLookupPage}
+          isSelected={(item) => Boolean(selectedVariantMap[String(item.variant_id)])}
+          onToggle={toggleVariantSelection}
+          onToggleAll={(checked, pageItems) => toggleSelectAll(checked, pageItems)}
+        />
+      ) : null}
+    </div>
+  );
+}

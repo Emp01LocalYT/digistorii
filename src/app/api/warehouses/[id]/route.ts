@@ -1,0 +1,262 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { pool } from "@/lib/db";
+import { getTenantSchema } from "@/lib/tenant";
+
+const schemaValidator = /^[a-z][a-z0-9_]{0,62}$/;
+const typeValues = ["global", "local"] as const;
+
+const warehouseSchema = z.object({
+  code: z.string().trim().min(1, "Code is required"),
+  name: z.string().trim().min(1, "Name is required"),
+  location_id: z.union([z.number(), z.string()]),
+  type: z.enum(typeValues),
+  effective_from: z.string().optional().nullable(),
+  effective_to: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  landline: z.string().optional().nullable(),
+  mobile_no: z.string().optional().nullable(),
+  fax: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
+  contact_person_name: z.string().optional().nullable(),
+  contact_person_mobile: z.string().optional().nullable(),
+  contact_person_email: z.string().optional().nullable(),
+  pan: z.string().optional().nullable(),
+  gstin: z.string().optional().nullable(),
+});
+
+type WarehouseInput = z.infer<typeof warehouseSchema>;
+
+function parseId(id: string): number | null {
+  const n = Number(id);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function asNull(value?: string | null) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function validateEmail(value?: string | null) {
+  if (!value) return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function parseLocationId(value: string | number): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function normalizePayload(data: WarehouseInput) {
+  const email = asNull(data.email);
+  const contactEmail = asNull(data.contact_person_email);
+  if (email && !validateEmail(email)) {
+    throw new Error("Invalid email");
+  }
+  if (contactEmail && !validateEmail(contactEmail)) {
+    throw new Error("Invalid contact person email");
+  }
+
+  return {
+    code: data.code.trim(),
+    name: data.name.trim(),
+    location_id: parseLocationId(data.location_id),
+    type: data.type,
+    effective_from: asNull(data.effective_from),
+    effective_to: asNull(data.effective_to),
+    description: asNull(data.description),
+    landline: asNull(data.landline),
+    mobile_no: asNull(data.mobile_no),
+    fax: asNull(data.fax),
+    email,
+    contact_person_name: asNull(data.contact_person_name),
+    contact_person_mobile: asNull(data.contact_person_mobile),
+    contact_person_email: contactEmail,
+    pan: asNull(data.pan),
+    gstin: asNull(data.gstin),
+  };
+}
+
+async function ensureLocation(client: any, schema: string, locationId: number) {
+  const result = await client.query(
+    `SELECT id FROM "${schema}".locations WHERE id = $1`,
+    [locationId]
+  );
+  return result.rowCount ? true : false;
+}
+
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const client = await pool.connect();
+  try {
+    const { schema } = await getTenantSchema(req);
+    const { id } = await context.params;
+    const recordId = parseId(id);
+
+    if (!schema || !schemaValidator.test(schema)) {
+      return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
+    }
+    if (!recordId) {
+      return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
+    }
+
+    const result = await client.query(
+      `SELECT
+        id, code, name, location_id, type, effective_from, effective_to,
+        description, landline, mobile_no, fax, email,
+        contact_person_name, contact_person_mobile, contact_person_email,
+        pan, gstin, created_at, updated_at
+       FROM "${schema}".warehouses
+       WHERE id = $1`,
+      [recordId]
+    );
+    if (!result.rowCount) {
+      return NextResponse.json({ success: false, error: "Warehouse not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: result.rows[0] });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message || "Fetch failed" }, { status: 500 });
+  } finally {
+    client.release();
+  }
+}
+
+export async function PUT(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const client = await pool.connect();
+  try {
+    const { schema } = await getTenantSchema(req);
+    const { id } = await context.params;
+    const recordId = parseId(id);
+
+    if (!schema || !schemaValidator.test(schema)) {
+      return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
+    }
+    if (!recordId) {
+      return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
+    }
+
+    const body = await req.json();
+    const parsed = warehouseSchema.parse(body);
+    const payload = normalizePayload(parsed);
+
+    if (!payload.location_id) {
+      return NextResponse.json({ success: false, error: "Location is required" }, { status: 400 });
+    }
+
+    const locationExists = await ensureLocation(client, schema, payload.location_id);
+    if (!locationExists) {
+      return NextResponse.json({ success: false, error: "Location not found" }, { status: 400 });
+    }
+
+    const duplicate = await client.query(
+      `SELECT id FROM "${schema}".warehouses
+       WHERE lower(code) = lower($1) AND id <> $2
+       LIMIT 1`,
+      [payload.code, recordId]
+    );
+    if (duplicate.rowCount) {
+      return NextResponse.json({ success: false, error: "Warehouse code already exists" }, { status: 409 });
+    }
+
+    const result = await client.query(
+      `UPDATE "${schema}".warehouses
+       SET
+        code = $1,
+        name = $2,
+        location_id = $3,
+        type = $4,
+        effective_from = $5,
+        effective_to = $6,
+        description = $7,
+        landline = $8,
+        mobile_no = $9,
+        fax = $10,
+        email = $11,
+        contact_person_name = $12,
+        contact_person_mobile = $13,
+        contact_person_email = $14,
+        pan = $15,
+        gstin = $16,
+        updated_at = NOW()
+       WHERE id = $17
+       RETURNING id, code, name, location_id, type, effective_from, effective_to,
+        description, landline, mobile_no, fax, email,
+        contact_person_name, contact_person_mobile, contact_person_email,
+        pan, gstin, created_at, updated_at`,
+      [
+        payload.code,
+        payload.name,
+        payload.location_id,
+        payload.type,
+        payload.effective_from,
+        payload.effective_to,
+        payload.description,
+        payload.landline,
+        payload.mobile_no,
+        payload.fax,
+        payload.email,
+        payload.contact_person_name,
+        payload.contact_person_mobile,
+        payload.contact_person_email,
+        payload.pan,
+        payload.gstin,
+        recordId,
+      ]
+    );
+    if (!result.rowCount) {
+      return NextResponse.json({ success: false, error: "Warehouse not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: result.rows[0] });
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return NextResponse.json({ success: false, error: error.errors[0]?.message || "Validation failed" }, { status: 400 });
+    }
+    if (error.code === "23505") {
+      return NextResponse.json({ success: false, error: "Warehouse code already exists" }, { status: 409 });
+    }
+    return NextResponse.json({ success: false, error: error.message || "Update failed" }, { status: 500 });
+  } finally {
+    client.release();
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const client = await pool.connect();
+  try {
+    const { schema } = await getTenantSchema(req);
+    const { id } = await context.params;
+    const recordId = parseId(id);
+
+    if (!schema || !schemaValidator.test(schema)) {
+      return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
+    }
+    if (!recordId) {
+      return NextResponse.json({ success: false, error: "Invalid id" }, { status: 400 });
+    }
+
+    const result = await client.query(
+      `DELETE FROM "${schema}".warehouses WHERE id = $1 RETURNING id`,
+      [recordId]
+    );
+    if (!result.rowCount) {
+      return NextResponse.json({ success: false, error: "Warehouse not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message || "Delete failed" }, { status: 500 });
+  } finally {
+    client.release();
+  }
+}

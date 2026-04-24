@@ -1,0 +1,47 @@
+//C:\Users\yanna\template_tailwind\src\context\CurrentUserContext.tsx
+"use client";
+ 
+import { createContext, useContext, useState } from "react";
+ 
+type User = {
+  id: number;
+  username: string;
+  name: string;
+  email: string;
+  phone: string;
+  role: string;
+  default_warehouse_id?: number | null;
+  default_locator_id?: number | null;
+  branch_name?: string | null;
+};
+ 
+type ContextType = {
+  user: User | null;
+  setUser: (user: User | null) => void;
+};
+ 
+const CurrentUserContext = createContext<ContextType | null>(null);
+ 
+export function CurrentUserProvider({
+  children,
+  initialUser,
+}: {
+  children: React.ReactNode;
+  initialUser: User | null;
+}) {
+  const [user, setUser] = useState<User | null>(initialUser);
+ 
+  return (
+    <CurrentUserContext.Provider value={{ user, setUser }}>
+      {children}
+    </CurrentUserContext.Provider>
+  );
+}
+ 
+export const useUser = () => {
+  const context = useContext(CurrentUserContext);
+  if (!context) {
+    throw new Error("useUser must be used within CurrentUserProvider");
+  }
+  return context;
+};
