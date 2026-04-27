@@ -12,7 +12,7 @@ import { Button, Select } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 
 type Contact = { person: string; phone: string; email: string };
-type SupplierTab = "address" | "commercial" | "bank" | "contact";
+type SupplierTab = "commercial" | "address" |  "bank" | "contact";
 
 type Supplier = {
   id?: number;
@@ -81,8 +81,8 @@ const CLASSIFICATION_OPTIONS = [
 ];
 
 const tabs: { key: SupplierTab; label: string }[] = [
-  { key: "address", label: "Address" },
   { key: "commercial", label: "Commercial Terms" },
+  { key: "address", label: "Address" },
   { key: "bank", label: "Bank Details" },
   { key: "contact", label: "Contact Details" },
 ];
@@ -190,7 +190,7 @@ export default function SupplierPage() {
   const [showForm, setShowForm] = useState(false);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [activeTab, setActiveTab] = useState<SupplierTab>("address");
+  const [activeTab, setActiveTab] = useState<SupplierTab>("commercial");
 
   useEffect(() => {
     if (!company) return;
@@ -274,6 +274,7 @@ export default function SupplierPage() {
     const next: Record<string, string> = {};
     if (!supplier.short_name.trim()) next.short_name = "Short Name is required";
     if (!supplier.supplier_name.trim()) next.supplier_name = "Supplier Name is required";
+    if (!supplier.currency) next.currency = "Currency is required";
     if (![1, 2, 3].includes(Number(supplier.classification))) next.classification = "Classification is required";
     if (supplier.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier.email)) next.email = "Invalid email";
     supplier.contacts.forEach((c, i) => {
@@ -320,7 +321,7 @@ const saveSupplier = async (keepOpen = false )=>{
           ...getInitialSupplier(),
           supplier_code: data.next_code || getNextSupplierCode(updatedSuppliers),
         }));
-        setActiveTab("address");
+        setActiveTab("commercial");
       } else {
         setSupplier(getInitialSupplier());
         setShowForm(false);
@@ -405,7 +406,7 @@ const saveSupplier = async (keepOpen = false )=>{
             ...getInitialSupplier(), 
             supplier_code: getNextSupplierCode(suppliers) });
           setErrors({}); 
-          setActiveTab("address"); 
+          setActiveTab("commercial"); 
           setShowForm(true); }} 
         className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg">
           <PlusIcon className="w-4 h-4" />Add Supplier</button>}
@@ -557,6 +558,52 @@ const saveSupplier = async (keepOpen = false )=>{
           <div className="border-t border-gray-100 pt-4">
             <div className="flex flex-wrap gap-2">{tabs.map((tab) => <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)} className={`px-4 py-2 rounded-lg text-sm font-medium border ${activeTab === tab.key ? "bg-[var(--color-blue-500)] text-white border-[var(--color-blue-600)]" : "bg-white text-gray-700 border-gray-200"}`}>{tab.label}</button>)}</div>
 
+            {activeTab === "commercial" && <div className="grid md:grid-cols-3 gap-6 mt-6">
+              <div><label className="text-sm font-semibold mb-1 block">Despatch Terms</label>
+            {/* <input value={supplier.dispatch_terms} onChange={(e) => setSupplier({ ...supplier, dispatch_terms: e.target.value })} className={inputClass("dispatch_terms")} /> */}
+            <Select 
+            showSearch
+            placeholder="Select Despatch Term"
+            value={supplier.dispatch_terms || undefined}
+            onChange={(value) =>
+              setSupplier({ ...supplier, dispatch_terms: String(value || "") })
+            }
+            options={despatchTerms.map((dt) => ({ label: dt.despatch_name, value: dt.code }))}
+            optionFilterProp="label"
+            className={inputClass("dispatch_terms")}
+            />
+            </div>
+            <div><label className="text-sm font-semibold mb-1 block">Payment Terms</label>
+            <Select
+            showSearch
+            placeholder="Select Payment Term"
+            value={supplier.payment_terms || undefined}
+            onChange={(value) =>
+              setSupplier({ ...supplier, payment_terms: String(value || "") })
+            }
+            options={paymentTerms.map((pt) => ({ label: pt.name, value: pt.name }))}
+            optionFilterProp="label"
+            className={inputClass("payment_terms")}
+            />
+            </div>
+            <div><label className="text-sm font-semibold mb-1 block">Currency<span className="text-red-500">*</span></label>
+            <Select
+            showSearch
+            placeholder="Select Currency"
+            value={supplier.currency || undefined}
+            onChange={(value) =>
+              setSupplier({ ...supplier, currency: String(value || "") })
+            }
+            options={currenciesOptions}
+            optionFilterProp="label"
+            className={inputClass("currency")}
+            
+            />{errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
+            </div>
+            <div><label className="text-sm font-semibold mb-1 block">GSTIN</label><input value={supplier.gstin} onChange={(e) => setSupplier({ ...supplier, gstin: e.target.value })} className={inputClass("gstin")} /></div>
+            <div><label className="text-sm font-semibold mb-1 block">CIN</label><input value={supplier.cin} 
+            onChange={(e) => setSupplier({ ...supplier, cin: e.target.value })} className={inputClass("cin")} /></div></div>}
+
            {activeTab === "address" && (
   <div className="grid md:grid-cols-4 gap-6 mt-6">
 
@@ -674,9 +721,9 @@ const saveSupplier = async (keepOpen = false )=>{
     <div>
       <label className="text-sm font-semibold mb-1 block">Website</label>
       <input
-        value={supplier.website}
+        value={supplier.website || ""}
         onChange={(e) =>
-          setSupplier({ ...supplier, website: e.target.value })
+          setSupplier({ ...supplier, website: e.target.value  ?? "" })
         }
         className={inputClass("website")}
       />
@@ -685,9 +732,9 @@ const saveSupplier = async (keepOpen = false )=>{
     <div>
       <label className="text-sm font-semibold mb-1 block">LinkedIn</label>
       <input
-        value={supplier.linkedin}
+        value={supplier.linkedin || ""}
         onChange={(e) =>
-          setSupplier({ ...supplier, linkedin: e.target.value })
+          setSupplier({ ...supplier, linkedin: e.target.value  ?? "" })
         }
         className={inputClass("linkedin")}
       />
@@ -696,9 +743,9 @@ const saveSupplier = async (keepOpen = false )=>{
     <div>
       <label className="text-sm font-semibold mb-1 block">Mail</label>
       <input
-        value={supplier.email}
+        value={supplier.email || ""}
         onChange={(e) =>
-          setSupplier({ ...supplier, email: e.target.value })
+          setSupplier({ ...supplier, email: e.target.value  ?? "" })
         }
         className={inputClass("email")}
       />
@@ -707,9 +754,9 @@ const saveSupplier = async (keepOpen = false )=>{
     <div>
       <label className="text-sm font-semibold mb-1 block">Skype</label>
       <input
-        value={supplier.skype}
+        value={supplier.skype || ""}
         onChange={(e) =>
-          setSupplier({ ...supplier, skype: e.target.value })
+          setSupplier({ ...supplier, skype: e.target.value  ?? "" })
         }
         className={inputClass("skype")}
       />
@@ -717,49 +764,7 @@ const saveSupplier = async (keepOpen = false )=>{
 
   </div>
 )}
-            {activeTab === "commercial" && <div className="grid md:grid-cols-3 gap-6 mt-6">
-              <div><label className="text-sm font-semibold mb-1 block">Despatch Terms</label>
-            {/* <input value={supplier.dispatch_terms} onChange={(e) => setSupplier({ ...supplier, dispatch_terms: e.target.value })} className={inputClass("dispatch_terms")} /> */}
-            <Select 
-            showSearch
-            placeholder="Select Despatch Term"
-            value={supplier.dispatch_terms || undefined}
-            onChange={(value) =>
-              setSupplier({ ...supplier, dispatch_terms: String(value || "") })
-            }
-            options={despatchTerms.map((dt) => ({ label: dt.despatch_name, value: dt.code }))}
-            optionFilterProp="label"
-            className={inputClass("dispatch_terms")}
-            />
-            </div>
-            <div><label className="text-sm font-semibold mb-1 block">Payment Terms</label>
-            <Select
-            showSearch
-            placeholder="Select Payment Term"
-            value={supplier.payment_terms || undefined}
-            onChange={(value) =>
-              setSupplier({ ...supplier, payment_terms: String(value || "") })
-            }
-            options={paymentTerms.map((pt) => ({ label: pt.name, value: pt.name }))}
-            optionFilterProp="label"
-            className={inputClass("payment_terms")}
-            />
-            </div>
-            <div><label className="text-sm font-semibold mb-1 block">Currency</label>
-            <Select
-            showSearch
-            placeholder="Select Currency"
-            value={supplier.currency || undefined}
-            onChange={(value) =>
-              setSupplier({ ...supplier, currency: String(value || "") })
-            }
-            options={currenciesOptions}
-            optionFilterProp="label"
-            className={inputClass("currency")}
-            />
-            </div>
-            <div><label className="text-sm font-semibold mb-1 block">GSTIN</label><input value={supplier.gstin} onChange={(e) => setSupplier({ ...supplier, gstin: e.target.value })} className={inputClass("gstin")} /></div>
-            <div><label className="text-sm font-semibold mb-1 block">CIN</label><input value={supplier.cin} onChange={(e) => setSupplier({ ...supplier, cin: e.target.value })} className={inputClass("cin")} /></div></div>}
+
 
             {activeTab === "bank" && <div className="grid md:grid-cols-3 gap-6 mt-6"><div><label className="text-sm font-semibold mb-1 block">Bank Name</label><input value={supplier.bank_name} onChange={(e) => setSupplier({ ...supplier, bank_name: e.target.value })} className={inputClass("bank_name")} /></div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Name</label><input value={supplier.beneficiary_name} onChange={(e) => setSupplier({ ...supplier, beneficiary_name: e.target.value })} className={inputClass("beneficiary_name")} /></div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Code</label><input value={supplier.beneficiary_code} onChange={(e) => setSupplier({ ...supplier, beneficiary_code: e.target.value })} className={inputClass("beneficiary_code")} /></div><div><label className="text-sm font-semibold mb-1 block">Branch</label><input value={supplier.branch} onChange={(e) => setSupplier({ ...supplier, branch: e.target.value })} className={inputClass("branch")} /></div><div><label className="text-sm font-semibold mb-1 block">IFSC Code</label><input value={supplier.ifsc_code} onChange={(e) => setSupplier({ ...supplier, ifsc_code: e.target.value })} className={inputClass("ifsc_code")} /></div><div><label className="text-sm font-semibold mb-1 block">SWIFT Code</label><input value={supplier.swift_code} onChange={(e) => setSupplier({ ...supplier, swift_code: e.target.value })} className={inputClass("swift_code")} /></div></div>}
 

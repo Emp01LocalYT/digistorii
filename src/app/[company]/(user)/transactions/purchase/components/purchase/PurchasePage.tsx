@@ -31,7 +31,7 @@ export default function PurchasePage() {
   const searchParams = useSearchParams();
 
   const purchaseId = searchParams.get("id");
-  const isEdit = Boolean(purchaseId);
+  const isEdit = !!purchaseId;
   const { company } = useTenant();
   const { user } = useUser();
   const {
@@ -433,21 +433,21 @@ export default function PurchasePage() {
         const res = await fetch(`/api/purchase/${purchaseId}`, {
           headers: { "x-tenant": company },
         });
-        const data = await res.json();
+        const result = await res.json();
         if (!active) return;
 
-        if (data?.header) {
+        if (result?.success && result?.data?.header) {
           const headerData: PurchaseHeader = {
             ...initialHeader,
-            ...data.header,
-            purchase_date: data.header.purchase_date?.split("T")[0] || initialHeader.purchase_date,
-            req_date: data.header.req_date?.split("T")[0] || "",
+            ...result.data.header,
+            purchase_date: result.data.header.purchase_date?.split("T")[0] || initialHeader.purchase_date,
+            req_date: result.data.header.req_date?.split("T")[0] || "",
           };
           setHeader(headerData);
         }
 
-        if (Array.isArray(data?.details)) {
-          setItems(data.details.map((row: PurchaseDetail) => calculateLineItem(row)));
+        if (result?.success && Array.isArray(result?.data?.details)) {
+          setItems(result.data.details.map((row: PurchaseDetail) => calculateLineItem(row)));
         }
       } catch (err) {
         console.error("Failed to load purchase", err);

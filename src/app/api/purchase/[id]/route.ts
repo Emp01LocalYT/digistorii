@@ -115,8 +115,6 @@ export async function GET(
             WHERE d.purchase_id = $1`,
             [purchaseId]
         );
-        console.log("Purchase Header:", headerRes.rows[0]);
-        console.log("Purchase Details:", detailRes.rows);
  
         return NextResponse.json({
             success: true,
@@ -182,7 +180,7 @@ export async function PUT(
             status,
             user_name
         } = header;
-        console.log("Received Update Data:", body);
+     
 
         await client.query("BEGIN");
 

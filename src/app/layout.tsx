@@ -57,9 +57,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: " DigiStorii - Yaanar Product",
   description: "Company setup",
-  icons: {
-    icon: "./digistore-logo.png",
-  },
 };
  
 export default async function RootLayout({
