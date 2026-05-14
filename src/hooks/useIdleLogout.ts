@@ -1,8 +1,7 @@
 "use client";
- 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
- 
+
 export default function useIdleLogout(company: string,type: string) {
     const router = useRouter();
  

@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import { Button, Select } from "antd";
 import { PlusOutlined, PrinterOutlined } from "@ant-design/icons";
 import { useTenant } from "@/context/TenantContext";
+import { useNotify } from "@/hooks/useNotify";
 import { apiFetch } from "@/lib/apiFetch";
 import '@ant-design/v5-patch-for-react-19';
 // import CategoryModal from "../components/CategoryModal";
@@ -76,7 +77,7 @@ type ImageMasterItem = {
 
 type ProductType = "finished_good" | "raw_material" | "other";
 
-type VariantStatus = "draft" | "active" | "inactive" | "out_of_stock";
+type VariantStatus = "draft" | "active" | "inactive";
 
 export type ProductVariantSummary = {
   variant_id: number;
@@ -145,7 +146,7 @@ export function ProductForm({
 }: ProductFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-
+  const notify = useNotify();
   const { company } = useTenant();
   const productId = productIdOverride ?? searchParams.get("id");
   // const mode = modeOverride ?? searchParams.get("mode") || "add";
@@ -191,18 +192,16 @@ export function ProductForm({
     { value: "draft", label: "Draft" },
     { value: "active", label: "Active" },
     { value: "inactive", label: "Inactive" },
-    { value: "out_of_stock", label: "Out of Stock" },
   ];
 
   const variantStatusClass: Record<VariantStatus, string> = {
     draft: "text-gray-600",
     active: "text-green-600",
     inactive: "text-red-600",
-    out_of_stock: "text-amber-600",
   };
 
   function normalizeVariantStatus(value: any): VariantStatus {
-    if (value === "active" || value === "inactive" || value === "out_of_stock" || value === "draft") {
+    if (value === "active" || value === "inactive" ||  value === "draft") {
       return value;
     }
     if (Number(value) === 2) return "inactive";
@@ -303,7 +302,7 @@ export function ProductForm({
       }));
       setImages(loadedImages.length ? loadedImages : [{ ...EMPTY_IMAGE, is_primary: true }]);
     } catch (error: any) {
-      setMessage(error.message || "Failed to load product");
+      notify(error.message || "Failed to load product", { severity: "error" });
     }
   }
   async function loadProduct() {
@@ -358,6 +357,53 @@ export function ProductForm({
       setImageMasterFiles([]);
     }
   }
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+async function handleImageUpload(
+  e: React.ChangeEvent<HTMLInputElement>,
+  index: number
+) {
+  if (!company) return;
+
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("files", file);
+
+  try {
+    const res = await apiFetch("/api/image-master-v2/upload", company, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || "Upload failed");
+    }
+
+    const uploaded = data.data?.[0];
+    if (!uploaded) return;
+
+    // 🔥 update master list (so dropdown refreshes)
+    await loadImageMaster();
+
+    // 🔥 auto-select uploaded image
+    const imageUrl =  normalizeImageUrl(`${uploaded.file_path}` || "");
+    console.log("uploaded image url", imageUrl);
+    updateImage(index, "image_url", imageUrl);
+    console.log("updated image url", imageUrl);
+
+    // notify("Image uploaded successfully", { severity: "success" });
+
+  } catch (err: any) {
+    notify(err.message || "Upload failed", { severity: "error" });
+  } finally {
+    e.target.value = ""; // reset input
+  }
+}
 
   useEffect(() => {
     hasLoadedRef.current = false;
@@ -545,7 +591,7 @@ export function ProductForm({
   async function handleSave(action: "save" | "save_add_new") {
     if (readOnly) return;
     if (!name.trim()) {
-      setMessage("Product name is required");
+      notify("Product name is required",{severity:"warning"});
       return;
     }
 
@@ -563,7 +609,7 @@ export function ProductForm({
       .filter((v) => v.color || v.size || v.sku);
 
     if (productType === "finished_good" && !cleanedVariants.length) {
-      setMessage("At least one variant is required");
+      notify("At least one variant is required", { severity: "warning" });
       return;
     }
 
@@ -601,8 +647,14 @@ export function ProductForm({
           }));
       }
 
+      const selectedUom = uoms.find((item) => String(item.id) === String(uom));
       const payload = {
-        product: productPayload,
+        product: {
+          ...productPayload,
+          product_code: productCode,
+          uom_code: selectedUom?.uom_code || "",
+          uom_name: selectedUom?.uom_name || "",
+        },
         variants: cleanedVariants,
       };
 
@@ -625,7 +677,6 @@ export function ProductForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to save product");
 
-      const selectedUom = uoms.find((item) => String(item.id) === String(uom));
       const savedProductId = isUpdating ? Number(productId) : Number(data.product?.id);
       const savedProductCode = isUpdating
         ? productCode
@@ -664,6 +715,7 @@ export function ProductForm({
 
       if (isUpdating) {
         // setMessage("Product updated successfully");
+        notify("Product updated successfully", { severity: "success" });
         if (embedded && productId) {
           onSaved?.(savedPayload, { action });
         }
@@ -682,7 +734,7 @@ export function ProductForm({
         resetFormToDefaults();
       }
     } catch (error: any) {
-      setMessage(error.message || "Failed to save product");
+      notify(error.message || "Failed to save product", { severity: "error" });
     } finally {
       setLoading(false);
     }
@@ -691,6 +743,7 @@ export function ProductForm({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     await handleSave("save");
+    notify("Product saved successfully", { severity: "success" });
   }
 
   return (
@@ -1087,7 +1140,7 @@ export function ProductForm({
                       </td>
                       {!readOnly ? (
                         <td className="px-3 py-2">
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-col gap-1">
                             <button
                               type="button"
                               onClick={() => removeVariant(index)}
@@ -1154,11 +1207,12 @@ export function ProductForm({
             <div className="space-y-3">
               {images.map((image, index) => (
                 <div key={index} className="rounded-lg border border-gray-200 p-3">
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="md:col-span-2">
+                  <div className="grid gap-4 md:grid-cols-4">
+                   <div className="md:col-span-2 space-y-1">
                       <label className="mb-1 block text-sm font-medium text-gray-700">
                         Image From Master
                       </label>
+                      <div className="flex items-center gap-2">
                       <Select
                         showSearch
                         allowClear
@@ -1177,7 +1231,16 @@ export function ProductForm({
                         }
                         className="w-full font-sans"
                       />
-                    </div>
+                      <Button icon={<PlusOutlined />}  type="default" onClick={() => fileInputRef.current?.click()} /> 
+                      </div>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        hidden
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e, index)}
+                      />
+                   </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">
                         Alt Text
@@ -1256,7 +1319,8 @@ export function ProductForm({
         ) : null}
 
         {!readOnly ? (
-          <div className="flex flex-wrap gap-3">
+<div className="flex justify-between pt-6 border-t border-gray-100">
+  <div className="flex gap-4">
             <button
               type="submit"
               disabled={loading}
@@ -1274,6 +1338,7 @@ export function ProductForm({
                 Save & Add New
               </button>
             ) : null}
+            </div>
           </div>
         ) : null}
       </form>

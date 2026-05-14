@@ -1,3 +1,4 @@
+//C:\Users\yanna\digistorii\src\lib\tenant.ts
 import { pool } from "./db";
 import { NextRequest } from "next/server";
 export async function getTenantSchema(req: NextRequest) {

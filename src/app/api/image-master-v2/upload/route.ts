@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
+import { fileTypeFromBuffer } from "file-type";
 import path from "path";
 import { writeFile } from "fs/promises";
 import { pool } from "@/lib/db";
@@ -29,6 +30,21 @@ export async function POST(req: NextRequest) {
     if (!files.length) {
       return NextResponse.json({ message: "At least one file is required" }, { status: 400 });
     }
+    const errors: string[] = [];
+    const validFiles: File[] = [];
+    const allowedMimeTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/svg+xml",
+      ];
+
+      const allowedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".svg"];
+      function hasValidExtension(filename: string) {
+        return allowedExtensions.some(ext =>
+          filename.toLowerCase().endsWith(ext)
+        );
+      }
 
     const dir = getImageMasterDir(tenant);
     await ensureDir(dir);
@@ -37,8 +53,39 @@ export async function POST(req: NextRequest) {
 
     for (const file of files) {
       const buffer = Buffer.from(await file.arrayBuffer());
+      const detectedType = await fileTypeFromBuffer(buffer);
       const fileHash = createHash("sha256").update(buffer).digest("hex");
+     
+      if (errors.length) {
+  return NextResponse.json({
+    success: false,
+    message: `Invalid files: ${errors.join(", ")}`,
+  }, { status: 400 });
+}
+        if (
+    detectedType &&
+    !allowedMimeTypes.includes(detectedType.mime)
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        message: `Invalid file format for ${file.name}. Allowed: JPG, PNG, WEBP, SVG.`,
+      },
+      { status: 400 }
+    );
+  }
+      // Extension check (extra safety)
+      if (!hasValidExtension(file.name)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Invalid file extension for ${file.name}.`,
+          },
+          { status: 400 }
+        );
+      }
 
+      
       const existingRes = await client.query(
         `
           SELECT id, filename, file_path, category_id, material_id, uom_id, source, created_at

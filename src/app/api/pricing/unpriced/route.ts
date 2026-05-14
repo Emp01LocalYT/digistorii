@@ -20,6 +20,8 @@ export async function GET(req: NextRequest) {
             WHERE pp.tenant_id = $1
               AND pp.variant_id = v.id
               AND pp.is_active = TRUE
+              AND CURRENT_DATE >= pp.active_from::date
+              AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
           )
         ORDER BY v.id ASC
       `,

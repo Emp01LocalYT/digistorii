@@ -11,7 +11,7 @@ export async function initializeDatabase() {
   }
  
   const client = await pool.connect();
- 
+
   try {
     const result = await client.query(`
       SELECT to_regclass('public.companies') as exists;
@@ -73,7 +73,6 @@ export async function initializeDatabase() {
     `);
  
     await client.query("COMMIT");
- 
     console.log("DB initialized successfully");
     global.dbInitialized = true;
   } catch (err) {

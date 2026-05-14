@@ -14,43 +14,81 @@ type TemplateRow = {
   source: string | null;
 };
 
-export async function GET(req: NextRequest) {
+type TemplateMode = "all" | "tagged" | "selected";
+
+async function generateTemplate(
+  req: NextRequest,
+  mode: TemplateMode,
+  imageIds: number[] = []
+) {
   const client = await pool.connect();
   try {
     const { schema } = await getTenantSchema(req);
-    const scope = String(req.nextUrl.searchParams.get("scope") || "all").toLowerCase();
-    const taggedOnly = scope === "tagged";
+      const isTagged = mode === "tagged";
+  const isSelected = mode === "selected";
 
-    const imagesRes = await client.query<TemplateRow>(
-      `
-        SELECT
-          im.id,
-          im.file_path,
-          COALESCE(c.path_string, c.category_name) AS category_label,
-          CASE
-            WHEN m.material_code IS NOT NULL AND m.material_name IS NOT NULL
-              THEN CONCAT(m.material_code, ' - ', m.material_name)
-            ELSE m.material_name
-          END AS material_label,
-          CASE
-            WHEN u.uom_code IS NOT NULL AND u.uom_name IS NOT NULL
-              THEN CONCAT(u.uom_code, ' - ', u.uom_name)
-            ELSE u.uom_name
-          END AS uom_label,
-          im.source
-        FROM "${schema}".image_master im
-        LEFT JOIN "${schema}".product_categories c ON im.category_id = c.id
-        LEFT JOIN "${schema}".product_materials m ON im.material_id = m.id
-        LEFT JOIN "${schema}".uom u ON im.uom_id = u.id
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM "${schema}".product_images pi
-          WHERE pi.image_id = im.id
-        )
-        ${taggedOnly ? "AND im.category_id IS NOT NULL AND im.material_id IS NOT NULL AND im.uom_id IS NOT NULL AND im.source IS NOT NULL" : ""}
-        ORDER BY category_label NULLS LAST, material_label NULLS LAST, im.source NULLS LAST, im.file_path
-      `
-    );
+  const params: any[] = [];
+  let whereParts: string[] = [];
+
+  // Base condition (important fix)
+  if (!isSelected) {
+    // apply ONLY for all
+    whereParts.push(`
+      NOT EXISTS (
+        SELECT 1
+        FROM "${schema}".product_images pi
+        WHERE pi.image_id = im.id
+      )
+    `);
+  }
+
+  // Tagged condition
+  if (isTagged) {
+        // apply ONLY for tagged
+    whereParts.push(`
+      im.category_id IS NOT NULL
+      AND im.material_id IS NOT NULL
+      AND im.uom_id IS NOT NULL
+      AND im.source IS NOT NULL
+    `);
+  }
+
+  // Selected condition (no restriction)
+  if (isSelected) {
+        // apply ONLY for selected
+    params.push(imageIds);
+    whereParts.push(`im.id = ANY($${params.length}::int[])`);
+  }
+
+  const whereClause =
+    whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+     const imagesRes = await client.query<TemplateRow>(
+    `
+      SELECT
+        im.id,
+        im.file_path,
+        COALESCE(c.path_string, c.category_name) AS category_label,
+        CASE
+          WHEN m.material_code IS NOT NULL AND m.material_name IS NOT NULL
+            THEN CONCAT(m.material_code, ' - ', m.material_name)
+          ELSE m.material_name
+        END AS material_label,
+        CASE
+          WHEN u.uom_code IS NOT NULL AND u.uom_name IS NOT NULL
+            THEN CONCAT(u.uom_code, ' - ', u.uom_name)
+          ELSE u.uom_name
+        END AS uom_label,
+        im.source
+      FROM "${schema}".image_master im
+      LEFT JOIN "${schema}".product_categories c ON im.category_id = c.id
+      LEFT JOIN "${schema}".product_materials m ON im.material_id = m.id
+      LEFT JOIN "${schema}".uom u ON im.uom_id = u.id
+      ${whereClause}
+      ORDER BY category_label NULLS LAST, material_label NULLS LAST, im.source NULLS LAST, im.file_path
+    `,
+    params
+  );
 
     const [categoriesRes, materialsRes, uomsRes] = await Promise.all([
       client.query(
@@ -226,5 +264,41 @@ export async function GET(req: NextRequest) {
     );
   } finally {
     client.release();
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const scope = String(req.nextUrl.searchParams.get("scope") || "all").toLowerCase();
+  const mode: TemplateMode = scope === "tagged" ? "tagged" : "all";
+  console.log(`Generating template with scope: ${mode}`);
+  return generateTemplate(req, mode);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json().catch(() => null);
+    const rawIds = Array.isArray(body?.image_ids) ? body.image_ids : [];
+    const imageIds: number[] = Array.from(
+      new Set<number>(
+        rawIds
+          .map((id: unknown) => Number(id))
+          .filter((id: number) => Number.isInteger(id) && id > 0)
+      )
+    );
+
+    if (!imageIds.length) {
+      return NextResponse.json(
+        { message: "image_ids must contain at least one valid image id" },
+        { status: 400 }
+      );
+    }
+    console.log(`Received request to generate template for ${imageIds.length} image IDs`);
+    console.log("Generating template for image IDs:", imageIds);
+    return generateTemplate(req, "selected", imageIds);
+  } catch (error: any) {
+    return NextResponse.json(
+      { message: error.message || "Failed to generate template" },
+      { status: 400 }
+    );
   }
 }

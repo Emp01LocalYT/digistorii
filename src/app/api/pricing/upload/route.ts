@@ -290,7 +290,7 @@ export async function POST(req: NextRequest) {
       const reportBuffer = buildErrorReportFile(validationErrors);
       return NextResponse.json(
         {
-          message: "Validation failed. Fix rows and re-upload.",
+          message: "Upload failed: Check for errors and try again.",
           errorCount: validationErrors.length,
           errors: validationErrors,
           errorReport: reportBuffer.toString("base64"),
@@ -433,7 +433,12 @@ export async function POST(req: NextRequest) {
           payload.final_selling_price,
           payload.active_from,
           payload.expires_at,
-          TRUE
+          CASE
+            WHEN CURRENT_DATE >= payload.active_from
+              AND (payload.expires_at IS NULL OR CURRENT_DATE <= payload.expires_at)
+            THEN TRUE
+            ELSE FALSE
+          END
         FROM unnest(
           $2::bigint[],
           $3::bigint[],
@@ -487,6 +492,18 @@ export async function POST(req: NextRequest) {
         expiresAtDates,
       ]
     );
+    
+    await client.query(
+  `
+  UPDATE "${schema}".product_variants
+  SET status = 'active',
+      updated_at = NOW()
+  WHERE id = ANY($1::bigint[])
+  AND status = 'draft'
+  `,
+  [variantIds]
+);
+
     await client.query("COMMIT");
 
     return NextResponse.json({
@@ -503,6 +520,5 @@ export async function POST(req: NextRequest) {
     client.release();
   }
 }
-
 
 

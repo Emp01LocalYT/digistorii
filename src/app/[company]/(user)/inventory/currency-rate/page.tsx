@@ -233,13 +233,15 @@ export default function CurrencyRatePage() {
             </div>
  
  
-            <div className="relative max-w-sm">
-                <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
+            <div className="ui-table-card">
+            <div className="ui-search-section">
+              <div className="ui-search-wrapper">
+                <MagnifyingGlassIcon className="ui-search-icon" />
  
                 <input
                     type="text"
                     placeholder="Search Currency Conerstion Rate..."
-                    className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                    className="ui-input"
                     value={search}
                     onChange={(e) => {
                         setSearch(e.target.value);
@@ -247,39 +249,39 @@ export default function CurrencyRatePage() {
                     }}
                 />
             </div>
+            </div>
  
-            <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
+                <div className="ui-table-scroll">
+        <table className="ui-table">
  
-                <table className="w-full text-sm">
- 
-                    <thead className="bg-indigo-50 text-gray-600 text-sm">
-                        <tr className="border-t hover:bg-blue-50 transition">
+                    <thead className="ui-table-head">
+                        <tr className="ui-table-row">
  
                             {/* SORTABLE HEADERS */}
-                            <th className="p-3 text-left" onClick={() => handleSort('code')}>
+                            <th className="ui-table-th" onClick={() => handleSort('code')}>
                                 Currency Code
                             </th>
  
-                            <th className="p-3 text-left" onClick={() => handleSort('name')}>
+                            <th className="ui-table-th" onClick={() => handleSort('name')}>
                                 Currency
                             </th>
  
-                            <th className="p-3 text-left" onClick={() => handleSort('country')}>
+                            <th className="ui-table-th" onClick={() => handleSort('country')}>
                                 Country
                             </th>
  
-                            <th className="p-3 text-left" onClick={() => handleSort('region')}>
+                            <th className="ui-table-th" onClick={() => handleSort('region')}>
                                 Region
                             </th>
  
-                            <th className="p-3" onClick={() => handleSort('conversionRate')}>Conversion Rate</th>
+                            <th className="ui-table-td" onClick={() => handleSort('conversionRate')}>Conversion Rate</th>
                         </tr>
                     </thead>
  
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan={5} className="text-center py-10 text-gray-400 animate-pulse">
+                                <td colSpan={5} className="ui-loading-row">
                                     Loading Currency...
                                 </td>
                             </tr>
@@ -289,9 +291,9 @@ export default function CurrencyRatePage() {
                                     (currentPage - 1) * itemsPerPage + index;
  
                                 return (
-                                    <tr key={row.code} className="border-t hover:bg-blue-50 transition">
+                                    <tr key={row.code} className="ui-table-row">
  
-                                        <td className="p-3 text-left">{row.code}</td>
+                                        <td className="ui-table-th">{row.code}</td>
                                         <td className='text-left'>{row.name}</td>
                                         <td className='text-left'>{row.country}</td>
                                         <td className='text-left'>{row.region}</td>
@@ -320,18 +322,19 @@ export default function CurrencyRatePage() {
                             })
                         ) : (
                             <tr>
-                                <td colSpan={5} className="text-center py-10 text-gray-500">
+                                <td colSpan={5} className="ui-empty-row ui-table-td-center">
                                     No Currency found
                                 </td>
                             </tr>
                         )}
                     </tbody>
                 </table>
+            </div>
+
+        {/* PAGINATION */}
+                <div className="ui-pagination-wrapper">
  
-                {/* PAGINATION  */}
-                <div className="flex justify-between items-center px-6 py-4 bg-gray-50 border-t">
- 
-                    <p className="text-sm text-gray-500">
+                    <p className="ui-pagination-info">
                         Showing {(currentPage - 1) * itemsPerPage + 1}
                         -
                         {Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length} items
@@ -377,3 +380,10 @@ export default function CurrencyRatePage() {
         </div>
     );
 }
+
+
+
+
+
+
+

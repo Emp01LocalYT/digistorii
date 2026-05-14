@@ -340,7 +340,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   CONSTRAINT product_variants_status_chk
-  CHECK (status IN ('draft', 'active', 'inactive', 'out_of_stock')),
+  CHECK (status IN ('draft', 'active', 'inactive')),
   CONSTRAINT unique_variant_barcode UNIQUE (barcode),
   CONSTRAINT unique_variant_combination
   UNIQUE (product_id, color, size)
@@ -381,7 +381,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
       ) THEN
         ALTER TABLE "${schema}".product_variants
           ADD CONSTRAINT product_variants_status_chk
-          CHECK (status IN ('draft', 'active', 'inactive', 'out_of_stock'));
+          CHECK (status IN ('draft', 'active', 'inactive'));
       END IF;
       IF NOT EXISTS (
         SELECT 1
@@ -414,7 +414,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
     END
     FROM "${schema}".products p
     WHERE v.product_id = p.id
-      AND v.status NOT IN ('active', 'out_of_stock');
+      AND v.status NOT IN ('active', 'inactive');
   `);
   await client.query(`
     UPDATE "${schema}".product_variants
@@ -659,6 +659,7 @@ await client.query(`
           po_type VARCHAR(20) NOT NULL DEFAULT 'standard'
             CHECK (po_type IN ('standard', 'manual')),
           purchase_no VARCHAR(30) UNIQUE NOT NULL,  
+          ref_no VARCHAR(30),
           bill_to BIGINT,
           ship_to BIGINT,
           despatch_terms BIGINT,
@@ -681,11 +682,18 @@ await client.query(`
           subtotal NUMERIC(12,2) DEFAULT 0,
           tax_amount NUMERIC(12,2) DEFAULT 0,
           total_amount NUMERIC(12,2) DEFAULT 0,
+          renewed_from_po_id INT NULL
+          REFERENCES "${schema}".purchase_header(id) ON DELETE SET NULL,
           created_by VARCHAR(100),
           created_at TIMESTAMP,
           updated_by VARCHAR(100),
           updated_at TIMESTAMP
         );
+      `)
+await client.query(`
+        ALTER TABLE "${schema}".purchase_header
+        ADD COLUMN IF NOT EXISTS renewed_from_po_id INT NULL
+        REFERENCES "${schema}".purchase_header(id) ON DELETE SET NULL;
       `)
  
  

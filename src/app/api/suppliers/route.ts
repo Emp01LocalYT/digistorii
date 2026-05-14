@@ -218,8 +218,8 @@ export async function GET(req: NextRequest) {
   const client = await pool.connect();
   try {
     const { schema } = await getTenantSchema(req);
-    console.log("Schema in GET /suppliers:", schema);
-
+    console.log("Schema in GET /suppliers fetches:", schema);
+    
     if (!schema || !schemaValidator.test(schema)) {
       return NextResponse.json({ success: false });
     }

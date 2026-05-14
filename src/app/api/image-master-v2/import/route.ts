@@ -234,6 +234,22 @@ async function parseSheet(buffer: Buffer, lookups: Lookups) {
     "Low stock amount",
     "backorders allowed",
   ];
+  const actualHeaders = Object.keys(rows[0]).map(normalizeHeader);
+
+const expectedHeaders = requiredHeaders.map(normalizeHeader);
+
+const missingHeaders = expectedHeaders.filter(
+  (h) => !actualHeaders.includes(h)
+);
+
+if (missingHeaders.length > 0) {
+  return {
+    parents: [],
+    orphanVariants: [],
+    errors: [`Invalid template. Missing headers: ${missingHeaders.join(", ")}`],
+    warnings: [],
+  };
+}
 
   const isRowEmpty = (row: Record<string, unknown>) =>
     requiredHeaders.every((header) => !cell(row, header));
@@ -246,8 +262,12 @@ async function parseSheet(buffer: Buffer, lookups: Lookups) {
 
   rows.forEach((row: Record<string, unknown>, index: number) => {
     const rowNumber = index + 2;
-    console.log("Row data:", rowNumber, row);
-    if (isRowEmpty(row)) return;
+    // console.log("Row data:", rowNumber, row);
+    // if (isRowEmpty(row)) return;
+    if (isRowEmpty(row)) {
+      warnings.push(`Row ${rowNumber}: Empty row skipped.`);
+      return;
+    }
 
     const imageIdRaw = cell(row, "image_id");
     const imageUrlRaw = cell(row, "image_url");
@@ -338,15 +358,13 @@ async function parseSheet(buffer: Buffer, lookups: Lookups) {
     const variantSku = skuRaw || buildVariantSku(parentSku, color, size, fitting);
     const imageUrls = splitImageUrls(imageUrlRaw);
     const imageIds = splitImageIds(imageIdRaw);
-console.log("Detected headers:", Object.keys(rows[0]));
+    //console.log("Detected headers:", Object.keys(rows[0]));
     if (!parentSkuRaw) {
       if (!nameRaw) {
         errors.push(`Row ${rowNumber}: product_name is required for parent rows.`);
-        console.log(`rownumber: ${rowNumber} missing product name for parent row with auto-generated SKU ${parentSku}`);
+        // console.log(`rownumber: ${rowNumber} missing product name for parent row with auto-generated SKU ${parentSku}`);
       }
-      if (rowNumber === 11) {
-  console.log("DEBUG ROW 11:", row);
-}
+
 
       if (parents.has(parentKey)) {
         errors.push(`Row ${rowNumber}: Duplicate parent SKU "${parentSku}".`);
@@ -469,6 +487,20 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    if (
+        parsed.parents.length === 0 &&
+        parsed.orphanVariants.length === 0
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            errors: ["No valid data found in file. Check template format."],
+            warnings: parsed.warnings,
+          },
+          { status: 400 }
+        );
+      }
 
     const allSkus = [
       ...parsed.parents.flatMap((parent) => parent.variants.map((variant) => variant.sku)),
@@ -614,7 +646,7 @@ export async function POST(req: NextRequest) {
           let order = 1;
           for (const [index, imageUrl] of variant.imageUrls.entries()) {
             const imageId = variant.imageIds[index] ?? null;
-             console.log("Image id inserted:",imageId);
+            //  console.log("Image id inserted:",imageId);
             await client.query(
               `
                 INSERT INTO "${schema}".product_images
@@ -665,7 +697,7 @@ export async function POST(req: NextRequest) {
         let order = 1;
         for (const [index, imageUrl] of variant.imageUrls.entries()) {
           const imageId = variant.imageIds[index] ?? null;
-          console.log("Image id inserted:",imageId);
+          // console.log("Image id inserted:",imageId);
           await client.query(
             `
               INSERT INTO "${schema}".product_images

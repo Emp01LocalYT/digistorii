@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { createPortal } from "react-dom";
+import { ChevronLeftIcon, ChevronRightIcon,MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
+import { useNotify } from "@/hooks/useNotify";
 import { CategoryNode, flattenCategories } from "../products/components/category-utils";
 
 type MaterialOption = {
@@ -95,6 +97,8 @@ export default function ImageMasterV2Page() {
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const notify = useNotify();
   const [rows, setRows] = useState<ImageRow[]>([]);
   const [summary, setSummary] = useState<Summary>({
     total: 0,
@@ -109,6 +113,8 @@ export default function ImageMasterV2Page() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [materialFilter, setMaterialFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [tagModalOpen, setTagModalOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -128,6 +134,34 @@ export default function ImageMasterV2Page() {
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const flatCategories = useMemo(() => flattenCategories(categoriesTree), [categoriesTree]);
+  const categoryLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    flatCategories.forEach((row) => map.set(String(row.id), row.path));
+    return map;
+  }, [flatCategories]);
+  const materialLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    materials.forEach((item) =>
+      map.set(String(item.id), `${item.material_code} - ${item.material_name}`)
+    );
+    return map;
+  }, [materials]);
+  const categoryOptions = useMemo(
+    () => flatCategories.map((row) => ({ value: String(row.id), label: row.path })),
+    [flatCategories]
+  );
+  const materialOptions = useMemo(
+    () => materials.map((item) => ({ value: String(item.id), label: `${item.material_code} - ${item.material_name}` })),
+    [materials]
+  );
+  const selectedCategoryLabel = useMemo(
+    () => (categoryFilter !== "all" ? categoryLabelMap.get(categoryFilter) : null),
+    [categoryFilter, categoryLabelMap]
+  );
+  const selectedMaterialLabel = useMemo(
+    () => (materialFilter !== "all" ? materialLabelMap.get(materialFilter) : null),
+    [materialFilter, materialLabelMap]
+  );
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -139,14 +173,26 @@ export default function ImageMasterV2Page() {
 
       if (!matchesSearch) return false;
 
-      if (statusFilter === "all") return true;
-      if (statusFilter === "tagged") return row.status !== "untagged";
-      if (statusFilter === "untagged") return row.status === "untagged";
-      if (statusFilter === "linked") return row.status === "linked";
-      if (statusFilter === "unlinked") return row.status === "unlinked";
+      if (statusFilter !== "all") {
+      if (statusFilter === "tagged" && row.status === "untagged") return false;
+      if (statusFilter === "untagged" && row.status !== "untagged") return false;
+      if (statusFilter === "linked" && row.status !== "linked") return false;
+      if (statusFilter === "unlinked" && row.status !== "unlinked") return false;
+    }
+
+    // Category filter
+    if (categoryFilter !== "all") {
+      const categoryMatch =
+        String(row.category_id) === categoryFilter ||
+        (selectedCategoryLabel != null && row.category_label === selectedCategoryLabel);
+      if (!categoryMatch) return false;
+    }
+    if (materialFilter !== "all" && row.material_id !== Number(materialFilter)) {
+      return false;
+    }
       return true;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, categoryFilter, materialFilter, selectedCategoryLabel, selectedMaterialLabel]);
 
   const sortedRows = useMemo(() => filteredRows, [filteredRows]);
 
@@ -173,7 +219,6 @@ export default function ImageMasterV2Page() {
     if (!company) return;
     let active = true;
     setLoading(true);
-    setMessage("");
 
     const loadAll = async () => {
       try {
@@ -203,7 +248,7 @@ export default function ImageMasterV2Page() {
         }
       } catch (error: any) {
         if (!active) return;
-        setMessage(error.message || "Failed to load Image Master data.");
+        notify(error.message || "Failed to load Image Master data.",{ severity: "error" });
       } finally {
         if (active) setLoading(false);
       }
@@ -225,7 +270,7 @@ export default function ImageMasterV2Page() {
         setSummary((prev) => data.summary || prev);
       }
     } catch (error: any) {
-      setMessage(error.message || "Failed to refresh list.");
+      notify(error.message || "Failed to refresh list.",{ severity: "error" });
     }
   }
 
@@ -250,7 +295,7 @@ export default function ImageMasterV2Page() {
   async function applyTagsToSelection() {
     if (!company) return;
     if (selectedIds.size === 0) {
-      setMessage("Select at least one image to apply tags.");
+      notify("Select at least one image to apply tags.",{severity: "warning"});
       return;
     }
 
@@ -261,7 +306,7 @@ export default function ImageMasterV2Page() {
     if (bulkSource) patch.source = bulkSource === "vendor" ? "vendor" : "own";
 
     if (!Object.keys(patch).length) {
-      setMessage("Choose at least one tag value to apply.");
+      notify("Choose at least one tag value to apply.",{severity: "warning"});
       return;
     }
 
@@ -281,9 +326,9 @@ export default function ImageMasterV2Page() {
       setBulkUom("");
       setBulkSource("");
       await refreshImageMaster();
-      setMessage(`Updated ${data.updated || 0} image(s).`);
+      notify(`Updated ${data.updated || 0} image(s).`);
     } catch (error: any) {
-      setMessage(error.message || "Failed to update tags.");
+      notify(error.message || "Failed to update tags.",{ severity: "error" });
     }
   }
 
@@ -306,7 +351,7 @@ export default function ImageMasterV2Page() {
       await refreshImageMaster();
     } catch (error: any) {
       setRows(previous);
-      setMessage(error.message || "Failed to update tag.");
+      notify(error.message || "Failed to update tag.",{ severity: "error" });
     }
   }
 
@@ -332,25 +377,40 @@ export default function ImageMasterV2Page() {
       if (uploadedIds.length) {
         setSelectedIds(new Set(uploadedIds));
         setTagModalOpen(true);
-        setMessage(`Uploaded ${uploadedIds.length} image(s). Select tags for this batch.`);
+        notify(`Uploaded ${uploadedIds.length} image(s). Select tags for this batch.`);
       } else {
-        setMessage(`Uploaded ${data.data?.length || 0} image(s).`);
+        notify(`Uploaded ${data.data?.length || 0} image(s).`);
       }
     } catch (error: any) {
-      setMessage(error.message || "Upload failed.");
+      notify(error.message || "Upload failed.",{ severity: "error" });
     } finally {
       setUploading(false);
     }
   }
 
-  async function downloadTemplate(scope: "all" | "tagged") {
+  async function downloadTemplate(scope: "all" | "tagged" | "selected") {
     if (!company) return;
     setMessage("");
     try {
-      const res = await apiFetch(`/api/image-master-v2/template?scope=${scope}`, company);
+      if (scope === "selected" && selectedIds.size === 0) {
+        notify("Select at least one image to generate template.", { severity: "warning" });
+        return;
+      }
+
+      const res =
+        scope === "selected"
+          ? await apiFetch("/api/image-master-v2/template", company, {
+              method: "POST",
+              body: JSON.stringify({
+                image_ids: Array.from(selectedIds),
+              }),
+            })
+          : await apiFetch(`/api/image-master-v2/template?scope=${scope}`, company);
+
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        throw new Error(data?.message || "Failed to download template");
+        notify(data?.message || "Failed to download template",{ severity: "error" });
+        return;
       }
       const blob = await res.blob();
       const objectUrl = window.URL.createObjectURL(blob);
@@ -362,7 +422,7 @@ export default function ImageMasterV2Page() {
       link.remove();
       window.URL.revokeObjectURL(objectUrl);
     } catch (error: any) {
-      setMessage(error.message || "Failed to download template.");
+      notify(error.message || "Failed to download template.",{ severity: "error" });
     }
   }
 
@@ -380,19 +440,32 @@ export default function ImageMasterV2Page() {
       const data = await res.json();
       if (!res.ok) {
         const errorText = Array.isArray(data?.errors) ? data.errors.join(" ") : data.message;
-        throw new Error(errorText || "Import failed");
+        notify(errorText || "Import failed",{ severity: "error" });
       }
 
+          if (!data?.success) {
+      notify(data?.errors?.join(", ") || "Import failed", {
+        severity: "error",
+      });
+      return;
+    }
       const warningCount = Array.isArray(data?.warnings) ? data.warnings.length : 0;
-      const warningText = warningCount ? ` (${warningCount} warning${warningCount > 1 ? "s" : ""})` : "";
-      setMessage(
-        `Imported ${data.inserted_products || 0} products and ${data.inserted_variants || 0} variants.${warningText}`
-      );
+
+      const message = `Imported ${data.inserted_products} products and ${data.inserted_variants} variants`;
+
+      if (warningCount > 0) {
+        notify(`${message} with ${warningCount} warning${warningCount > 1 ? "s" : ""}`, {
+          severity: "warning",
+        });
+      } else {
+        notify(message, { severity: "success" });
+      }
+
       setImportOpen(false);
       setImportFile(null);
       await refreshImageMaster();
     } catch (error: any) {
-      setMessage(error.message || "Import failed.");
+      notify(error.message || "Import failed.",{ severity: "error" });
     } finally {
       setImportLoading(false);
     }
@@ -404,6 +477,16 @@ export default function ImageMasterV2Page() {
 
   return (
     <div className="space-y-6">
+      {loading &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] bg-black/20 backdrop-blur-sm flex items-center justify-center">
+            <div className="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center gap-3">
+              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-gray-700 font-semibold text-lg">Loading Images...</p>
+            </div>
+          </div>,
+          document.body
+        )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Image Master</h1>
@@ -419,98 +502,131 @@ export default function ImageMasterV2Page() {
             Upload Images
           </button>
           <button
-            onClick={() => setTagModalOpen(true)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Manage Tags
+            onClick={() => setImportOpen(true)}
+            className="rounded-lg border border-gray-400 bg-white px-4 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-100"          >
+            Import Excel
           </button>
-          <button
-            onClick={() => setTemplateReviewOpen(true)}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
-          >
-            Get Template ({summary.unlinked || 0})
-          </button>
-        </div>
-      </div>
+          <div className="relative">
+    <button 
+    onClick={() => setMenuOpen((prev) => !prev)}
+    className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+      ⋮
+    </button>
+           {menuOpen && (
+    <div className="absolute right-0 mt-2 w-44 rounded-lg border bg-white shadow-lg z-50">
+      <button
+        onClick={() => {
+          setTagModalOpen(true);
+          setMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+      >
+        Manage Tags
+      </button>
+
+      <button
+        onClick={() => {
+          setTemplateReviewOpen(true);
+          setMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left text-sm hover:bg-gray-50"
+      >
+        Download Template
+      </button>
+    </div>
+  )}
+  </div>
+  </div>
+</div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs uppercase text-gray-500">Total Images</div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+          <div className="text-xs uppercase tracking-wide text-gray-500">Total Images</div>
           <div className="mt-2 text-2xl font-semibold text-gray-900">{summary.total}</div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs uppercase text-gray-500">Unlinked Images</div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+          <div className="text-xs uppercase tracking-wide text-gray-500">Unlinked Images</div>
           <div className="mt-2 text-2xl font-semibold text-gray-900">{summary.unlinked}</div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs uppercase text-gray-500">Already Linked</div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+          <div className="text-xs uppercase tracking-wide text-gray-500">Already Linked</div>
           <div className="mt-2 text-2xl font-semibold text-gray-900">{summary.linked}</div>
         </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <div className="text-xs uppercase text-gray-500">Untagged</div>
+        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+          <div className="text-xs uppercase tracking-wide text-gray-500">Untagged</div>
           <div className="mt-2 text-2xl font-semibold text-gray-900">{summary.untagged}</div>
         </div>
       </div>
-
       {message ? (
         <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700">
           {message}
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by image name..."
-            className="w-full sm:w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          >
-            <option value="all">All</option>
-            <option value="tagged">Tagged</option>
-            <option value="untagged">Untagged</option>
-            <option value="linked">Linked</option>
-            <option value="unlinked">Unlinked</option>
-          </select>
-          <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
-            Tagged {summary.unlinked_tagged ?? 0} / {summary.unlinked ?? 0}
-          </div>
-          <div className="text-xs text-gray-500">
-            Showing {showingFrom} to {showingTo} of {totalItems}
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setSelectedIds(new Set())}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Clear Selection
-          </button>
-          <button
-            onClick={() => {
-              setSelectedIds((prev) => {
-                const next = new Set(prev);
-                filteredRows.forEach((row) => next.add(row.id));
-                return next;
-              });
-            }}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Select Filtered
-          </button>
-          <button
-            onClick={() => setImportOpen(true)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-          >
-            Import Excel
-          </button>
-        </div>
-      </div>
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+  <div className="grid gap-3 md:grid-cols-4">
+    
+    {/* Search */}
+    <div className="relative">
+                <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
+            <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by image name..."
+        className="w-full rounded-lg border border-gray-300 px-10 py-2 text-sm focus:border-blue-500 focus:outline-none"
+      />
+    </div>
+
+    {/* Status */}
+    <select
+      value={statusFilter}
+      onChange={(e) => setStatusFilter(e.target.value)}
+      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+    >
+      <option value="all">All Stage</option>
+      <option value="tagged">Tagged</option>
+      <option value="untagged">Untagged</option>
+    </select>
+    <select
+      value={statusFilter}
+      onChange={(e) => setStatusFilter(e.target.value)}
+      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+    >
+      <option value="all">All State</option>
+      <option value="linked">Linked</option>
+      <option value="unlinked">Unlinked</option>
+    </select>
+
+    {/* Category */}
+    <select
+      value={categoryFilter}
+      onChange={(e) => setCategoryFilter(e.target.value)}
+      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+    >
+      <option value="all">All Categories</option>
+      {categoryOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+
+    {/* Material */}
+    <select
+      value={materialFilter}
+      onChange={(e) => setMaterialFilter(e.target.value)}
+      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+    >
+      <option value="all">All Materials</option>
+      {materialOptions.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+
+  </div>
+</div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         <div
@@ -539,13 +655,7 @@ export default function ImageMasterV2Page() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={9} className="px-4 py-6 text-gray-500">
-                      Loading...
-                    </td>
-                  </tr>
-                ) : paginatedRows.length === 0 ? (
+                {!loading && paginatedRows.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-4 py-6 text-gray-500">
                       No images found.
@@ -570,10 +680,14 @@ export default function ImageMasterV2Page() {
                       </td>
                       <td className="px-4 py-3 text-gray-700">{row.filename}</td>
                       <td className="px-4 py-3 text-gray-700">
-                        {row.category_label || "-"}
+                        {row.category_id != null
+                          ? categoryLabelMap.get(String(row.category_id)) ?? row.category_label ?? "-"
+                          : row.category_label ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-gray-700">
-                        {row.material_label || "-"}
+                        {row.material_id != null
+                          ? materialLabelMap.get(String(row.material_id)) ?? row.material_label ?? "-"
+                          : row.material_label ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-gray-700">{row.uom_label || "-"}</td>
                       <td className="px-4 py-3 text-gray-700">{row.source || "-"}</td>
@@ -903,7 +1017,16 @@ export default function ImageMasterV2Page() {
                   }}
                   className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                 >
-                  Generate template with all images
+                  Generate template with all unlinked images
+                </button>
+                <button
+                  onClick={async () => {
+                    await downloadTemplate("selected");
+                    setTemplateReviewOpen(false);
+                  }}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Generate template with selected images
                 </button>
               </div>
             </div>

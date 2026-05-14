@@ -179,11 +179,19 @@ export default function PurchaseHeaderForm({
               <p className="text-red-500 text-sm mt-1">{errors.req_date}</p>
             )}
           </div>
+          <div> <label className="text-sm font-semibold mb-1 block">Reference No</label>
+            <input
+              value={header.ref_no || ""}
+              onChange={(e) => setHeader({ ...header, ref_no: e.target.value })}
+              className="border p-2 rounded w-full"
+            />
+          </div>
 
           <div>
             <label className="text-sm font-semibold mb-1 block">
               Supplier <span className="text-red-500">*</span>
             </label>
+
            <Select
             isDisabled={!isEditable}
             placeholder="Select Supplier"
@@ -196,11 +204,20 @@ export default function PurchaseHeaderForm({
                 }))
                 .find((opt) => String(opt.value) === String(header.supplier_id)) || null
             }
+            // options={allSuppliers.map((s) => ({
+            //   value: s.id,
+            //   label: `${s.supplier_code}-${s.name}`,
+            //   supplier: s,
+              
+            // }))}
             options={allSuppliers.map((s) => ({
-              value: s.id,
-              label: `${s.supplier_code}-${s.name}`,
-              supplier: s,
-            }))}
+  value: s.id,
+  label: s.purchase_hold
+    ? `${s.supplier_code}-${s.name} (On Hold)`
+    : `${s.supplier_code}-${s.name}`,
+  supplier: s,
+  isDisabled: s.purchase_hold, 
+}))}
             isSearchable
             menuPortalTarget={document.body}
             menuPosition="fixed"
@@ -326,7 +343,7 @@ export default function PurchaseHeaderForm({
             <div>
               <label className="text-sm font-semibold mb-1 block">Despatch Terms</label>
               <select
-                value={header.despatch_terms || ""}
+                value={header.despatch_terms?.toString() || ""}
                 disabled={!isEditable}
                 onChange={(e) => setHeader({ ...header, despatch_terms: e.target.value })}
                 className="border p-2 rounded w-full"
@@ -343,7 +360,7 @@ export default function PurchaseHeaderForm({
             <div>
               <label className="text-sm font-semibold mb-1 block">Payment Terms</label>
               <select
-                value={header.payment_terms || ""}
+                value={header.payment_terms?.toString() || ""}
                 disabled={!isEditable}
                 onChange={(e) => setHeader({ ...header, payment_terms: e.target.value })}
                 className="border p-2 rounded w-full"
@@ -422,9 +439,9 @@ export default function PurchaseHeaderForm({
             <div className="col-span-2">
               <label className="text-sm font-semibold mb-1 block">Notes</label>
               <textarea
-                value={header.notes}
+                value={header.notes || ''}
                 disabled={!isEditable}
-                onChange={(e) => setHeader({ ...header, notes: e.target.value })}
+                onChange={(e) => setHeader({ ...header, notes: e.target.value  ?? ''})}
                 className="border p-2 rounded w-full"
                 rows={3}
               />

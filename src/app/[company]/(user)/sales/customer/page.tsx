@@ -227,7 +227,7 @@ const validate = () => {
     goToNextPage,
   } = usePagination({
     data: sortedCusts,
-    initialItemsPerPage: 20,
+    initialItemsPerPage: 10,
     resetDeps: [search],
   });
 
@@ -251,61 +251,70 @@ const validate = () => {
 
       {!showForm && (
         <>
-          <div className="relative max-w-sm">
-            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
-            <input type="text" placeholder="Search..." className="w-full pl-10 pr-4 py-2 border rounded-lg" onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-indigo-50 text-gray-600 uppercase text-xs">
-                  <tr className="border-t hover:bg-blue-50 transition">
-                    <th className="p-4 text-left" onClick={() => setSortField("name")}>Name</th>
-                    <th className="p-4 text-left" onClick={() => setSortField("phone")}>Phone</th>
-                    <th className="p-4 text-left" onClick={() => setSortField("email")}>Email</th>
-                    <th className="p-4 text-left" onClick={() => setSortField("address")}>Address</th>
-                    <th className="p-4 text-center">Action</th>
+          <div className="ui-table-card">
+            <div className="ui-search-section">
+              <div className="ui-search-wrapper">
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="ui-input"
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="ui-table-scroll">
+              <table className="ui-table">
+                <thead className="ui-table-head">
+                  <tr className="ui-table-row">
+                    <th className="ui-table-th" onClick={() => setSortField("name")}>Name</th>
+                    <th className="ui-table-th" onClick={() => setSortField("phone")}>Phone</th>
+                    <th className="ui-table-th" onClick={() => setSortField("email")}>Email</th>
+                    <th className="ui-table-th" onClick={() => setSortField("address")}>Address</th>
+                    <th className="ui-table-th-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody >
                   {tableLoading ? 
                     <tr>
-                      <td colSpan={5} className="text-center py-10 text-gray-400 animate-pulse">Loading data...</td>
+                      <td colSpan={5} className="ui-loading-row">Loading data...</td>
                     </tr>
                    : paginatedCusts.length > 0 ?  paginatedCusts.map((cus) => 
-                      <tr key={cus.id} className="border-t hover:bg-blue-50 transition">
-                        <td className="p-4 font-medium text-gray-700">{cus.name || "-"}</td>
-                        <td className="p-4">{cus.phone || "-"}</td>
-                        <td className="p-4">{cus.email || "-"}</td>
-                        <td className="p-4">
+                      <tr key={cus.id} className="ui-table-row">
+                        <td className="ui-table-td font-medium text-gray-700">{cus.name || "-"}</td>
+                        <td className="ui-table-td">{cus.phone || "-"}</td>
+                        <td className="ui-table-td">{cus.email || "-"}</td>
+                        <td className="ui-table-td">
                           {cus.address.address_line1
                             ? `${cus.address.address_line1}${cus.address.city ? `, ${cus.address.city}` : ""}${cus.address.state ? `, ${cus.address.state}` : ""}`
                             : "-"}
                         </td>
-                        <td className="text-center">
-                          <button type="button" onClick={() => { setCust(normalizeCust(cus)); setShowForm(true); }} className="text-indigo-600"><PencilSquareIcon className="w-5 h-5" /></button>
+                        <td className="ui-table-td-center">
+                          <div className="ui-table-actions">
+                            <button type="button" onClick={() => { setCust(normalizeCust(cus)); setShowForm(true); }} className="text-indigo-600"><PencilSquareIcon className="w-5 h-5" /></button>
+                          </div>
                         </td>
                       </tr>
                     ) :
                     <tr>
-                      <td colSpan={5} className="px-6 py-10 text-center text-gray-500">No records found.</td>
+                      <td colSpan={5} className="ui-empty-row ui-table-td-center">No records found.</td>
                     </tr>
                   }
                 </tbody>
               </table>
             </div>
-            <div className="border-t border-gray-200 px-4 py-4 sm:px-6">
+            <div className="ui-pagination-wrapper">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-sm text-gray-700">
+                            <p className="ui-pagination-info">
                               Showing <span className="font-medium">{showingFrom}</span> to <span className="font-medium">{showingTo}</span> of <span className="font-medium">{totalItems}</span> results
                             </p>
-                            <div className="flex items-center gap-2">
+                            <div className="ui-table-actions">
                               <label htmlFor="cust-items-per-page" className="text-sm text-gray-600">Rows per page</label>
                               <select
                                 id="cust-items-per-page"
                                 value={itemsPerPage}
                                 onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                                className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                className="ui-pagination-select"
                               >
                                 <option value={10}>10</option>
                                 <option value={20}>20</option>
@@ -320,7 +329,7 @@ const validate = () => {
                                 type="button"
                                 onClick={goToPreviousPage}
                                 disabled={currentPage === 1}
-                                className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="ui-pagination-icon-btn rounded-md"
                               >
                                 Previous
                               </button>
@@ -328,19 +337,19 @@ const validate = () => {
                                 type="button"
                                 onClick={goToNextPage}
                                 disabled={currentPage === totalPages}
-                                className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="ui-pagination-icon-btn rounded-md ml-3"
                               >
                                 Next
                               </button>
                             </div>
             
                             <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-                              <nav aria-label="Pagination" className="isolate inline-flex -space-x-px rounded-md shadow-sm">
+                              <nav aria-label="Pagination" className="ui-pagination-nav">
                                 <button
                                   type="button"
                                   onClick={goToPreviousPage}
                                   disabled={currentPage === 1}
-                                  className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="ui-pagination-icon-btn rounded-l-md"
                                 >
                                   <span className="sr-only">Previous</span>
                                   <ChevronLeftIcon className="h-5 w-5" />
@@ -350,7 +359,7 @@ const validate = () => {
                                   page === "..." ? (
                                     <span
                                       key={`ellipsis-${idx}`}
-                                      className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
+                                      className="ui-pagination-btn ui-pagination-btn-inactive"
                                     >
                                       ...
                                     </span>
@@ -360,10 +369,9 @@ const validate = () => {
                                       type="button"
                                       onClick={() => goToPage(page)}
                                       aria-current={currentPage === page ? "page" : undefined}
-                                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${
+                                      className={`ui-pagination-btn ${
                                         currentPage === page
-                                          ? "z-10 bg-indigo-600 text-white"
-                                          : "text-gray-900 hover:bg-gray-50"
+                                          ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                                       }`}
                                     >
                                       {page}
@@ -375,7 +383,7 @@ const validate = () => {
                                   type="button"
                                   onClick={goToNextPage}
                                   disabled={currentPage === totalPages}
-                                  className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="ui-pagination-icon-btn rounded-r-md"
                                 >
                                   <span className="sr-only">Next</span>
                                   <ChevronRightIcon className="h-5 w-5" />
@@ -546,18 +554,18 @@ const validate = () => {
             </div>
           </div>
 
-          <div className="flex justify-between pt-6 border-t border-gray-100">
+          <div className="ui-form-actions">
             <button 
             type="button" 
             onClick={() => setShowForm(false)} 
-            className="bg-gray-300 px-6 py-2 rounded-lg">
+            className="ui-btn ui-btn-secondary ui-btn-responsive">
               Cancel</button>
-              <div className="flex gap-4">
+              <div className="ui-btn-group">
             {!cust.id && (
               <button 
               type="button" 
               onClick={handleSaveAndAddNext} 
-              className="bg-gray-300 px-6 py-2 rounded-lg">
+              className="ui-btn ui-btn-secondary ui-btn-responsive">
                 Create & add Another
                 </button>
             )}
@@ -571,3 +579,9 @@ const validate = () => {
     </div>
   );
 }
+
+
+
+
+
+

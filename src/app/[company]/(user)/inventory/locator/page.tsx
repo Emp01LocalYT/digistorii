@@ -232,45 +232,46 @@ export default function LocatorMasterPage() {
 
       {!showForm && (
         <>
-          <div className="relative max-w-sm">
-            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
+          <div className="ui-table-card">
+            <div className="ui-search-section">
+              <div className="ui-search-wrapper">
+            <MagnifyingGlassIcon className="ui-search-icon" />
             <input
               type="text"
               placeholder="Search..."
-              className="w-full pl-10 pr-4 py-2 border rounded-lg"
+              className="ui-input"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-indigo-50 text-gray-600 uppercase text-xs">
-                  <tr className="border-t hover:bg-blue-50 transition">
-                    <th className="p-4 text-left">Locator</th>
-                    <th className="p-4 text-left">Warehouse</th>
-                    <th className="p-4 text-left">Type</th>
-                    <th className="p-4 text-left">Current Qty</th>
-                    <th className="p-4 text-center">Action</th>
+            </div>
+            <div className="ui-table-scroll">
+              <table className="ui-table">
+                <thead className="ui-table-head">
+                  <tr className="ui-table-row">
+                    <th className="ui-table-th">Locator</th>
+                    <th className="ui-table-th">Warehouse</th>
+                    <th className="ui-table-th">Type</th>
+                    <th className="ui-table-th">Current Qty</th>
+                    <th className="ui-table-th-center">Action</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody >
                   {tableLoading ? (
                     <tr>
-                      <td colSpan={5} className="text-center py-10 text-gray-400 animate-pulse">
+                      <td colSpan={5} className="ui-loading-row">
                         Loading data...
                       </td>
                     </tr>
                   ) : paginatedData.length > 0 ? (
                     paginatedData.map((row) => (
-                      <tr key={row.id} className="border-t hover:bg-blue-50 transition">
-                        <td className="p-4">{row.locator_name}</td>
-                        <td>{row.warehouse_name || "-"}</td>
-                        <td>{row.type}</td>
-                        <td>{row.current_qty || "0"}</td>
-                        <td className="text-center">
-                          <div className="flex justify-center items-center gap-3">
+                      <tr key={row.id} className="ui-table-row">
+                        <td className="ui-table-td">{row.locator_name}</td>
+                        <td className="ui-table-td">{row.warehouse_name || "-"}</td>
+                        <td className="ui-table-td">{row.type}</td>
+                        <td className="ui-table-td">{row.current_qty || "0"}</td>
+                        <td className="ui-table-td-center">
+                          <div className="ui-table-actions">
                             <button
                               onClick={() => {
                                 setForm({
@@ -297,7 +298,7 @@ export default function LocatorMasterPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={5} className="px-6 py-10 text-center text-gray-500">
+                      <td colSpan={5} className="ui-empty-row ui-table-td-center">
                         No records found.
                       </td>
                     </tr>
@@ -305,14 +306,14 @@ export default function LocatorMasterPage() {
                 </tbody>
               </table>
             </div>
-            <div className="border-t border-gray-200 px-4 py-4 sm:px-6">
+            <div className="ui-pagination-wrapper">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-gray-700">
+                <p className="ui-pagination-info">
                   Showing <span className="font-medium">{showingFrom}</span> to{" "}
                   <span className="font-medium">{showingTo}</span> of{" "}
                   <span className="font-medium">{totalItems}</span> results
                 </p>
-                <div className="flex items-center gap-2">
+                <div className="ui-table-actions">
                   <label htmlFor="locator-rows-per-page" className="text-sm text-gray-600">
                     Rows per page
                   </label>
@@ -320,7 +321,7 @@ export default function LocatorMasterPage() {
                     id="locator-rows-per-page"
                     value={rowsPerPage}
                     onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                    className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    className="ui-pagination-select"
                   >
                     <option value={10}>10</option>
                     <option value={20}>20</option>
@@ -335,7 +336,7 @@ export default function LocatorMasterPage() {
                     type="button"
                     onClick={goToPreviousPage}
                     disabled={currentPage === 1}
-                    className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="ui-pagination-icon-btn rounded-md"
                   >
                     Previous
                   </button>
@@ -343,19 +344,19 @@ export default function LocatorMasterPage() {
                     type="button"
                     onClick={goToNextPage}
                     disabled={currentPage === totalPages}
-                    className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="ui-pagination-icon-btn rounded-md ml-3"
                   >
                     Next
                   </button>
                 </div>
 
                 <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-                  <nav aria-label="Pagination" className="isolate inline-flex -space-x-px rounded-md shadow-sm">
+                  <nav aria-label="Pagination" className="ui-pagination-nav">
                     <button
                       type="button"
                       onClick={goToPreviousPage}
                       disabled={currentPage === 1}
-                      className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="ui-pagination-icon-btn rounded-l-md"
                     >
                       <span className="sr-only">Previous</span>
                       <ChevronLeftIcon className="h-5 w-5" />
@@ -365,7 +366,7 @@ export default function LocatorMasterPage() {
                       page === "..." ? (
                         <span
                           key={`ellipsis-${idx}`}
-                          className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
+                          className="ui-pagination-btn ui-pagination-btn-inactive"
                         >
                           ...
                         </span>
@@ -375,10 +376,9 @@ export default function LocatorMasterPage() {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${
+                          className={`ui-pagination-btn ${
                             currentPage === page
-                              ? "z-10 bg-indigo-600 text-white"
-                              : "text-gray-900 hover:bg-gray-50"
+                              ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                           }`}
                         >
                           {page}
@@ -390,7 +390,7 @@ export default function LocatorMasterPage() {
                       type="button"
                       onClick={goToNextPage}
                       disabled={currentPage === totalPages}
-                      className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="ui-pagination-icon-btn rounded-r-md"
                     >
                       <span className="sr-only">Next</span>
                       <ChevronRightIcon className="h-5 w-5" />
@@ -549,7 +549,7 @@ export default function LocatorMasterPage() {
             />
           </div>
 
-          <div className="flex justify-between pt-6 border-t border-gray-100">
+          <div className="ui-form-actions">
             <button
               type="button"
               onClick={() => {
@@ -557,23 +557,23 @@ export default function LocatorMasterPage() {
                 setForm(getInitialForm());
                 setErrors({});
               }}
-              className="bg-gray-300 px-6 py-2 rounded-lg"
+              className="ui-btn ui-btn-secondary ui-btn-responsive"
             >
               Cancel
             </button>
 
-            <div className="flex gap-4">
+            <div className="ui-btn-group">
               {!form.id && (
                 <button
                   type="button"
                   onClick={() => void submit("add")}
-                  className="bg-gray-300 px-6 py-2 rounded-lg"
+                  className="ui-btn ui-btn-secondary ui-btn-responsive"
                 >
                   Create & Add Another
                 </button>
               )}
 
-              <button className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg">
+              <button className="ui-btn ui-btn-primary ui-btn-responsive">
                 {form.id ? "Update" : "Create"}
               </button>
             </div>
@@ -583,3 +583,9 @@ export default function LocatorMasterPage() {
     </div>
   );
 }
+
+
+
+
+
+

@@ -325,7 +325,7 @@ export default function UserSettingsPage() {
             </div>
           </div>
 
-          <div className="flex justify-between pt-6 border-t border-gray-100">
+          <div className="ui-form-actions">
             <button
               type="button"
               onClick={() => {
@@ -333,11 +333,11 @@ export default function UserSettingsPage() {
                 setForm(getInitialForm());
                 setErrors({});
               }}
-              className="bg-gray-300 px-6 py-2 rounded-lg"
+              className="ui-btn ui-btn-secondary ui-btn-responsive"
             >
               Cancel
             </button>
-            <button className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg">
+            <button className="ui-btn ui-btn-primary ui-btn-responsive">
               {form.id ? "Update" : "Create"}
             </button>
           </div>

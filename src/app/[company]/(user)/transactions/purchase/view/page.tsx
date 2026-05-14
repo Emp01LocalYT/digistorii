@@ -29,6 +29,7 @@ type PurchaseHeader = {
   id?: number;
   po_type?: string;
   purchase_no: string;
+  ref_no:string,
   supplier_id: string;
   supplier_code: string;
   supplier_name?: string;
@@ -59,6 +60,9 @@ type PurchaseHeader = {
   currency_code?: string;
   conversion_rate?: number | "";
   status: string;
+  approval_status?: string;
+  renewed_from_po_id?: number | null;
+  renewed_from_purchase_no?: string | null;
   subtotal: number;
   tax_amount: number;
   total_amount: number;
@@ -117,6 +121,11 @@ export default function PurchaseView() {
     fetchPurchase();
   }, [purchaseId, company]);
 
+  const handleRenew = () => {
+    if (!purchaseId || !company) return;
+    router.push(`/${company}/transactions/purchase/add?renewFrom=${purchaseId}`);
+  };
+
   const formatDate = (date: string) => {
     if (!date) return "";
     const d = new Date(date);
@@ -172,10 +181,24 @@ export default function PurchaseView() {
           >
             Print / PDF
           </button>
+          {String(header.status || "").toLowerCase() === "rejected" && (
+            <button
+              type="button"
+              onClick={handleRenew}
+              className="bg-[var(--color-blue-600)] text-white px-5 py-2 rounded-lg shadow hover:opacity-90 transition"
+            >
+              Renew
+            </button>
+          )}
 
         </div>
 
       </div>
+      {header.renewed_from_po_id && (
+        <div className="mb-6 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 inline-block">
+          Renewed from PO: {header.renewed_from_purchase_no || header.renewed_from_po_id}
+        </div>
+      )}
 
       {/* TOP CARDS */}
 
@@ -192,6 +215,7 @@ export default function PurchaseView() {
     <p className="font-semibold text-gray-800">
       {header.supplier_code}-{header.supplier_name}
     </p>
+      <p className="text-sm text-gray-500">{header.ref_no}</p>
     <p className="text-sm text-gray-500">{header.supplier_email}</p>
     <p className="text-sm text-gray-500">{header.supplier_phone}</p>
   </div>
@@ -270,10 +294,10 @@ export default function PurchaseView() {
               <span>{header.currency_code || header.currency}</span>
             </div>
             <div className="flex justify-between">
-            <span>Despatch Terms:</span> {header.despatch_terms_name || "-"}
+            <span>Despatch Terms:</span> {header.despatch_terms_name || header.despatch_terms || "-"}
           </div>
           <div className="flex justify-between">
-            <span>Payment Terms:</span> {header.payment_terms_name || "-"}
+            <span>Payment Terms:</span> {header.payment_terms_name || header.payment_terms || "-"}
           </div>
           </div>
         </div>

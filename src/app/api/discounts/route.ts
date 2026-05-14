@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         LEFT JOIN "${schema}".discount_variants dv
           ON dv.discount_id = d.id
         GROUP BY d.id
-        ORDER BY d.created_at DESC, d.priority ASC
+        ORDER BY d.is_active DESC, d.created_at DESC, d.priority ASC
       `
     );
     return NextResponse.json({ success: true, data: result.rows });

@@ -162,7 +162,7 @@ ORDER BY d.id
           AND pp.tenant_id = $1
           AND pp.is_active = TRUE
         WHERE p.status = 1
-          AND pv.status IN ('draft', 'active', 'out_of_stock')
+          AND pv.status IN ('draft', 'active')
           ${salesProductFilter}
         ORDER BY cs.current_stock ASC
         `
@@ -200,7 +200,7 @@ ORDER BY d.id
       INNER JOIN "${schema}".product_variants pv
         ON pv.product_id = p.id
       WHERE p.status = 1
-        AND pv.status IN ('draft', 'active', 'out_of_stock')
+        AND pv.status IN ('draft', 'active')
         ${salesProductFilter}
       ORDER BY p.id, pv.id
       `

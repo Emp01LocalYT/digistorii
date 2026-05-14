@@ -3,7 +3,7 @@ import { saveImageMasterFiles, toTenantKey } from "@/lib/image-master";
 import { getTenantSchema } from "@/lib/tenant";
 
 export const runtime = "nodejs";
-
+//C:\Users\yanna\digistorii\src\app\api\image-master\upload\route.ts
 export async function POST(req: NextRequest) {
   try {
     const { company } = await getTenantSchema(req);

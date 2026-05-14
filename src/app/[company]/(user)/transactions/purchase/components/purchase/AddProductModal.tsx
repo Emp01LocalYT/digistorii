@@ -15,10 +15,21 @@ const ProductForm = dynamic(
 type AddProductModalProps = {
   open: boolean;
   onClose: () => void;
-  onSaved: (product: ProductSavedPayload, meta?: { action: "save" | "save_add_new" }) => void;
+  saveMode?: "api" | "local";
+  onSaved?: (product: ProductSavedPayload, meta?: { action: "save" | "save_add_new" }) => void;
+  onLocalSave?: (
+    payload: { product: any; variants: any[] },
+    meta?: { action: "save" | "save_add_new" }
+  ) => void;
 };
 
-export default function AddProductModal({ open, onClose, onSaved }: AddProductModalProps) {
+export default function AddProductModal({
+  open,
+  onClose,
+  saveMode = "api",
+  onSaved,
+  onLocalSave,
+}: AddProductModalProps) {
   if (!open) return null;
 
   return createPortal(
@@ -31,7 +42,12 @@ export default function AddProductModal({ open, onClose, onSaved }: AddProductMo
           </button>
         </div>
         <div className="p-6 overflow-y-auto">
-          <ProductForm embedded onSaved={onSaved} />
+          <ProductForm
+            embedded
+            saveMode={saveMode}
+            onSaved={onSaved}
+            onLocalSave={onLocalSave}
+          />
         </div>
       </div>
     </div>,

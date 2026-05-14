@@ -180,51 +180,54 @@ export default function CurrencyMasterPage() {
         <h1 className="text-2xl font-bold">Currency Master</h1>
       </div>
 
-      <div className="relative max-w-sm">
-        <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
+      <div className="ui-table-card">
+            <div className="ui-search-section">
+              <div className="ui-search-wrapper">
+        <MagnifyingGlassIcon className="ui-search-icon" />
         <input
           type="text"
           placeholder="Search by code or name..."
-          className="w-full pl-10 pr-4 py-2 border rounded-lg"
+          className="ui-input"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-indigo-50 text-gray-600 uppercase text-xs">
-              <tr className="border-t hover:bg-blue-50 transition">
-                <th className="p-4 text-left">ID</th>
-                <th className="p-4 text-left">Code</th>
-                <th className="p-4 text-left">Currency Name</th>
-                <th className="p-4 text-center">Action</th>
+            </div>
+        <div className="ui-table-scroll">
+          <table className="ui-table">
+            <thead className="ui-table-head">
+              <tr className="ui-table-row">
+                <th className="ui-table-th">ID</th>
+                <th className="ui-table-th">Code</th>
+                <th className="ui-table-th">Currency Name</th>
+                <th className="ui-table-th-center">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody >
               {tableLoading ? (
                 <tr>
-                  <td colSpan={4} className="text-center py-10 text-gray-400 animate-pulse">
+                  <td colSpan={4} className="ui-loading-row">
                     Loading data...
                   </td>
                 </tr>
               ) : paged.length > 0 ? (
                 paged.map((row) => (
-                  <tr key={row.id} className="border-t hover:bg-blue-50 transition">
-                    <td className="p-4">{row.id}</td>
-                    <td>{row.currency_code}</td>
-                    <td>{row.currency_name}</td>
-                    <td className="text-center">
-                      <button onClick={() => openEdit(row)} className="text-indigo-600">
-                        <PencilSquareIcon className="w-5 h-5" />
-                      </button>
+                  <tr key={row.id} className="ui-table-row">
+                    <td className="ui-table-td">{row.id}</td>
+                    <td className="ui-table-td">{row.currency_code}</td>
+                    <td className="ui-table-td">{row.currency_name}</td>
+                    <td className="ui-table-td-center">
+                      <div className="ui-table-actions">
+                        <button onClick={() => openEdit(row)} className="text-indigo-600">
+                          <PencilSquareIcon className="w-5 h-5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
+                  <td colSpan={4} className="ui-empty-row ui-table-td-center">
                     No records found.
                   </td>
                 </tr>
@@ -232,31 +235,39 @@ export default function CurrencyMasterPage() {
             </tbody>
           </table>
         </div>
-      </div>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">
-          Page {currentPage} of {totalPages}
-        </p>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            className="px-3 py-1 border rounded-lg text-sm"
-            disabled={currentPage === 1}
-          >
-            Prev
-          </button>
-          <button
-            type="button"
-            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-            className="px-3 py-1 border rounded-lg text-sm"
-            disabled={currentPage === totalPages}
-          >
-            Next
-          </button>
+        <div className="ui-pagination-wrapper">
+          <div className="flex items-center justify-between">
+            <p className="ui-pagination-info">
+              Page {currentPage} of {totalPages}
+            </p>
+            <div className="ui-pagination-nav">
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                className="ui-pagination-icon-btn rounded-l-md"
+                disabled={currentPage === 1}
+              >
+                Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                className="ui-pagination-icon-btn rounded-r-md"
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+
+
+
+
+

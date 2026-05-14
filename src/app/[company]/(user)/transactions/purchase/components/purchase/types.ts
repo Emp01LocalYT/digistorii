@@ -23,6 +23,7 @@ export type PurchaseHeader = {
   id?: number;
   po_type: "standard" | "manual";
   purchase_no: string;
+  ref_no:string;
   bill_to: string;
   ship_to: string;
   despatch_terms: string;
@@ -38,6 +39,8 @@ export type PurchaseHeader = {
   purchase_date: string;
   status: string;
   approval_status?: string;
+  renewed_from_po_id?: number | null;
+  renewed_from_purchase_no?: string | null;
   subtotal: number;
   tax_amount: number;
   total_amount: number;
@@ -100,6 +103,7 @@ export type Supplier = {
   id: number;
   supplier_code: string;
   name: string;
+  purchase_hold: boolean;
   currency: string;
   dispatch_terms?: string | null;
   payment_terms?: string | null;

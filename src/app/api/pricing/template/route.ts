@@ -55,6 +55,8 @@ export async function GET(req: NextRequest) {
           ON pp.tenant_id = $1
           AND pp.variant_id = pv.id
           AND pp.is_active = TRUE
+          AND CURRENT_DATE >= pp.active_from::date
+          AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
         WHERE pv.status IN ('draft', 'active', 'out_of_stock')
           AND p.status = 1
           AND (
@@ -179,4 +181,3 @@ export async function GET(req: NextRequest) {
     client.release();
   }
 }
-

@@ -11,7 +11,7 @@ const imageSchema = z.object({
   uom_id: z.number().int().positive(),
   source: z.enum(["vendor", "own"]),
 });
-
+//C:\Users\yanna\digistorii\src\app\api\image-master\save\route.ts
 export async function POST(req: NextRequest) {
   const client = await pool.connect();
   try {

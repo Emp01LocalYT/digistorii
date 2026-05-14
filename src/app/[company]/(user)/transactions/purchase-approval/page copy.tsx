@@ -163,7 +163,7 @@ export default function PurchaseApprovalList() {
         <input
           type="text"
           placeholder="Search purchase approval..."
-          className="w-full pl-10 pr-4 py-2 border rounded-lg"
+          className="ui-input"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);

@@ -1,4 +1,4 @@
-//C:\Users\yanna\template_tailwind\src\context\TenantContext.tsx
+//C:\Users\yanna\digistorii\src\context\TenantContext.tsx
 "use client";
  
 import { createContext, useContext } from "react";

@@ -5,8 +5,17 @@ import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import ProductLookupModal from "@/components/product/ProductLookupModal";
 import { usePagination } from "@/hooks/usePagination";
+import { useNotify } from "@/hooks/useNotify";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import type { ProductLookupItem } from "@/lib/product-lookup";
+import Link from "next/link";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MagnifyingGlassIcon,
+  EyeIcon,
+  PencilSquareIcon,
+} from "@heroicons/react/24/outline";
 
 type ActivePricingRow = {
   id: string | number;
@@ -21,13 +30,21 @@ type ActivePricingRow = {
   base_cost?: number | string;
   operational_cost?: number | string;
   landed_price?: number | string;
+  margin_type?: "percentage" | "amount" | string;
+  margin_value?: number | string;
   margin_amount?: number | string;
+  tax_percent?: number | string;
+  tax_id?: number | string | null;
+  tax_name?: string | null;
   tax_amount?: number | string;
   unit_price?: number | string;
   final_selling_price?: number | string;
   active_from: string;
   expires_at?: string | null;
   is_active: boolean;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 type EntryRow = {
@@ -175,6 +192,8 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const notify = useNotify();
+  const [pricingSearch, setPricingSearch] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -182,6 +201,7 @@ export default function PricingPage() {
   const [pricingFilter, setPricingFilter] = useState<"priced" | "unpriced" | "both">("unpriced");
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [uploadPreviewOpen, setUploadPreviewOpen] = useState(false);
   const [uploadPreviewRows, setUploadPreviewRows] = useState<UploadPreviewRow[]>([]);
@@ -192,6 +212,15 @@ export default function PricingPage() {
   const [expiresAt, setExpiresAt] = useState("");
   const [entryRows, setEntryRows] = useState<EntryRow[]>([]);
   const [marginType, setMarginType] = useState<"percentage" | "amount">("percentage");
+  const [editingRow, setEditingRow] = useState<ActivePricingRow | null>(null);
+  const [editBaseCost, setEditBaseCost] = useState("");
+  const [editOperationalCost, setEditOperationalCost] = useState("");
+  const [editMarginType, setEditMarginType] = useState<"percentage" | "amount">("percentage");
+  const [editMarginValue, setEditMarginValue] = useState("");
+  const [editTaxId, setEditTaxId] = useState("");
+  const [editTaxPercent, setEditTaxPercent] = useState("0");
+  const [editEffectiveDate, setEditEffectiveDate] = useState(todayYyyyMmDd());
+  const [editExpiresAt, setEditExpiresAt] = useState("");
   const [taxOptions, setTaxOptions] = useState<
     Array<{ id: number; tax_name: string; total_percentage: number }>
   >([]);
@@ -209,10 +238,10 @@ export default function PricingPage() {
     try {
       const response = await apiFetch("/api/pricing", company);
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || "Failed to fetch pricing");
+      if (!response.ok) notify(payload.message || "Failed to fetch pricing",{severity:"error"});
       setRows(payload.pricing || []);
     } catch (error: any) {
-      setStatusMessage(error.message || "Failed to fetch pricing");
+      notify(error.message || "Failed to fetch pricing",{severity:"error"});
     } finally {
       setLoading(false);
     }
@@ -224,11 +253,11 @@ export default function PricingPage() {
       const response = await apiFetch("/api/product-lookup?type=taxes", company);
       const payload = await response.json();
       if (!response.ok || !payload.success) {
-        throw new Error(payload.message || "Failed to fetch taxes");
+        notify(payload.message || "Failed to fetch taxes",{ severity: "error" });
       }
       setTaxOptions(payload.data || []);
     } catch (error: any) {
-      setStatusMessage(error.message || "Failed to fetch taxes");
+      notify(error.message || "Failed to fetch taxes",{ severity: "error" });
     }
   }
 
@@ -245,7 +274,7 @@ export default function PricingPage() {
       const blob = await response.blob();
       triggerBrowserDownload(blob, "pricing-update-template.xlsx");
     } catch (error: any) {
-      setStatusMessage(error.message || "Failed to download template");
+      notify(error.message || "Failed to download template",{ severity: "error" });
     } finally {
       setDownloading(false);
     }
@@ -253,7 +282,7 @@ export default function PricingPage() {
 
   async function handleUploadPricing() {
     if (!selectedFile) {
-      setStatusMessage("Select an .xlsx file first.");
+      notify("Select an .xlsx file first.",{ severity: "warning" });
       return;
     }
 
@@ -280,13 +309,13 @@ export default function PricingPage() {
           );
           triggerBrowserDownload(blob, payload.errorReportFileName || "pricing-upload-errors.xlsx");
         }
-        throw new Error(payload.message || "Pricing upload failed");
+        notify(payload.message || "Pricing upload failed",{ severity: "error" });
       }
 
       setUploadPreviewRows(payload.previewRows || []);
       setUploadPreviewOpen(true);
     } catch (error: any) {
-      setStatusMessage(error.message || "Pricing upload failed");
+      notify(error.message || "Pricing upload failed",{ severity: "error" });
     } finally {
       setPreviewing(false);
     }
@@ -294,7 +323,7 @@ export default function PricingPage() {
 
   async function confirmUploadPricing() {
     if (!selectedFile) {
-      setStatusMessage("Select an .xlsx file first.");
+      notify("Select an .xlsx file first.",{ severity: "warning" });
       return;
     }
 
@@ -321,7 +350,7 @@ export default function PricingPage() {
         throw new Error(payload.message || "Pricing upload failed");
       }
 
-      setStatusMessage(`Uploaded ${payload.updatedRows || 0} pricing rows successfully.`);
+      notify(`Uploaded ${payload.updatedRows || 0} pricing rows successfully.`, { severity: "success" });
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setUploadPreviewRows([]);
@@ -329,7 +358,7 @@ export default function PricingPage() {
       setBulkModalOpen(false);
       await loadPricing();
     } catch (error: any) {
-      setStatusMessage(error.message || "Pricing upload failed");
+      notify(error.message || "Pricing upload failed", { severity: "error" });
     } finally {
       setUploading(false);
     }
@@ -341,9 +370,25 @@ export default function PricingPage() {
     loadTaxes();
   }, [company]);
 
+  const filteredPricingRows = useMemo(() => {
+    const query = pricingSearch.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) =>
+      `${row.product_name || ""} ${row.product_code || ""} ${row.sku || ""}`
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [rows, pricingSearch]);
+
   const sortedPricingRows = useMemo(() => {
-    return [...rows].sort((a, b) => Number(b.is_active) - Number(a.is_active));
-  }, [rows]);
+    return [...filteredPricingRows].sort((a, b) => {
+      const activeDiff = Number(Boolean(b.is_active)) - Number(Boolean(a.is_active));
+      if (activeDiff !== 0) return activeDiff;
+      const dateA = asDate(a.active_from);
+      const dateB = asDate(b.active_from);
+      return dateB.localeCompare(dateA);
+    });
+  }, [filteredPricingRows]);
 
   const {
     currentPage: currentPricingPage,
@@ -360,8 +405,8 @@ export default function PricingPage() {
     goToNextPage: goToNextPricingPage,
   } = usePagination({
     data: sortedPricingRows,
-    initialItemsPerPage: 20,
-    resetDeps: [rows.length],
+    initialItemsPerPage: 10,
+    resetDeps: [rows.length, pricingSearch],
   });
 
   useEffect(() => {
@@ -534,20 +579,20 @@ export default function PricingPage() {
 
   async function savePricingRows(addAnother: boolean) {
     if (!effectiveDate) {
-      setStatusMessage("Effective Date is required.");
+      notify("Effective Date is required.",{ severity: "warning" });
       return;
     }
     if (effectiveDate < todayYyyyMmDd()) {
-      setStatusMessage("Effective Date cannot be in the past.");
+      notify("Effective Date cannot be in the past.",{ severity: "warning" });
       return;
     }
     if (entryRows.length === 0) {
-      setStatusMessage("Select at least one product.");
+      notify("Select at least one product.",{ severity: "warning" });
       return;
     }
     const invalidBase = entryRows.find((r) => asText(r.base_cost) === "");
     if (invalidBase) {
-      setStatusMessage(`Base Cost is required for Variant ${invalidBase.variant_id}`);
+      notify(`Base Cost is required for Variant ${invalidBase.variant_id}`, { severity: "warning" });
       return;
     }
     if (marginType === "percentage") {
@@ -558,8 +603,9 @@ export default function PricingPage() {
         return Number.isFinite(n) && n >= 100;
       });
       if (invalidMargin) {
-        setStatusMessage(
-          `Margin Value must be less than 100 for Variant ${invalidMargin.variant_id}`
+        notify(
+          `Margin Value must be less than 100 for Variant ${invalidMargin.variant_id}`,
+          { severity: "warning" }
         );
         return;
       }
@@ -585,9 +631,11 @@ export default function PricingPage() {
         }),
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || "Failed to create pricing");
-
-      setStatusMessage("Pricing created successfully.");
+      if (!response.ok) {
+        notify(payload.message || "Failed to create pricing",{ severity: "error" });
+        return;
+      }
+      notify("Pricing created successfully.", { severity: "success" });
       await loadPricing();
 
       if (addAnother) {
@@ -597,7 +645,70 @@ export default function PricingPage() {
         setCreateModalOpen(false);
       }
     } catch (error: any) {
-      setStatusMessage(error.message || "Failed to create pricing");
+      notify(error.message || "Failed to create pricing", { severity: "error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openEditModal(row: ActivePricingRow) {
+    setEditingRow(row);
+    setEditBaseCost(asText(row.base_cost));
+    setEditOperationalCost(asText(row.operational_cost));
+    setEditMarginType(
+      String(row.margin_type || "").toLowerCase() === "amount" ? "amount" : "percentage"
+    );
+    setEditMarginValue(asText(row.margin_value));
+    setEditTaxId(row.tax_id != null ? String(row.tax_id) : "");
+    setEditTaxPercent(asText(row.tax_percent || "0"));
+    setEditEffectiveDate(asDate(row.active_from) || todayYyyyMmDd());
+    setEditExpiresAt(asDate(row.expires_at) || "");
+    setEditModalOpen(true);
+  }
+
+  async function saveEditedPricing() {
+    if (!editingRow) return;
+    if (!editEffectiveDate) {
+      notify("Effective Date is required.",{ severity: "warning" });
+      return;
+    }
+    if (editEffectiveDate < todayYyyyMmDd()) {
+      notify("Effective Date cannot be in the past.",{ severity: "warning" });
+      return;
+    }
+    if (!asText(editBaseCost)) {
+      notify("Base Cost is required.",{ severity: "warning" });
+      return;
+    }
+
+    setSaving(true);
+    setStatusMessage("");
+    try {
+      const response = await apiFetch(`/api/pricing/${editingRow.id}`, company, {
+        method: "PUT",
+        body: JSON.stringify({
+          base_cost: editBaseCost,
+          operational_cost: asText(editOperationalCost) || "0",
+          margin_type: editMarginType,
+          margin_value: asText(editMarginValue) || "0",
+          tax_id: editTaxId || null,
+          tax_percent: asText(editTaxPercent) || "0",
+          effective_date: editEffectiveDate,
+          expires_at: editExpiresAt || null,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        notify(payload.message || "Failed to update pricing", { severity: "error" });
+        return;
+      }
+
+      notify("Pricing updated successfully.", { severity: "success" });
+      setEditModalOpen(false);
+      setEditingRow(null);
+      await loadPricing();
+    } catch (error: any) {
+      notify(error.message || "Failed to update pricing", { severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -633,64 +744,81 @@ export default function PricingPage() {
       ) : null}
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
+        <div className="border-b border-gray-100 p-4">
+          <div className="relative max-w-md">
+            <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+            <input
+              value={pricingSearch}
+              onChange={(e) => setPricingSearch(e.target.value)}
+              placeholder="Search product, code, or SKU..."
+              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+        <div className="max-h-[62vh] overflow-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="sticky top-0 z-20 bg-indigo-50 text-gray-600" >
               <tr>
-                <th className="px-4 py-3 font-medium">Product Code</th>
-                <th className="px-4 py-3 font-medium">Product Name</th>
-                <th className="px-4 py-3 font-medium">SKU</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Base Cost</th>
-                <th className="px-4 py-3 font-medium">Operational Cost</th>
-                <th className="px-4 py-3 font-medium">Landed Price</th>
-                <th className="px-4 py-3 font-medium">Margin Amount</th>
-                <th className="px-4 py-3 font-medium">Tax Amount</th>
-                <th className="px-4 py-3 font-medium">Unit Price</th>
-                <th className="px-4 py-3 font-medium">Selling Price</th>
-                <th className="px-4 py-3 font-medium">Effective Date</th>
-                <th className="px-4 py-3 font-medium">Expires At</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">Product Code</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">Product Name</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">SKU</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">Selling Price</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">Effective Date</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">Expires At</th>
+                <th className="bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200">Status</th>
+                <th className="sticky right-0  px-4 py-3 text-center font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td className="px-4 py-6 text-gray-500" colSpan={13}>
-                    Loading...
+                  <td colSpan={5} className="text-center py-10 text-gray-400 animate-pulse">
+                    Loading data...
                   </td>
                 </tr>
-              ) : rows.length === 0 ? (
+              ) : paginatedPricingRows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-gray-500" colSpan={13}>
+                  <td className="px-4 py-6 text-gray-500" colSpan={8}>
                     No pricing rows found.
                   </td>
                 </tr>
               ) : (
                 paginatedPricingRows.map((row) => (
                   <tr key={row.id} className="border-t border-gray-100">
-                    <td className="px-4 py-3">{row.product_code || "-"}</td>  
+                    <td className="px-4 py-3">{row.product_code || "-"}</td>
                     <td className="px-4 py-3">{row.product_name || "-"}</td>
                     <td className="px-4 py-3">{row.sku}</td>
+                    <td className="px-4 py-3">{fmtMoney(row.final_selling_price)}</td>
+                    <td className="px-4 py-3">{asDate(row.active_from)}</td>
+                    <td className="px-4 py-3">{asDate(row.expires_at) || "-"}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
-                          row.is_active
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-100 text-gray-600"
+                          row.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
                         }`}
                       >
                         {row.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{fmtMoney(row.base_cost)}</td>
-                    <td className="px-4 py-3">{fmtMoney(row.operational_cost)}</td>
-                    <td className="px-4 py-3">{fmtMoney(row.landed_price)}</td>
-                    <td className="px-4 py-3">{fmtMoney(row.margin_amount)}</td>
-                    <td className="px-4 py-3">{fmtMoney(row.tax_amount)}</td>
-                    <td className="px-4 py-3">{fmtMoney(row.unit_price)}</td>
-                    <td className="px-4 py-3">{fmtMoney(row.final_selling_price)}</td>
-                    <td className="px-4 py-3">{asDate(row.active_from)}</td>
-                    <td className="px-4 py-3">{asDate(row.expires_at) || "-"}</td>
+                    <td className="sticky right-0 bg-white px-4 py-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <Link
+                          href={`/${company}/inventory/pricing/${row.id}`}
+                          className="text-indigo-600"
+                          aria-label="View pricing"
+                        >
+                          <EyeIcon className="h-5 w-5" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(row)}
+                          className="text-indigo-600"
+                          aria-label="Edit pricing"
+                        >
+                          <PencilSquareIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -749,7 +877,8 @@ export default function PricingPage() {
                   disabled={currentPricingPage === 1}
                   className="relative inline-flex items-center rounded-l-md px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Previous
+                   <span className="sr-only">Previous</span>
+                                    <ChevronLeftIcon className="h-5 w-5" />
                 </button>
 
                 {pricingPageNumbers.map((page, idx) =>
@@ -783,13 +912,152 @@ export default function PricingPage() {
                   disabled={currentPricingPage === totalPricingPages}
                   className="relative inline-flex items-center rounded-r-md px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Next
+                  <span className="sr-only">Next</span>
+                    <ChevronRightIcon className="h-5 w-5" />
                 </button>
               </nav>
             </div>
           </div>
         </div>
       </div>
+
+      {editModalOpen && editingRow ? (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-semibold">Edit Pricing</h3>
+                <p className="text-xs text-gray-500">
+                  {editingRow.product_code || "-"} | {editingRow.product_name || "-"} | {editingRow.sku}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditModalOpen(false);
+                  setEditingRow(null);
+                }}
+                className="rounded border border-gray-300 px-3 py-1 text-sm text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Effective Date
+                </label>
+                <input
+                  type="date"
+                  value={editEffectiveDate}
+                  onChange={(e) => setEditEffectiveDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Expires At (optional)
+                </label>
+                <input
+                  type="date"
+                  value={editExpiresAt}
+                  onChange={(e) => setEditExpiresAt(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Margin Type
+                </label>
+                <select
+                  value={editMarginType}
+                  onChange={(e) => setEditMarginType(e.target.value === "amount" ? "amount" : "percentage")}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="percentage">Percentage</option>
+                  <option value="amount">Amount</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Base Cost
+                </label>
+                <input
+                  type="number"
+                  value={editBaseCost}
+                  onChange={(e) => setEditBaseCost(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Operational Cost
+                </label>
+                <input
+                  type="number"
+                  value={editOperationalCost}
+                  onChange={(e) => setEditOperationalCost(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Margin Value
+                </label>
+                <input
+                  type="number"
+                  value={editMarginValue}
+                  onChange={(e) => setEditMarginValue(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Tax
+                </label>
+                <select
+                  value={editTaxId}
+                  onChange={(e) => {
+                    const selected = taxOptions.find((tax) => String(tax.id) === e.target.value);
+                    setEditTaxId(e.target.value);
+                    setEditTaxPercent(selected ? String(selected.total_percentage || 0) : "0");
+                  }}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="">No Tax</option>
+                  {taxOptions.map((tax) => (
+                    <option key={tax.id} value={String(tax.id)}>
+                      {tax.tax_name} ({tax.total_percentage}%)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setEditModalOpen(false);
+                  setEditingRow(null);
+                }}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditedPricing}
+                disabled={saving}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {saving ? "Updating..." : "Update Pricing"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {bulkModalOpen ? (
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
@@ -1255,3 +1523,4 @@ export default function PricingPage() {
     </div>
   );
 }
+

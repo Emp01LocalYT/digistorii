@@ -8,6 +8,9 @@ import {
   DocumentDuplicateIcon,
   PencilSquareIcon,
   PlusIcon,
+  LockClosedIcon,
+  LockOpenIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import ProductLookupModal from "@/components/product/ProductLookupModal";
@@ -28,6 +31,15 @@ type Discount = {
   is_active: boolean;
   created_at?: string;
   variant_count?: number;
+  variants?: DiscountVariantRow[];
+};
+
+type DiscountVariantRow = {
+  variant_id: number;
+  product_name?: string | null;
+  product_code?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
 };
 
 const initialForm: Discount = {
@@ -66,6 +78,18 @@ export default function DiscountSchemesPage() {
   const [form, setForm] = useState<Discount>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
+  const [duplicatedFromId, setDuplicatedFromId] = useState<string | null>(null);
+  const [preloadedVariantInfo, setPreloadedVariantInfo] = useState<
+    Record<
+      string,
+      {
+        product_name?: string | null;
+        product_code?: string | null;
+        sku?: string | null;
+        barcode?: string | null;
+      }
+    >
+  >({});
 
   const [selectModalOpen, setSelectModalOpen] = useState(false);
   const [selectedVariantMap, setSelectedVariantMap] = useState<Record<string, boolean>>({});
@@ -166,6 +190,29 @@ export default function DiscountSchemesPage() {
     [selectedVariantMap]
   );
 
+  const lookupItemByVariantId = useMemo(() => {
+    const map = new Map<string, ProductLookupItem>();
+    lookupItems.forEach((item) => {
+      map.set(String(item.variant_id), item);
+    });
+    return map;
+  }, [lookupItems]);
+
+  const selectedVariantRows = useMemo(() => {
+    return selectedVariantIds.map((variantId) => {
+      const key = String(variantId);
+      const fromLookup = lookupItemByVariantId.get(key);
+      const fromPreload = preloadedVariantInfo[key];
+      return {
+        variantId,
+        product: fromLookup?.name || fromPreload?.product_name || "-",
+        variant: fromLookup?.color || "-",
+        sku: fromLookup?.sku || fromPreload?.sku || "-",
+        barcode: fromLookup?.barcode || fromPreload?.barcode || "-",
+      };
+    });
+  }, [selectedVariantIds, lookupItemByVariantId, preloadedVariantInfo]);
+
   const handleBarcodeSubmit = (value?: string) => {
     const barcode = String(value ?? barcodeValue).trim();
     if (!barcode) return;
@@ -183,6 +230,8 @@ export default function DiscountSchemesPage() {
     setForm(initialForm);
     setSelectedVariantMap({});
     setErrors({});
+    setDuplicatedFromId(null);
+    setPreloadedVariantInfo({});
     resetLookupFilters();
   };
 
@@ -215,11 +264,30 @@ export default function DiscountSchemesPage() {
         ends_at: row.ends_at ? String(row.ends_at).slice(0, 10) : "",
         is_active: Boolean(row.is_active),
       });
+      setDuplicatedFromId(null);
       const map: Record<string, boolean> = {};
       (row.variant_ids || []).forEach((id: number) => {
         map[String(id)] = true;
       });
       setSelectedVariantMap(map);
+      const preload: Record<
+        string,
+        {
+          product_name?: string | null;
+          product_code?: string | null;
+          sku?: string | null;
+          barcode?: string | null;
+        }
+      > = {};
+      (row.variants || []).forEach((variant: DiscountVariantRow) => {
+        preload[String(variant.variant_id)] = {
+          product_name: variant.product_name || null,
+          product_code: variant.product_code || null,
+          sku: variant.sku || null,
+          barcode: variant.barcode || null,
+        };
+      });
+      setPreloadedVariantInfo(preload);
       setErrors({});
       setShowForm(true);
     } catch (err) {
@@ -257,20 +325,67 @@ export default function DiscountSchemesPage() {
         priority: form.priority,
         starts_at: form.starts_at || null,
         ends_at: form.ends_at || null,
-        is_active: form.is_active,
+        is_active: duplicatedFromId ? true : form.is_active,
         variant_ids: selectedVariantIds,
       };
       const isEdit = Boolean(form.id);
-      const res = await fetch(isEdit ? `/api/discounts/${form.id}` : "/api/discounts", {
-        method: isEdit ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant": company || "",
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!data?.success) throw new Error(data?.error || "Failed to save discount");
+      if (isEdit) {
+        const res = await fetch(`/api/discounts/${form.id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tenant": company || "",
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!data?.success) throw new Error(data?.error || "Failed to save discount");
+      } else if (duplicatedFromId) {
+        const deactivateRes = await fetch(`/api/discounts/${duplicatedFromId}/status`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tenant": company || "",
+          },
+          body: JSON.stringify({ is_active: false }),
+        });
+        const deactivateData = await deactivateRes.json();
+        if (!deactivateData?.success) {
+          throw new Error(deactivateData?.error || "Failed to deactivate original discount");
+        }
+
+        const createRes = await fetch("/api/discounts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tenant": company || "",
+          },
+          body: JSON.stringify({ ...payload, is_active: true }),
+        });
+        const createData = await createRes.json();
+        if (!createData?.success) {
+          await fetch(`/api/discounts/${duplicatedFromId}/status`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "x-tenant": company || "",
+            },
+            body: JSON.stringify({ is_active: true }),
+          });
+          throw new Error(createData?.error || "Failed to create discount");
+        }
+      } else {
+        const res = await fetch("/api/discounts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tenant": company || "",
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!data?.success) throw new Error(data?.error || "Failed to save discount");
+      }
       await fetchDiscounts();
       setShowForm(false);
       resetForm();
@@ -313,41 +428,56 @@ export default function DiscountSchemesPage() {
       if (!data?.success) throw new Error(data?.error || "Failed to load discount");
 
       const row = data.data;
-      await fetch(`/api/discounts/${discount.id}/status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant": company || "",
-        },
-        body: JSON.stringify({ is_active: false }),
+      setForm({
+        name: row.name || "",
+        description: row.description || "",
+        discount_type: row.discount_type,
+        value: Number(row.value || 0),
+        coupon_code: "",
+        priority: Number(row.priority || 1),
+        starts_at: row.starts_at ? String(row.starts_at).slice(0, 10) : "",
+        ends_at: row.ends_at ? String(row.ends_at).slice(0, 10) : "",
+        is_active: true,
       });
-
-      await fetch("/api/discounts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant": company || "",
-        },
-        body: JSON.stringify({
-          name: `${row.name} (Copy)`,
-          description: row.description,
-          discount_type: row.discount_type,
-          value: row.value,
-          coupon_code: null,
-          priority: row.priority,
-          starts_at: row.starts_at ? String(row.starts_at).slice(0, 10) : null,
-          ends_at: row.ends_at ? String(row.ends_at).slice(0, 10) : null,
-          is_active: true,
-          variant_ids: row.variant_ids || [],
-        }),
+      const map: Record<string, boolean> = {};
+      (row.variant_ids || []).forEach((id: number) => {
+        map[String(id)] = true;
       });
-
-      await fetchDiscounts();
+      setSelectedVariantMap(map);
+      const preload: Record<
+        string,
+        {
+          product_name?: string | null;
+          product_code?: string | null;
+          sku?: string | null;
+          barcode?: string | null;
+        }
+      > = {};
+      (row.variants || []).forEach((variant: DiscountVariantRow) => {
+        preload[String(variant.variant_id)] = {
+          product_name: variant.product_name || null,
+          product_code: variant.product_code || null,
+          sku: variant.sku || null,
+          barcode: variant.barcode || null,
+        };
+      });
+      setPreloadedVariantInfo(preload);
+      setDuplicatedFromId(String(discount.id));
+      setErrors({});
+      setShowForm(true);
     } catch (err) {
       console.error(err);
     } finally {
       setSaving(false);
     }
+  };
+
+  const removeSelectedVariant = (variantId: number) => {
+    setSelectedVariantMap((prev) => {
+      const next = { ...prev };
+      delete next[String(variantId)];
+      return next;
+    });
   };
 
   return (
@@ -378,7 +508,9 @@ export default function DiscountSchemesPage() {
 
       {!showForm && (
         <>
-          <div className="relative max-w-sm">
+          <div className="ui-table-card">
+            <div className="ui-search-section">
+              <div className="ui-search-wrapper">
             <input
               type="text"
               placeholder="Search discount..."
@@ -386,13 +518,12 @@ export default function DiscountSchemesPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-indigo-50 text-gray-600 text-sm">
-                  <tr className="border-t hover:bg-blue-50 transition">
-                    <th className="p-4 text-left">Name</th>
+            </div>
+            <div className="ui-table-scroll">
+              <table className="ui-table">
+                <thead className="ui-table-head">
+                  <tr className="ui-table-row">
+                    <th className="ui-table-th">Name</th>
                     <th>Type</th>
                     <th>Value</th>
                     <th>Coupon</th>
@@ -405,22 +536,22 @@ export default function DiscountSchemesPage() {
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr className="border-t hover:bg-blue-50 transition">
-                      <td colSpan={9} className="text-center py-8 text-gray-400">
+                    <tr className="ui-table-row">
+                      <td colSpan={9} className="ui-loading-row">
                         Loading...
                       </td>
                     </tr>
                   ) : paginatedDiscounts.length > 0 ? (
                     paginatedDiscounts.map((d) => (
-                      <tr key={d.id} className="border-t hover:bg-blue-50 transition">
-                        <td className="p-4 text-left">{d.name}</td>
+                      <tr key={d.id} className="ui-table-row">
+                        <td className="ui-table-th">{d.name}</td>
                         <td className="text-center capitalize">{d.discount_type}</td>
-                        <td className="text-center">{Number(d.value || 0).toFixed(2)}</td>
-                        <td className="text-center">{d.coupon_code || "-"}</td>
-                        <td className="text-center">{d.starts_at ? String(d.starts_at).slice(0, 10) : "-"}</td>
-                        <td className="text-center">{d.ends_at ? String(d.ends_at).slice(0, 10) : "-"}</td>
-                        <td className="text-center">{d.priority}</td>
-                        <td className="text-center">
+                        <td className="ui-table-td-center">{Number(d.value || 0).toFixed(2)}</td>
+                        <td className="ui-table-td-center">{d.coupon_code || "-"}</td>
+                        <td className="ui-table-td-center">{d.starts_at ? String(d.starts_at).slice(0, 10) : "-"}</td>
+                        <td className="ui-table-td-center">{d.ends_at ? String(d.ends_at).slice(0, 10) : "-"}</td>
+                        <td className="ui-table-td-center">{d.priority}</td>
+                        <td className="ui-table-td-center">
                           <span
                             className={`px-2 py-1 rounded-full text-[10px] font-bold ${
                               d.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
@@ -429,15 +560,15 @@ export default function DiscountSchemesPage() {
                             {d.is_active ? "ACTIVE" : "INACTIVE"}
                           </span>
                         </td>
-                        <td className="text-center">
+                        <td className="ui-table-td-center">
                           <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => openEdit(d)} className="text-indigo-600">
+                            <button onClick={() => openEdit(d)} className="text-indigo-600" title="Edit">
                               <PencilSquareIcon className="w-5 h-5" />
                             </button>
-                            <button onClick={() => toggleStatus(d)} className="text-gray-700 text-xs">
-                              {d.is_active ? "Deactivate" : "Activate"}
+                            <button onClick={() => toggleStatus(d)} className="text-indigo-600" title="Toggle Status" >
+                              {d.is_active ? <LockOpenIcon className="w-5 h-5" /> : <LockClosedIcon className="w-5 h-5" />}
                             </button>
-                            <button onClick={() => duplicateDiscount(d)} className="text-gray-700">
+                            <button onClick={() => duplicateDiscount(d)} className="text-indigo-600" title="Duplicate">
                               <DocumentDuplicateIcon className="w-5 h-5" />
                             </button>
                           </div>
@@ -446,7 +577,7 @@ export default function DiscountSchemesPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={9} className="text-center py-8 text-gray-400">
+                      <td colSpan={9} className="ui-loading-row">
                         No records found.
                       </td>
                     </tr>
@@ -454,15 +585,15 @@ export default function DiscountSchemesPage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex justify-between items-center px-6 py-4 bg-gray-50 border-t">
+            <div className="ui-pagination-wrapper">
               <div className="flex flex-col gap-3 w-full">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm text-gray-700">
+                  <p className="ui-pagination-info">
                     Showing <span className="font-medium">{showingFrom}</span> to{" "}
                     <span className="font-medium">{showingTo}</span> of{" "}
                     <span className="font-medium">{totalItems}</span> results
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="ui-table-actions">
                     <label htmlFor="discount-rows-per-page" className="text-sm text-gray-600">
                       Rows per page
                     </label>
@@ -470,7 +601,7 @@ export default function DiscountSchemesPage() {
                       id="discount-rows-per-page"
                       value={rowsPerPage}
                       onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                      className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                      className="ui-pagination-select"
                     >
                       <option value={10}>10</option>
                       <option value={20}>20</option>
@@ -485,7 +616,7 @@ export default function DiscountSchemesPage() {
                       type="button"
                       onClick={goToPreviousPage}
                       disabled={currentPage === 1}
-                      className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="ui-pagination-icon-btn rounded-md"
                     >
                       Previous
                     </button>
@@ -493,19 +624,19 @@ export default function DiscountSchemesPage() {
                       type="button"
                       onClick={goToNextPage}
                       disabled={currentPage === totalPages}
-                      className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="ui-pagination-icon-btn rounded-md ml-3"
                     >
                       Next
                     </button>
                   </div>
 
                   <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-                    <nav aria-label="Pagination" className="isolate inline-flex -space-x-px rounded-md shadow-sm">
+                    <nav aria-label="Pagination" className="ui-pagination-nav">
                       <button
                         type="button"
                         onClick={goToPreviousPage}
                         disabled={currentPage === 1}
-                        className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="ui-pagination-icon-btn rounded-l-md"
                       >
                         <span className="sr-only">Previous</span>
                         <ChevronLeftIcon className="h-5 w-5" />
@@ -515,7 +646,7 @@ export default function DiscountSchemesPage() {
                         page === "..." ? (
                           <span
                             key={`ellipsis-${idx}`}
-                            className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
+                            className="ui-pagination-btn ui-pagination-btn-inactive"
                           >
                             ...
                           </span>
@@ -525,10 +656,9 @@ export default function DiscountSchemesPage() {
                             type="button"
                             onClick={() => goToPage(page)}
                             aria-current={currentPage === page ? "page" : undefined}
-                            className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${
+                            className={`ui-pagination-btn ${
                               currentPage === page
-                                ? "z-10 bg-indigo-600 text-white"
-                                : "text-gray-900 hover:bg-gray-50"
+                                ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                             }`}
                           >
                             {page}
@@ -540,7 +670,7 @@ export default function DiscountSchemesPage() {
                         type="button"
                         onClick={goToNextPage}
                         disabled={currentPage === totalPages}
-                        className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="ui-pagination-icon-btn rounded-r-md"
                       >
                         <span className="sr-only">Next</span>
                         <ChevronRightIcon className="h-5 w-5" />
@@ -556,137 +686,212 @@ export default function DiscountSchemesPage() {
 
       {showForm && (
         <div className="bg-white p-8 rounded-2xl shadow border space-y-6">
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="flex items-center justify-between">
             <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Discount Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full border p-3 rounded"
-              />
-              {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
+              <h2 className="text-lg font-semibold text-gray-800">
+                {form.id ? "Edit Discount" : "Create Discount"}
+              </h2>
+              {duplicatedFromId ? (
+                <p className="text-xs text-gray-500 mt-1">
+                  Revision mode: original discount will be deactivated only after final create.
+                </p>
+              ) : null}
             </div>
+            {duplicatedFromId ? (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                Duplicated Draft
+              </span>
+            ) : null}
+          </div>
 
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Description</label>
-              <input
-                value={form.description || ""}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full border p-3 rounded"
-              />
+          <section className="rounded-xl border border-gray-200 p-5 space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Discount Details</h3>
+            <div className="grid md:grid-cols-2 gap-5">
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full border p-3 rounded"
+                />
+                {errors.name && <p className="text-red-500 text-sm">{errors.name}</p>}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Description</label>
+                <input
+                  value={form.description || ""}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full border p-3 rounded"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Discount Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={form.discount_type}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      discount_type: e.target.value === "fixed" ? "fixed" : "percentage",
+                    })
+                  }
+                  className="w-full border p-3 rounded"
+                >
+                  <option value="percentage">Percentage</option>
+                  <option value="fixed">Fixed Amount</option>
+                </select>
+                {errors.discount_type && <p className="text-red-500 text-sm">{errors.discount_type}</p>}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Value <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  value={form.value === 0 ? "" : form.value}
+                  onChange={(e) =>
+                    setForm({ ...form, value: e.target.value === "" ? 0 : Number(e.target.value) })
+                  }
+                  className="w-full border p-3 rounded"
+                  min="0"
+                  step="0.01"
+                />
+                {errors.value && <p className="text-red-500 text-sm">{errors.value}</p>}
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Priority</label>
+                <input
+                  type="number"
+                  value={form.priority}
+                  onChange={(e) =>
+                    setForm({ ...form, priority: Math.max(1, Number(e.target.value || 1)) })
+                  }
+                  className="w-full border p-3 rounded"
+                  min="1"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Coupon Code</label>
+                <input
+                  value={form.coupon_code || ""}
+                  onChange={(e) => setForm({ ...form, coupon_code: e.target.value })}
+                  className="w-full border p-3 rounded"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="inline-flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={form.is_active}
+                    onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  Active
+                </label>
+              </div>
             </div>
+          </section>
 
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Discount Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={form.discount_type}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    discount_type: e.target.value === "fixed" ? "fixed" : "percentage",
-                  })
-                }
-                className="w-full border p-3 rounded"
+          <section className="rounded-xl border border-gray-200 p-5 space-y-4">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Validity</h3>
+            <div className="grid md:grid-cols-2 gap-5">
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Start Date</label>
+                <input
+                  type="date"
+                  value={form.starts_at || ""}
+                  onChange={(e) => setForm({ ...form, starts_at: e.target.value })}
+                  className="w-full border p-3 rounded"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">End Date</label>
+                <input
+                  type="date"
+                  value={form.ends_at || ""}
+                  onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
+                  className="w-full border p-3 rounded"
+                />
+                {errors.ends_at && <p className="text-red-500 text-sm">{errors.ends_at}</p>}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">
+                  Selected Variants
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectedVariantIds.length} variant{selectedVariantIds.length === 1 ? "" : "s"} selected
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectModalOpen(true);
+                  resetLookupFilters();
+                }}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"
               >
-                <option value="percentage">Percentage</option>
-                <option value="fixed">Fixed Amount</option>
-              </select>
-              {errors.discount_type && <p className="text-red-500 text-sm">{errors.discount_type}</p>}
+                Select Variants
+              </button>
             </div>
 
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Discount Value <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="number"
-                value={form.value === 0 ? "" : form.value}
-                onChange={(e) =>
-                  setForm({ ...form, value: e.target.value === "" ? 0 : Number(e.target.value) })
-                }
-                className="w-full border p-3 rounded"
-                min="0"
-                step="0.01"
-              />
-              {errors.value && <p className="text-red-500 text-sm">{errors.value}</p>}
+            <div className="bg-white rounded-xl shadow overflow-x-auto">
+              <div className="max-h-[280px] overflow-y-auto">
+                <table className="ui-table">
+                  <thead className="bg-indigo-50 text-gray-600 text-sm sticky top-0 z-10">
+                    <tr className="ui-table-row">
+                      <th className="ui-table-th">Product</th>
+                      <th className="ui-table-th">Variant</th>
+                      <th className="ui-table-th">SKU</th>
+                      <th className="ui-table-th">Barcode</th>
+                      <th className="p-3 text-center w-12"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedVariantRows.length === 0 ? (
+                      <tr className="border-t">
+                        <td colSpan={5} className="p-6 text-center text-gray-500">
+                          No variants selected.
+                        </td>
+                      </tr>
+                    ) : (
+                      selectedVariantRows.map((row) => (
+                        <tr key={row.variantId} className="ui-table-row">
+                          <td className="ui-table-td">{row.product}</td>
+                          <td className="ui-table-td">{row.variant}</td>
+                          <td className="ui-table-td">{row.sku}</td>
+                          <td className="ui-table-td">{row.barcode}</td>
+                          <td className="ui-table-td-center">
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedVariant(row.variantId)}
+                              className="text-red-600 hover:text-red-800 inline-flex items-center justify-center"
+                            >
+                              <TrashIcon className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
-
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Priority</label>
-              <input
-                type="number"
-                value={form.priority}
-                onChange={(e) =>
-                  setForm({ ...form, priority: Math.max(1, Number(e.target.value || 1)) })
-                }
-                className="w-full border p-3 rounded"
-                min="1"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Coupon Code (optional)</label>
-              <input
-                value={form.coupon_code || ""}
-                onChange={(e) => setForm({ ...form, coupon_code: e.target.value })}
-                className="w-full border p-3 rounded"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Start Date</label>
-              <input
-                type="date"
-                value={form.starts_at || ""}
-                onChange={(e) => setForm({ ...form, starts_at: e.target.value })}
-                className="w-full border p-3 rounded"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold mb-1 block">End Date</label>
-              <input
-                type="date"
-                value={form.ends_at || ""}
-                onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
-                className="w-full border p-3 rounded"
-              />
-              {errors.ends_at && <p className="text-red-500 text-sm">{errors.ends_at}</p>}
-            </div>
-
-            <div className="flex items-center gap-2 mt-6">
-              <input
-                type="checkbox"
-                checked={form.is_active}
-                onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
-                className="w-4 h-4"
-              />
-              <label className="text-sm font-medium">Active</label>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between border-t pt-4">
-            <div>
-              <p className="text-sm text-gray-600">
-                Selected Variants: <span className="font-semibold">{selectedVariantIds.length}</span>
-              </p>
-              {errors.variants && <p className="text-red-500 text-sm">{errors.variants}</p>}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectModalOpen(true);
-                resetLookupFilters();
-              }}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"
-            >
-              Select Variants
-            </button>
-          </div>
+            {errors.variants && <p className="text-red-500 text-sm">{errors.variants}</p>}
+          </section>
 
           <div className="flex justify-end gap-3 pt-4 border-t">
             <button
@@ -745,3 +950,10 @@ export default function DiscountSchemesPage() {
     </div>
   );
 }
+
+
+
+
+
+
+

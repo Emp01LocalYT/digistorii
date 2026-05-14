@@ -183,18 +183,6 @@ export default function PurchaseItemsTable({
                   </option>
                 ))}
               </select>
-              {/* <select
-                value={uomFilter}
-                onChange={(e) => setUomFilter(e.target.value)}
-                className="border p-2 rounded min-w-[120px]"
-              >
-                <option value="">All UOM</option>
-                {uomOptions.map((uom) => (
-                  <option key={uom} value={uom}>
-                    {uom}
-                  </option>
-                ))}
-              </select> */}
             </div>
           </div>
 

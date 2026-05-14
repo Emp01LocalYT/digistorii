@@ -67,11 +67,11 @@ async function resolveUniqueSku(
   }
 }
 
-const VARIANT_STATUSES = new Set(["draft", "active", "inactive", "out_of_stock"]);
+const VARIANT_STATUSES = new Set(["draft", "active", "inactive"]);
 
-function normalizeVariantStatus(value: any): "draft" | "active" | "inactive" | "out_of_stock" {
+function normalizeVariantStatus(value: any): "draft" | "active" | "inactive" {
   if (typeof value === "string" && VARIANT_STATUSES.has(value)) {
-    return value as "draft" | "active" | "inactive" | "out_of_stock";
+    return value as "draft" | "active" | "inactive";
   }
   return "draft";
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -78,6 +78,11 @@ export default function OpeningStockPage() {
   const [selectedVariantMap, setSelectedVariantMap] = useState<Record<string, boolean>>({});
   const [barcodeValue, setBarcodeValue] = useState("");
   const [barcodeMessage, setBarcodeMessage] = useState("");
+  const [openingStockSearch, setOpeningStockSearch] = useState("");
+  const [openingStockCategory, setOpeningStockCategory] = useState("");
+  const [selectedOpeningSkuMap, setSelectedOpeningSkuMap] = useState<Record<string, boolean>>({});
+  const [bulkOpeningQty, setBulkOpeningQty] = useState("");
+  const openingHeaderCheckboxRef = useRef<HTMLInputElement>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${
@@ -167,6 +172,12 @@ export default function OpeningStockPage() {
 
   function removeSelected(sku: string) {
     setSelectedItems((prev) => prev.filter((item) => item.sku !== sku));
+    setSelectedOpeningSkuMap((prev) => {
+      if (!prev[sku]) return prev;
+      const next = { ...prev };
+      delete next[sku];
+      return next;
+    });
     setItemErrors((prev) => {
       if (!prev[sku]) return prev;
       const next = { ...prev };
@@ -179,6 +190,14 @@ export default function OpeningStockPage() {
     setSelectedItems((prev) =>
       prev.map((item) => (item.sku === sku ? { ...item, qty: value } : item))
     );
+    if (Number(value) > 0 && selectedOpeningSkuMap[sku]) {
+      setErrors((prev) => {
+        if (!prev.selected_qty) return prev;
+        const next = { ...prev };
+        delete next.selected_qty;
+        return next;
+      });
+    }
     setItemErrors((prev) => {
       if (!prev[sku]) return prev;
       const next = { ...prev };
@@ -202,6 +221,10 @@ export default function OpeningStockPage() {
     setShowForm(true);
     setForm(initialForm());
     setSelectedItems([]);
+    setSelectedOpeningSkuMap({});
+    setBulkOpeningQty("");
+    setOpeningStockSearch("");
+    setOpeningStockCategory("");
     setErrors({});
     setItemErrors({});
     void loadDocNo();
@@ -210,25 +233,31 @@ export default function OpeningStockPage() {
   function validate(): boolean {
     const next: Record<string, string> = {};
     const itemNext: Record<string, string> = {};
+    const selectedForSubmit = selectedItems.filter((item) => Boolean(selectedOpeningSkuMap[item.sku]));
 
     if (!form.date) next.date = "Date is required";
     if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
     if (!form.locator_id) next.locator_id = "Store locator is required";
     if (selectedItems.length === 0) next.items = "Select at least one product";
+    if (selectedItems.length > 0 && selectedForSubmit.length === 0) {
+      next.items = "Select at least one item";
+    }
 
     let hasPositive = false;
-    selectedItems.forEach((item) => {
+    let hasInvalidSelectedQty = false;
+    selectedForSubmit.forEach((item) => {
       const qty = Number(item.qty);
-      if (!Number.isFinite(qty) || qty < 0) {
-        itemNext[item.sku] = "Qty must be >= 0";
+      if (!Number.isFinite(qty) || qty <= 0) {
+        itemNext[item.sku] = "Fill quantity";
+        hasInvalidSelectedQty = true;
       }
       if (Number.isFinite(qty) && qty > 0) {
         hasPositive = true;
       }
     });
 
-    if (selectedItems.length > 0 && !hasPositive) {
-      next.items = "At least one quantity must be greater than 0";
+    if (selectedForSubmit.length > 0 && (hasInvalidSelectedQty || !hasPositive)) {
+      next.selected_qty = "Fill quantity for selected items";
     }
 
     setErrors(next);
@@ -246,10 +275,13 @@ export default function OpeningStockPage() {
         warehouse_id: Number(form.warehouse_id),
         locator_id: Number(form.locator_id),
         description: form.description.trim() || null,
-        items: selectedItems.map((item) => ({
+        items: selectedItems
+          .filter((item) => Boolean(selectedOpeningSkuMap[item.sku]))
+          .filter((item) => Number(item.qty) > 0)
+          .map((item) => ({
           product_id: item.product_id,
           sku: item.sku,
-          qty: Number(item.qty) || 0,
+          qty: Number(item.qty),
         })),
       };
 
@@ -261,7 +293,12 @@ export default function OpeningStockPage() {
       if (!res.ok || !data.success) throw new Error(data.error || "Save failed");
 
       if (mode === "add") {
+        setForm(initialForm());
         setSelectedItems([]);
+        setSelectedOpeningSkuMap({});
+        setBulkOpeningQty("");
+        setOpeningStockSearch("");
+        setOpeningStockCategory("");
         setItemErrors({});
         setErrors({});
         await loadDocNo();
@@ -272,6 +309,10 @@ export default function OpeningStockPage() {
       setForm(initialForm());
       setShowForm(false);
       setSelectedItems([]);
+      setSelectedOpeningSkuMap({});
+      setBulkOpeningQty("");
+      setOpeningStockSearch("");
+      setOpeningStockCategory("");
       setItemErrors({});
       setErrors({});
       await loadDocNo();
@@ -287,6 +328,22 @@ export default function OpeningStockPage() {
     () => new Set(selectedItems.map((item) => item.sku)),
     [selectedItems]
   );
+
+  useEffect(() => {
+    setSelectedOpeningSkuMap((prev) => {
+      const valid = new Set(selectedItems.map((item) => item.sku));
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      Object.keys(prev).forEach((sku) => {
+        if (valid.has(sku)) {
+          next[sku] = true;
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedItems]);
 
   const filteredLookupItems = useMemo(() => {
     const search = lookupFilters.search.trim().toLowerCase();
@@ -366,6 +423,120 @@ export default function OpeningStockPage() {
     return new Map<number, ProductLookupItem>(lookupItems.map((item) => [item.variant_id, item]));
   }, [lookupItems]);
 
+  const categoryBySku = useMemo(() => {
+    const map = new Map<string, string>();
+    lookupItems.forEach((item) => {
+      const category = String(item.category_name || item.category || "").trim();
+      if (category) {
+        map.set(item.sku, category);
+      }
+    });
+    return map;
+  }, [lookupItems]);
+
+  const filteredSelectedItems = useMemo(() => {
+    const search = openingStockSearch.trim().toLowerCase();
+    return selectedItems.filter((item) => {
+      const matchesSearch = search
+        ? `${item.product_name} ${item.product_code} ${item.sku}`.toLowerCase().includes(search)
+      : true;
+      const category = categoryBySku.get(item.sku) || "";
+      const matchesCategory = openingStockCategory ? category === openingStockCategory : true;
+      return matchesSearch && matchesCategory;
+    });
+  }, [selectedItems, openingStockSearch, openingStockCategory, categoryBySku]);
+
+  const filteredSelectedSkus = useMemo(
+    () => filteredSelectedItems.map((item) => item.sku),
+    [filteredSelectedItems]
+  );
+
+  const allFilteredRowsSelected =
+    filteredSelectedSkus.length > 0 && filteredSelectedSkus.every((sku) => selectedOpeningSkuMap[sku]);
+  const someFilteredRowsSelected =
+    filteredSelectedSkus.length > 0 && filteredSelectedSkus.some((sku) => selectedOpeningSkuMap[sku]);
+
+  useEffect(() => {
+    if (!openingHeaderCheckboxRef.current) return;
+    openingHeaderCheckboxRef.current.indeterminate = someFilteredRowsSelected && !allFilteredRowsSelected;
+  }, [someFilteredRowsSelected, allFilteredRowsSelected]);
+
+  const toggleAllFilteredOpeningRows = (checked: boolean) => {
+    setSelectedOpeningSkuMap((prev) => {
+      const next = { ...prev };
+      filteredSelectedSkus.forEach((sku) => {
+        if (checked) {
+          next[sku] = true;
+        } else {
+          delete next[sku];
+        }
+      });
+      return next;
+    });
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.items;
+      if (checked) {
+        delete next.selected_qty;
+      }
+      return next;
+    });
+  };
+
+  const toggleOpeningRowSelection = (sku: string, checked: boolean) => {
+    setSelectedOpeningSkuMap((prev) => {
+      if (checked) return { ...prev, [sku]: true };
+      if (!prev[sku]) return prev;
+      const next = { ...prev };
+      delete next[sku];
+      return next;
+    });
+    if (checked) {
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.items;
+        delete next.selected_qty;
+        return next;
+      });
+    }
+  };
+
+  const applyQtyToSelected = () => {
+    const qty = Number(bulkOpeningQty);
+    const selectedSkus = selectedItems
+      .filter((item) => Boolean(selectedOpeningSkuMap[item.sku]))
+      .map((item) => item.sku);
+
+    if (selectedSkus.length === 0) {
+      setErrors((prev) => ({ ...prev, items: "Select at least one item" }));
+      return;
+    }
+
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setErrors((prev) => ({ ...prev, selected_qty: "Fill quantity for selected items" }));
+      return;
+    }
+
+    setSelectedItems((prev) =>
+      prev.map((item) =>
+        selectedOpeningSkuMap[item.sku] ? { ...item, qty: String(qty) } : item
+      )
+    );
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.items;
+      delete next.selected_qty;
+      return next;
+    });
+    setItemErrors((prev) => {
+      const next = { ...prev };
+      selectedSkus.forEach((sku) => {
+        if (next[sku]) delete next[sku];
+      });
+      return next;
+    });
+  };
+
   function openProductModal() {
     setProductModalOpen(true);
     setProductModalError("");
@@ -407,6 +578,13 @@ export default function OpeningStockPage() {
     }
 
     setSelectedItems((prev) => [...prev, ...additions]);
+    setSelectedOpeningSkuMap((prev) => {
+      const next = { ...prev };
+      additions.forEach((item) => {
+        next[item.sku] = true;
+      });
+      return next;
+    });
     setErrors((prev) => {
       if (!prev.items) return prev;
       const next = { ...prev };
@@ -441,6 +619,7 @@ export default function OpeningStockPage() {
         qty: "0",
       },
     ]);
+    setSelectedOpeningSkuMap((prev) => ({ ...prev, [match.sku]: true }));
     setSelectedVariantMap((prev) => ({ ...prev, [String(match.variant_id)]: true }));
     setErrors((prev) => {
       if (!prev.items) return prev;
@@ -626,7 +805,7 @@ export default function OpeningStockPage() {
           className="bg-white p-6 rounded-xl shadow space-y-6"
         >
           <h2 className="text-lg font-semibold">Header Information</h2>
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-5 gap-4">
             <div>
               <label className="text-sm font-semibold mb-1 block">Doc No</label>
               <input
@@ -683,102 +862,187 @@ export default function OpeningStockPage() {
               </select>
               {errors.locator_id && <p className="text-red-500 text-sm mt-1">{errors.locator_id}</p>}
             </div>
-            <div className="md:col-span-2">
+            <div>
               <label className="text-sm font-semibold mb-1 block">Description</label>
               <textarea
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={3}
-                className={inputClass("description")}
+                rows={1}
+                className={inputClass("description")+ " resize-none"}
+                placeholder="Optional notes"
               />
             </div>
-          </div>
+         
 
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Product Selection</h3>
+          <div className="md:col-start-5 flex items-end">
             <button
               type="button"
               onClick={openProductModal}
-              className="bg-gray-300 px-6 py-2 rounded-lg"
+              className="ml-auto bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg "
             >
               Select Products
             </button>
             {errors.items && <p className="text-red-500 text-sm">{errors.items}</p>}
           </div>
+           </div>
 
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-indigo-50 text-gray-600 uppercase text-xs">
-                  <tr className="border-t hover:bg-blue-50 transition">
-                    <th className="p-4 text-left">Product Code</th>
-                    <th className="p-4 text-left">Product Name</th>
-                    <th className="p-4 text-left">Opening Qty</th>
-                    <th className="p-4 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {selectedItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-6 py-10 text-center text-gray-500">
-                        No products selected.
-                      </td>
+            <div className="p-4 border-b bg-gray-50">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Opening Stock Items</h4>
+              <div className="grid gap-3 md:grid-cols-2 mb-3">
+                <input
+                  type="text"
+                  value={openingStockSearch}
+                  onChange={(e) => setOpeningStockSearch(e.target.value)}
+                  placeholder="Search by product name, product code, SKU"
+                  className="w-full border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <select
+                  value={openingStockCategory}
+                  onChange={(e) => setOpeningStockCategory(e.target.value)}
+                  className="w-full border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">All Categories</option>
+                  {lookupCategoryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={bulkOpeningQty}
+                  onChange={(e) => {
+                    setBulkOpeningQty(e.target.value);
+                    if (Number(e.target.value) > 0) {
+                      setErrors((prev) => {
+                        if (!prev.selected_qty) return prev;
+                        const next = { ...prev };
+                        delete next.selected_qty;
+                        return next;
+                      });
+                    }
+                  }}
+                  placeholder="Qty"
+                  className="w-full md:w-40 border rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={applyQtyToSelected}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg whitespace-nowrap"
+                >
+                  Apply Qty to Selected
+                </button>
+              </div>
+              {errors.selected_qty && <p className="text-red-500 text-sm mt-2">{errors.selected_qty}</p>}
+            </div>
+
+            <div className="max-h-[420px] overflow-y-auto">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-indigo-50 text-gray-600 uppercase text-xs">
+                    <tr className="border-t hover:bg-blue-50 transition">
+                      <th className="p-4 text-center w-12">
+                        <input
+                          ref={openingHeaderCheckboxRef}
+                          type="checkbox"
+                          checked={allFilteredRowsSelected}
+                          onChange={(e) => toggleAllFilteredOpeningRows(e.target.checked)}
+                          disabled={filteredSelectedSkus.length === 0}
+                        />
+                      </th>
+                      <th className="p-4 text-left">Product Code</th>
+                      <th className="p-4 text-left">Product Name</th>
+                      <th className="p-4 text-left">SKU</th>
+                      <th className="p-4 text-left">Opening Qty</th>
+                      <th className="p-4 text-center">Action</th>
                     </tr>
-                  ) : (
-                    selectedItems.map((item) => (
-                      <tr key={item.sku} className="border-t hover:bg-blue-50 transition">
-                        <td className="p-4">{item.product_code}</td>
-                        <td>{item.product_name}</td>
-                        <td>
-                          <div className="max-w-[160px]">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={item.qty}
-                              onChange={(e) => updateQty(item.sku, e.target.value)}
-                              className={`w-full border rounded-lg p-2 ${
-                                itemErrors[item.sku] ? "border-red-500" : "border-gray-200"
-                              }`}
-                            />
-                            {itemErrors[item.sku] && (
-                              <p className="text-red-500 text-xs mt-1">{itemErrors[item.sku]}</p>
-                            )}
-                          </div>
-                        </td>
-                        <td className="text-center">
-                          <button type="button" onClick={() => removeSelected(item.sku)} className="text-red-600">
-                            <XMarkIcon className="w-5 h-5" />
-                          </button>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {selectedItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                          No products selected.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : filteredSelectedItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
+                          No items match your filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSelectedItems.map((item) => (
+                        <tr key={item.sku} className="border-t hover:bg-blue-50 transition">
+                          <td className="p-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(selectedOpeningSkuMap[item.sku])}
+                              onChange={(e) => toggleOpeningRowSelection(item.sku, e.target.checked)}
+                            />
+                          </td>
+                          <td className="p-4">{item.product_code}</td>
+                          <td>{item.product_name}</td>
+                          <td>{item.sku}</td>
+                          <td>
+                            <div className="max-w-[160px]">
+                              <input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={item.qty}
+                                onChange={(e) => updateQty(item.sku, e.target.value)}
+                                className={`w-full border rounded-lg p-2 ${
+                                  itemErrors[item.sku] ? "border-red-500" : "border-gray-200"
+                                }`}
+                              />
+                              {itemErrors[item.sku] && (
+                                <p className="text-red-500 text-xs mt-1">{itemErrors[item.sku]}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-center">
+                            <button type="button" onClick={() => removeSelected(item.sku)} className="text-red-600">
+                              <XMarkIcon className="w-5 h-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-between pt-6 border-t border-gray-100">
+          <div className="ui-form-actions">
             <button
               type="button"
               onClick={() => {
                 setShowForm(false);
                 setForm(initialForm());
                 setSelectedItems([]);
+                setSelectedOpeningSkuMap({});
+                setBulkOpeningQty("");
+                setOpeningStockSearch("");
+                setOpeningStockCategory("");
                 setErrors({});
                 setItemErrors({});
               }}
-              className="bg-gray-300 px-6 py-2 rounded-lg"
+              className="ui-btn ui-btn-secondary ui-btn-responsive"
             >
               Cancel
             </button>
 
-            <div className="flex gap-4">
+            <div className="ui-btn-group">
               <button
                 type="button"
                 onClick={() => void submit("add")}
-                className="bg-gray-300 px-6 py-2 rounded-lg"
+                className="ui-btn ui-btn-secondary ui-btn-responsive"
                 disabled={selectedItems.length === 0}
               >
                 Save & Add Next

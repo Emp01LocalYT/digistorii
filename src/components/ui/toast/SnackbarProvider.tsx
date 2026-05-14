@@ -37,7 +37,7 @@ export function SnackbarProvider({ children }: SnackbarProviderProps) {
     message: "",
     open: false,
     severity: "success",
-    duration: 3000,
+    duration: 6000,
   });
 
   const notify = useCallback<NotifyFn>((message, options = {}) => {
@@ -46,7 +46,7 @@ export function SnackbarProvider({ children }: SnackbarProviderProps) {
       message,
       open: true,
       severity: options.severity ?? "success",
-      duration: options.duration ?? 3000,
+      duration: options.duration ?? 6000,
     }));
   }, []);
 
@@ -67,7 +67,7 @@ export function SnackbarProvider({ children }: SnackbarProviderProps) {
         autoHideDuration={snack.duration}
         onClose={handleClose}
         anchorOrigin={{ vertical: "top", horizontal: "right" }}
-  sx={{ mt:  7}}
+  sx={{ mt:  7,zIndex: 999999}}
       >
         <Alert
           onClose={handleClose}

@@ -4,8 +4,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
-
+import { ChevronLeftIcon, ChevronRightIcon,  EyeIcon,
+  MagnifyingGlassIcon,
+  PencilSquareIcon,
+ArchiveBoxArrowDownIcon  } from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
@@ -336,32 +338,32 @@ export default function ProductsPage() {
                       <span
                         className={`rounded-full px-2 py-1 text-xs font-medium ${
                           item.status === 1
-                            ? "bg-green-100 text-green-700"
-                            : "bg-gray-200 text-gray-700"
+                            ? "bg-green-200 text-black"
+                            : "bg-gray-300 text-black"
                         }`}
                       >
                         {item.status === 1 ? "Active" : "Archived"}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         <Link
                           href={`/${company}/inventory/products/add-products?id=${item.id}&mode=view`}
-                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
-                        >
-                          View
-                        </Link>
+className="text-indigo-600" title="View Details"    >
+ <EyeIcon className="w-5 h-5" />                        </Link>
                         <Link
-                          href={`/${company}/inventory/products/add-products?id=${item.id}&mode=edit`}
-                          className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                          href={
+                            `/${company}/inventory/products/add-products?id=${item.id}&mode=edit`}
+                          className="text-indigo-600" title="Edit Product"
                         >
-                          Edit
+                          <PencilSquareIcon className="w-5 h-5"/>
                         </Link>
                         <button
                           onClick={() => archiveProduct(item.id)}
-                          className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                          className="text-indigo-600" title="Archive Product"
                         >
-                          Archive
+                          <ArchiveBoxArrowDownIcon className="h-5 w-5" />
+
                         </button>
                       </div>
                     </td>

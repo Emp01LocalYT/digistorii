@@ -241,7 +241,7 @@ export default function CompanySettingsPage() {
             </div> */}
  
             {/* Financial Year */}
-            <div className="flex gap-4">
+            <div className="ui-btn-group">
                 <div className="flex-1 flex flex-col">
                     <label className="font-medium mb-1">Financial Year Start</label>
                     <input

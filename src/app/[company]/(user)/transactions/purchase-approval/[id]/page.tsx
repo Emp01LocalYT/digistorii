@@ -196,122 +196,238 @@ const hasFetched = useRef(false);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+ <div className="flex justify-between items-center mb-10">
+
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Purchase Approval Details
+          </h1>
+
+          <p className="text-gray-500 text-sm">
+           Review, approve, or escalate rejection with reason. </p>
+        </div>
+   {/* ACTION BUTTONS */}
+
+         <div className="flex gap-3">
+
+        <button
+          onClick={() => router.push(`/${company}/transactions/purchase-approval`)}
+          className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400"
+        >
+          Cancel
+        </button>
+        {isAwaiting && (
+          <>
+            <button
+              onClick={() => setRejectOpen(true)}
+              disabled={!isAwaiting}
+              className={`px-6 py-2 rounded text-white
+    ${isAwaiting ? "bg-red-600 hover:bg-red-700" : "bg-gray-400 cursor-not-allowed"}
+  `}
+            >
+              Reject
+            </button>
+
+            <button
+              onClick={handleApprove}
+              disabled={!isAwaiting}
+              className={`px-6 py-2 rounded text-white
+    ${isAwaiting ? "bg-green-600 hover:bg-green-700" : "bg-gray-400 cursor-not-allowed"}
+  `}
+            >
+              Approve
+            </button>
+          </>
+        )}
+      </div>
+      </div>
 
       {/* HEADER */}
 
-      <div className="bg-white shadow rounded-xl p-4">
+<div className="grid lg:grid-cols-3 gap-8 mb-8">
 
-        <h1 className="text-xl font-bold mb-4">
-          Purchase Order : {data.purchase_no}
-        </h1>
+  {/* SUPPLIER CARD */}
+  <div className="bg-white rounded-2xl shadow-md border p-6 space-y-4">
 
-        <div className="grid md:grid-cols-5 text-sm">
+    <div>
+      <h3 className="text-sm text-gray-500 mb-2">Supplier</h3>
 
-          <div>
-            <span className="text-sm font-semibold">Supplier :</span> {data.supplier_code} - {data.supplier_name}
-          </div>
+      <p className="font-semibold text-gray-800">
+        {data.supplier_code} - {data.supplier_name}
+      </p>
+    </div>
 
-          <div>
-            <span className="text-sm font-semibold">PO Date :</span> {formatDate(data.purchase_date)}
-          </div>
+    <div className="grid md:grid-cols-2 gap-6">
 
-          <div>
-            <span className="text-sm font-semibold">Req Date :</span> {formatDate(data.req_date)}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Currency :</span> {data.currency_code || data.currency}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Conversion Rate :</span> {data.conversion_rate}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Items Total :</span> {itemsSubtotal.toFixed(2)}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Product Tax (GST) :</span> {productTax.toFixed(2)}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Grand Total :</span> {grandTotal.toFixed(2)}
-          </div>
+      <div>
+        <p className="font-semibold text-gray-700">Bill To</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {data.bill_to_code ? `${data.bill_to_code} - ${data.bill_to_name}` : "-"}
+        </p>
+        {data.bill_to_address && (
+          <p className="text-xs text-gray-500 mt-1">{data.bill_to_address}</p>
+        )}
+      </div>
 
-          {/* <div>
-            <span className="text-sm font-semibold">Status :</span> {data.status}
-          </div> */}
+      <div>
+        <p className="font-semibold text-gray-700">Ship To</p>
+        <p className="text-sm text-gray-500 mt-1">
+          {data.ship_to_code ? `${data.ship_to_code} - ${data.ship_to_name}` : "-"}
+        </p>
+        {data.ship_to_address && (
+          <p className="text-xs text-gray-500 mt-1">{data.ship_to_address}</p>
+        )}
+      </div>
 
-          <div className="md:col-span-2">
-            <span className="text-sm font-semibold">Approval :</span>
-            {data.approval_status && (
-              <span className={`px-3 py-1 text-xs rounded-full font-semibold whitespace-nowrap
-                  ${data.approval_status === "Awaiting for approval" ? "bg-orange-100 text-orange-700" : ""}
-                  ${data.approval_status === "Approved" ? "bg-green-100 text-green-700" : ""}
-                  ${data.approval_status === "Rejected" ? "bg-red-100 text-red-700" : ""}
-                  ${data.approval_status === "Partial" ? "bg-blue-100 text-blue-700" : ""}
-                `}>
-                {data.approval_status}
-              </span>
-            )}
-          </div>
+    </div>
 
+    <div>
+      <p className="font-semibold text-gray-700">Notes</p>
+      <p className="text-sm text-gray-500 mt-1">
+        {data.notes || "-"}
+      </p>
+    </div>
+
+    <div>
+      <p className="font-semibold text-gray-700">Attachment</p>
+      {data.attachment_url ? (
+        <a
+          href={data.attachment_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-indigo-600 underline text-sm mt-1 inline-block"
+        >
+          View attachment
+        </a>
+      ) : (
+        <p className="text-sm text-gray-500 mt-1">-</p>
+      )}
+    </div>
+
+  </div>
+
+  {/* PO INFO CARD */}
+  <div className="bg-white rounded-2xl shadow-md border p-6">
+
+    <h3 className="text-sm text-gray-500 mb-3">
+      Purchase Order Info
+    </h3>
+
+    <div className="space-y-2 text-sm">
+
+      <div className="flex justify-between">
+        <span>PO No</span>
+        <span className="font-semibold text-indigo-600">
+          {data.purchase_no}
+        </span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>PO Date</span>
+        <span>{formatDate(data.purchase_date)}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Req Date</span>
+        <span>{formatDate(data.req_date)}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Currency</span>
+        <span>{data.currency_code || data.currency}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Conversion Rate</span>
+        <span>{data.conversion_rate}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Despatch Terms</span>
+        <span>{data.despatch_terms_name || "-"}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Payment Terms</span>
+        <span>{data.payment_terms_name || "-"}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>PO Type</span>
+        <span>{data.po_type || "standard"}</span>
+      </div>
+
+      <div className="flex justify-between items-center">
+        <span>Approval</span>
+        {data.approval_status && (
+          <span className={`px-3 py-1 text-xs rounded-full font-semibold whitespace-nowrap
+            ${data.approval_status === "Awaiting for approval" ? "bg-orange-100 text-orange-700" : ""}
+            ${data.approval_status === "Approved" ? "bg-green-100 text-green-700" : ""}
+            ${data.approval_status === "Rejected" ? "bg-red-100 text-red-700" : ""}
+            ${data.approval_status === "Partial" ? "bg-blue-100 text-blue-700" : ""}
+          `}>
+            {data.approval_status}
+          </span>
+        )}
+      </div>
+
+    </div>
+
+  </div>
+
+  {/* TOTAL CARD */}
+  <div className="bg-white rounded-2xl shadow-md border p-6">
+
+    <h3 className="text-sm opacity-80 font-bold mb-3">
+      Total Purchase
+    </h3>
+
+    <div className="text-sm text-gray-700 space-y-2">
+
+      <div className="flex justify-between">
+        <span>Items Total</span>
+        <span>{itemsSubtotal.toFixed(2)}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Product Tax (GST)</span>
+        <span>{productTax.toFixed(2)}</span>
+      </div>
+
+      <div className="border-t pt-3 mt-2 space-y-2">
+
+        <div className="flex justify-between">
+          <span>Freight</span>
+          <span>{Number(data.freight_charges || 0).toFixed(2)}</span>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4 text-sm mt-4">
-          <div>
-            <span className="text-sm font-semibold">PO Type :</span> {data.po_type || "standard"}
-          </div>
-          <div>
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Bill To :</span> {data.bill_to_code ? `${data.bill_to_code} - ${data.bill_to_name}` : "-"}
-            {data.bill_to_address && (
-              <div className="text-xs text-gray-500 mt-1">{data.bill_to_address}</div>
-            )}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Ship To :</span> {data.ship_to_code ? `${data.ship_to_code} - ${data.ship_to_name}` : "-"}
-            {data.ship_to_address && (
-              <div className="text-xs text-gray-500 mt-1">{data.ship_to_address}</div>
-            )}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Despatch Terms :</span> {data.despatch_terms_name || "-"}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Payment Terms :</span> {data.payment_terms_name || "-"}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Freight :</span> {Number(data.freight_charges || 0).toFixed(2)}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Freight Tax % :</span> {Number(data.freight_tax || 0).toFixed(2)}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Freight Tax :</span> {Number(data.freight_tax_amount || 0).toFixed(2)}
-          </div>
-          <div>
-            <span className="text-sm font-semibold">Packaging :</span> {Number(data.packaging_amount || 0).toFixed(2)}
-          </div>
-          <div className="md:col-span-2">
-            <span className="text-sm font-semibold">Notes :</span> {data.notes || "-"}
-          </div>
-          <div className="md:col-span-2">
-            <span className="text-sm font-semibold">Attachment :</span>{" "}
-            {data.attachment_url ? (
-              <a
-                href={data.attachment_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-indigo-600 underline"
-              >
-                View attachment
-              </a>
-            ) : (
-              "-"
-            )}
-          </div>
+        <div className="flex justify-between">
+          <span>Freight Tax %</span>
+          <span>{Number(data.freight_tax || 0).toFixed(2)}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span>Freight Tax</span>
+          <span>{Number(data.freight_tax_amount || 0).toFixed(2)}</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span>Packaging</span>
+          <span>{Number(data.packaging_amount || 0).toFixed(2)}</span>
         </div>
 
       </div>
 
+      <div className="border-t pt-3 flex justify-between text-lg font-bold text-indigo-600">
+        <span>Grand Total</span>
+        <span>{grandTotal.toFixed(2)}</span>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
 
 
       {/* ITEM TABLE */}
@@ -361,77 +477,9 @@ const hasFetched = useRef(false);
       </div>
 
 
-      <div className="bg-white p-6 rounded-xl shadow">
-        <h3 className="text-sm font-semibold text-gray-600 mb-4">Totals</h3>
-        <div className="text-sm text-gray-700 space-y-2">
-          <div className="flex justify-between">
-            <span>Items Total</span>
-            <span>{itemsSubtotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Product Tax (GST)</span>
-            <span>{productTax.toFixed(2)}</span>
-          </div>
-          <div className="border-t pt-3 mt-2 space-y-2">
-            <div className="flex justify-between">
-              <span>Freight</span>
-              <span>{freightBase.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Freight Tax</span>
-              <span>{freightTaxAmount.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>Packaging</span>
-              <span>{packagingAmount.toFixed(2)}</span>
-            </div>
-            <div className="flex justify-between text-gray-500">
-              <span>Extra Charges Total</span>
-              <span>{extraChargesTotal.toFixed(2)}</span>
-            </div>
-          </div>
-          <div className="border-t pt-3 flex justify-between text-lg font-bold text-indigo-600">
-            <span>Grand Total</span>
-            <span>{grandTotal.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
 
 
-      {/* ACTION BUTTONS */}
-
-      <div className="flex justify-end gap-4">
-
-        <button
-          onClick={() => router.push(`/${company}/transactions/purchase-approval`)}
-          className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400"
-        >
-          Cancel
-        </button>
-        {isAwaiting && (
-          <>
-            <button
-              onClick={() => setRejectOpen(true)}
-              disabled={!isAwaiting}
-              className={`px-6 py-2 rounded text-white
-    ${isAwaiting ? "bg-red-600 hover:bg-red-700" : "bg-gray-400 cursor-not-allowed"}
-  `}
-            >
-              Reject
-            </button>
-
-            <button
-              onClick={handleApprove}
-              disabled={!isAwaiting}
-              className={`px-6 py-2 rounded text-white
-    ${isAwaiting ? "bg-green-600 hover:bg-green-700" : "bg-gray-400 cursor-not-allowed"}
-  `}
-            >
-              Approve
-            </button>
-          </>
-        )}
-      </div>
+   
 
       {/* REJECT POPUP */}
       {rejectOpen &&

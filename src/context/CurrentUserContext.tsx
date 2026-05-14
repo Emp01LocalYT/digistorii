@@ -1,4 +1,4 @@
-//C:\Users\yanna\template_tailwind\src\context\CurrentUserContext.tsx
+//C:\Users\yanna\digistorii\src\context\CurrentUserContext.tsx
 "use client";
  
 import { createContext, useContext, useState } from "react";

@@ -4,15 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { useTenant } from "@/context/TenantContext";
 import { useUser } from "@/context/CurrentUserContext";
-import type { ProductSavedPayload } from "../../../../inventory/products/add-products/page";
+import { useNotify } from "@/hooks/useNotify";
 import AddProductModal from "./AddProductModal";
 import PurchaseHeaderForm from "./PurchaseHeaderForm";
 import PurchaseItemsTable from "./PurchaseItemsTable";
 import TotalsSection from "./TotalsSection";
 import ProductLookupModal from "@/components/product/ProductLookupModal";
 import { usePurchaseItems } from "./usePurchaseItems";
-import { mapProductToPurchaseRows } from "./utils/mapProductToPurchaseRows";
-import { mapSavedProductToCatalogItems } from "./utils/catalog";
 import { calculateLineItem, calculateTotals } from "./utils/purchaseCalculations";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import type { ProductLookupItem } from "@/lib/product-lookup";
@@ -26,14 +24,47 @@ import type {
   Supplier,
 } from "./types";
 
+type LocalProductSavePayload = {
+  product: {
+    name?: string;
+    type?: "finished_good" | "raw_material" | "other";
+    category?: string;
+    source?: "own" | "vendor";
+    description?: string;
+    uom?: string;
+    uom_code?: string;
+    uom_name?: string;
+    hsn_code?: string;
+    product_code?: string;
+  };
+  variants: Array<{
+    color?: string;
+    size?: string;
+    sku?: string;
+  }>;
+};
+
+type TempProductCatalogItem = ProductCatalogItem & {
+  temp_variant_id: string;
+  newProduct: {
+    name: string;
+    sku: string;
+    categoryId: string;
+    source: "own" | "vendor";
+  };
+};
+
 export default function PurchasePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const purchaseId = searchParams.get("id");
-  const isEdit = !!purchaseId;
+  const renewFromId = searchParams.get("renewFrom");
+  const isRenewMode = !!renewFromId;
+  const isEdit = !!purchaseId && !isRenewMode;
   const { company } = useTenant();
   const { user } = useUser();
+    const notify = useNotify();
   const {
     items: lookupItems,
     loading: lookupLoading,
@@ -47,13 +78,12 @@ export default function PurchasePage() {
     totalCount: lookupTotalCount,
     categoryOptions: lookupCategoryOptions,
     resetFilters: resetLookupFilters,
-    refresh: refreshLookup,
   } = useProductLookup({ enabled: Boolean(company) });
 
   const initialHeader: PurchaseHeader = {
     po_type: "standard",
-    purchase_no: "",
-    bill_to: "",
+    purchase_no: "",ref_no:"",  
+      bill_to: "",
     ship_to: "",
     despatch_terms: "",
     payment_terms: "",
@@ -89,6 +119,7 @@ export default function PurchasePage() {
   const [showProductPopup, setShowProductPopup] = useState(false);
   const [activeTab, setActiveTab] = useState<"items" | "additional">("items");
   const [productsList, setProductsList] = useState<ProductCatalogItem[]>([]);
+  const [tempProducts, setTempProducts] = useState<TempProductCatalogItem[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<ProductLookupItem[]>([]);
   const [popupError, setPopupError] = useState("");
   const [showAddProductModal, setShowAddProductModal] = useState(false);
@@ -101,12 +132,19 @@ export default function PurchasePage() {
   const hasLogged = useRef(false);
   const hasLoggedTenant = useRef(false);
 
-  const isEditable = !header.approval_status || header.approval_status === "Awaiting for approval";
+  const isRejected =
+    String(header.approval_status || "").toLowerCase() === "rejected" ||
+    String(header.status || "").toLowerCase() === "rejected";
+  const isEditable = !header.approval_status || header.approval_status === "Awaiting for approval" ;
+  const combinedProducts = useMemo(
+    () => [...productsList, ...tempProducts],
+    [productsList, tempProducts]
+  );
 
   const { items: details, setItems, updateRow, removeRow, handleTaxChange, applyBulkUpdates, totals } =
     usePurchaseItems({
       initialItems: [],
-      productsList,
+      productsList: combinedProducts,
       allTaxes,
       setErrors,
     });
@@ -249,12 +287,13 @@ export default function PurchasePage() {
     (barcode: string) => {
       const normalized = String(barcode || "").trim();
       if (!normalized) return false;
-      const match = productsList.find((p) => String(p.barcode || "") === normalized);
+      const match = combinedProducts.find((p) => String(p.barcode || "") === normalized);
       if (!match) return false;
+      const resolvedProductId = String((match as any).temp_variant_id || match.id);
 
       setItems((prev) => {
         const updated = [...prev];
-        const existingIndex = updated.findIndex((row) => String(row.product_id) === String(match.id));
+        const existingIndex = updated.findIndex((row) => String(row.product_id) === resolvedProductId);
         if (existingIndex >= 0) {
           const nextQty = Number(updated[existingIndex].qty || 0) + 1;
           updated[existingIndex] = calculateLineItem({
@@ -265,7 +304,7 @@ export default function PurchasePage() {
         }
 
         const newRow: PurchaseDetail = {
-          product_id: String(match.id),
+          product_id: resolvedProductId,
           product_code: match.product_code,
           product_name: match.name,
           description: match.description || "",
@@ -293,7 +332,7 @@ export default function PurchasePage() {
 
       return true;
     },
-    [productsList, setItems, setErrors]
+    [combinedProducts, setItems, setErrors]
   );
 
   const handleBarcodeSubmit = useCallback(
@@ -324,22 +363,93 @@ export default function PurchasePage() {
     setSelectedProducts([]);
   };
 
-  const appendProductsToCatalog = (items: ProductCatalogItem[]) => {
-    setProductsList((prev) => {
-      const existingIds = new Set(prev.map((item) => item.id));
-      const freshItems = items.filter((item) => !existingIds.has(item.id));
-      return [...freshItems, ...prev];
-    });
-  };
+  const handleLocalProductSaved = (
+    localPayload: LocalProductSavePayload,
+    meta?: { action: "save" | "save_add_new" }
+  ) => {
+    const productName = String(localPayload?.product?.name || "").trim();
+    if (!productName) return;
+    const baseTempId = `temp-${Date.now()}`;
+    const productCode = String(localPayload?.product?.product_code || `TMP-${Date.now()}`).trim();
+    const description = String(localPayload?.product?.description || "");
+    const uom = String(localPayload?.product?.uom || "");
+    const uomCode = String(localPayload?.product?.uom_code || "");
+    const uomName = String(localPayload?.product?.uom_name || "");
+    const hsnNo = String(localPayload?.product?.hsn_code || "");
+    const categoryId = String(localPayload?.product?.category || "");
+    const source = localPayload?.product?.source === "vendor" ? "vendor" : "own";
+    const type =
+      localPayload?.product?.type === "raw_material" || localPayload?.product?.type === "other"
+        ? localPayload.product.type
+        : "finished_good";
 
-  const handleProductSaved = (saved: ProductSavedPayload, meta?: { action: "save" | "save_add_new" }) => {
-    const newRows = mapProductToPurchaseRows(saved).map((row) => calculateLineItem(row as PurchaseDetail));
+    const variants =
+      Array.isArray(localPayload?.variants) && localPayload.variants.length
+        ? localPayload.variants
+        : [{ sku: "" }];
+
+    const tempCatalogItems: TempProductCatalogItem[] = variants.map((variant, index) => {
+      const tempVariantId = `${baseTempId}-v${index + 1}`;
+      const sku = String(variant?.sku || "").trim();
+      return {
+        id: -(Date.now() + index),
+        product_id: -(Date.now() + index),
+        product_code: productCode,
+        name: productName,
+        type,
+        category: categoryId || null,
+        source,
+        status: 1,
+        description,
+        uom,
+        uom_code: uomCode,
+        uom_name: uomName,
+        hsn_code: hsnNo,
+        sku,
+        color: String(variant?.color || ""),
+        barcode: "",
+        temp_variant_id: tempVariantId,
+        newProduct: {
+          name: productName,
+          sku,
+          categoryId,
+          source,
+        },
+      };
+    });
+
+    setTempProducts((prev) => [...prev, ...tempCatalogItems]);
+
+    const newRows = tempCatalogItems.map((item) =>
+      calculateLineItem({
+        product_id: item.temp_variant_id,
+        product_code: item.product_code,
+        product_name: item.name,
+        description: item.description || "",
+        uom: item.uom || "",
+        uom_code: item.uom_code || "",
+        uom_name: item.uom_name || "",
+        hsn_no: item.hsn_code || "",
+        rate: 0,
+        qty: 1,
+        amount: 0,
+        tax_percent: 0,
+        tax_amount: 0,
+        line_total: 0,
+        tax_id: null,
+        tax_name: "",
+        type: item.type,
+      } as PurchaseDetail)
+    );
+
     if (newRows.length) {
       setItems((prev) => [...prev, ...newRows]);
+      setErrors((prev: any) => ({
+        ...prev,
+        details: "",
+      }));
     }
-    const catalogItems = mapSavedProductToCatalogItems(saved);
-    appendProductsToCatalog(catalogItems);
-    refreshLookup();
+
     if (meta?.action !== "save_add_new") {
       setShowAddProductModal(false);
     }
@@ -349,6 +459,7 @@ export default function PurchasePage() {
   useEffect(() => {
     if (!company) return;
     if (eventSourceRef.current) return;
+    console.log("Loading barcode scan event source for company 352:", company);
     const source = new EventSource(`/api/barcode-scan?tenant=${encodeURIComponent(company)}`);
     eventSourceRef.current = source;
     source.onmessage = (event) => {
@@ -361,93 +472,224 @@ export default function PurchasePage() {
     };
   }, [company]);
 
-  useEffect(() => {
-    if (!company) return;
-    let active = true;
+  // useEffect(() => {
+  //   if (!company) return;
+  //   let active = true;
+  //   const loadData = async () => {
+  //     setPageLoading(true);
+  //     try {
+  //       const [
+  //         suppliersRes,
+  //         taxesRes,
+  //         despatchRes,
+  //         paymentRes,
+  //         currencyRes,
+  //         purchaseNoRes,
+  //       ] = await Promise.all([
+  //         fetch("/api/suppliers", { headers: { "x-tenant": company } }),
+  //         fetch("/api/tax-master", { headers: { "x-tenant": company } }),
+  //         fetch("/api/despatch-terms", { headers: { "x-tenant": company } }),
+  //         fetch("/api/payment-terms", { headers: { "x-tenant": company } }),
+  //         fetch("/api/currencies", { headers: { "x-tenant": company } }),
+  //         !isEdit && header.po_type === "standard"
+  //           ? fetch("/api/purchase/generateNo", { headers: { "x-tenant": company } })
+  //           : Promise.resolve(null),
+  //       ]);
 
-    const loadData = async () => {
-      setPageLoading(true);
-      try {
-        const [
-          suppliersRes,
-          taxesRes,
-          despatchRes,
-          paymentRes,
-          currencyRes,
-          purchaseNoRes,
-        ] = await Promise.all([
-          fetch("/api/suppliers", { headers: { "x-tenant": company } }),
-          fetch("/api/tax-master", { headers: { "x-tenant": company } }),
-          fetch("/api/despatch-terms", { headers: { "x-tenant": company } }),
-          fetch("/api/payment-terms", { headers: { "x-tenant": company } }),
-          fetch("/api/currencies", { headers: { "x-tenant": company } }),
-          !isEdit && header.po_type === "standard"
-            ? fetch("/api/purchase/generateNo", { headers: { "x-tenant": company } })
-            : Promise.resolve(null),
-        ]);
+  //       const suppliersData = await suppliersRes.json();
+  //       const taxesData = await taxesRes.json();
+  //       const despatchData = await despatchRes.json();
+  //       const paymentData = await paymentRes.json();
+  //       const currencyData = await currencyRes.json();
+  //       const purchaseNoData = purchaseNoRes ? await purchaseNoRes.json() : null;
+
+  //       if (!active) return;
+
+  //       setAllSuppliers(Array.isArray(suppliersData) ? suppliersData : suppliersData.data || []);
+  //       setAllDespatchTerms(despatchData?.data || []);
+  //       setAllPaymentTerms(paymentData?.data || []);
+  //       setAllCurrencies(currencyData?.data || []);
+  //       setAllTaxes(taxesData?.data || []);
+
+  //       if (purchaseNoData?.purchase_no && header.po_type === "standard") {
+  //         setHeader((prev) => ({ ...prev, purchase_no: purchaseNoData.purchase_no }));
+  //       }
+  //       console.log("Loaded initial data for purchase page 407:");
+  //       console.log("Suppliers:", suppliersData);
+  //       console.log("Despatch Terms:", despatchData);
+  //       console.log("Payment Terms:", paymentData);
+  //       console.log("Currencies:", currencyData);
+  //       console.log("Taxes:", taxesData);
+  //       console.log("Generated Purchase No:", purchaseNoData?.purchase_no);
+  //     } catch (err) {
+  //       console.error("Failed to load purchase data", err);
+  //     } finally {
+  //       if (active) setPageLoading(false);
+  //     }
+  //   };
+
+  //   loadData();
+  //   return () => {
+  //     active = false;
+  //   };
+  // }, [company, isEdit, header.po_type]);
+
+  
+useEffect(() => {
+  if (!company) return;
+   let active = true;
+  const loadMasters = async () => {
+    setPageLoading(true);
+    try {
+    const [
+      suppliersRes,
+      taxesRes,
+      despatchRes,
+      paymentRes,
+      currencyRes,
+    ] = await Promise.all([
+      fetch("/api/suppliers", { headers: { "x-tenant": company } }),
+      fetch("/api/tax-master", { headers: { "x-tenant": company } }),
+      fetch("/api/despatch-terms", { headers: { "x-tenant": company } }),
+      fetch("/api/payment-terms", { headers: { "x-tenant": company } }),
+      fetch("/api/currencies", { headers: { "x-tenant": company } }),
+    ]);
 
         const suppliersData = await suppliersRes.json();
         const taxesData = await taxesRes.json();
         const despatchData = await despatchRes.json();
         const paymentData = await paymentRes.json();
         const currencyData = await currencyRes.json();
-        const purchaseNoData = purchaseNoRes ? await purchaseNoRes.json() : null;
-
         if (!active) return;
-
         setAllSuppliers(Array.isArray(suppliersData) ? suppliersData : suppliersData.data || []);
         setAllDespatchTerms(despatchData?.data || []);
         setAllPaymentTerms(paymentData?.data || []);
         setAllCurrencies(currencyData?.data || []);
         setAllTaxes(taxesData?.data || []);
-
-        if (purchaseNoData?.purchase_no && header.po_type === "standard") {
-          setHeader((prev) => ({ ...prev, purchase_no: purchaseNoData.purchase_no }));
-        }
-        console.log("Suppliers:", suppliersData);
-        console.log("Despatch Terms:", despatchData);
-        console.log("Payment Terms:", paymentData);
-        console.log("Currencies:", currencyData);
-        console.log("Taxes:", taxesData);
-        console.log("Generated Purchase No:", purchaseNoData?.purchase_no);
-      } catch (err) {
+        } catch (err) {
         console.error("Failed to load purchase data", err);
       } finally {
         if (active) setPageLoading(false);
       }
     };
+        console.log("Loading master data for purchase page:", company);
+        loadMasters();
+          return () => {
+            active = false;
+          };
+}, [company]);
 
-    loadData();
-    return () => {
-      active = false;
-    };
-  }, [company, isEdit, header.po_type]);
+useEffect(() => {
+  if (!company) return;
+  if (isEdit || isRenewMode) return;
+  if (header.po_type !== "standard") return;
+
+  const generateNumber = async () => {
+    const res = await fetch("/api/purchase/generateNo", {
+      headers: { "x-tenant": company },
+    });
+
+    const data = await res.json();
+
+    if (data?.purchase_no) {
+      setHeader((prev) => ({
+        ...prev,
+        purchase_no: data.purchase_no,
+      }));
+    }
+  };
+  console.log("Generating purchase number for new purchase:", company);
+  generateNumber();
+}, [company, isEdit, isRenewMode, header.po_type]);
 
   useEffect(() => {
-    if (!company || !purchaseId) return;
+    if (!company) return;
+    if (!purchaseId && !renewFromId) return;
     let active = true;
 
     const loadPurchase = async () => {
       setPageLoading(true);
       try {
-        const res = await fetch(`/api/purchase/${purchaseId}`, {
+        const sourceId = purchaseId || renewFromId;
+        const res = await fetch(`/api/purchase/${sourceId}`, {
           headers: { "x-tenant": company },
         });
         const result = await res.json();
         if (!active) return;
 
         if (result?.success && result?.data?.header) {
-          const headerData: PurchaseHeader = {
-            ...initialHeader,
-            ...result.data.header,
-            purchase_date: result.data.header.purchase_date?.split("T")[0] || initialHeader.purchase_date,
-            req_date: result.data.header.req_date?.split("T")[0] || "",
-          };
+          const sourceHeader = result.data.header;
+          const sourceStatus = String(sourceHeader?.status || "").toLowerCase();
+          const sourceApprovalStatus = String(sourceHeader?.approval_status || "").toLowerCase();
+          const sourceRejected = sourceStatus === "rejected" || sourceApprovalStatus === "rejected";
+
+          let generatedPurchaseNo = "";
+          if (isRenewMode && sourceHeader.po_type === "standard") {
+            const purchaseNoRes = await fetch("/api/purchase/generateNo", {
+              headers: { "x-tenant": company },
+            });
+            const purchaseNoData = await purchaseNoRes.json();
+            generatedPurchaseNo = purchaseNoData?.purchase_no || "";
+          }
+
+          const headerData: PurchaseHeader = isRenewMode
+            ? {
+                ...initialHeader,
+                ...sourceHeader,
+                id: undefined,
+                purchase_no: generatedPurchaseNo,
+                ref_no: "",
+                purchase_date: new Date().toISOString().split("T")[0],
+                req_date: sourceHeader.req_date?.split("T")[0] || "",
+                despatch_terms: sourceHeader.despatch_terms
+                  ? String(Number(sourceHeader.despatch_terms))
+                  : "",
+                payment_terms: sourceHeader.payment_terms
+                  ? String(Number(sourceHeader.payment_terms))
+                  : "",
+                approval_status: undefined,
+                status: "",
+                renewed_from_po_id: Number(sourceHeader.id),
+                renewed_from_purchase_no: sourceHeader.purchase_no || null,
+              }
+            : {
+                ...initialHeader,
+                ...sourceHeader,
+                purchase_date: sourceHeader.purchase_date?.split("T")[0] || initialHeader.purchase_date,
+                req_date: sourceHeader.req_date?.split("T")[0] || "",
+              };
+
+          if (isRenewMode) {
+            console.log("Renew mapped values", {
+              despatch_terms: headerData.despatch_terms,
+              payment_terms: headerData.payment_terms,
+              purchase_no: headerData.purchase_no,
+            });
+          }
+
+          if (isRenewMode && !sourceRejected) {
+            notify("Only rejected purchase orders can be renewed", {
+              severity: "error",
+            });
+            router.push(`/${company}/transactions/purchase`);
+            return;
+          }
+
           setHeader(headerData);
         }
 
         if (result?.success && Array.isArray(result?.data?.details)) {
-          setItems(result.data.details.map((row: PurchaseDetail) => calculateLineItem(row)));
+          const mappedRows = result.data.details.map((row: PurchaseDetail) =>
+            calculateLineItem(
+              isRenewMode
+                ? {
+                    ...row,
+                    id: undefined,
+                  }
+                : row
+            )
+          );
+          setItems(mappedRows);
         }
       } catch (err) {
         console.error("Failed to load purchase", err);
@@ -460,7 +702,7 @@ export default function PurchasePage() {
     return () => {
       active = false;
     };
-  }, [company, purchaseId]);
+  }, [company, purchaseId, renewFromId, isRenewMode, notify, router, setItems]);
 
   const freightTaxAmount = useMemo(() => {
     const freightCharges = Number(header.freight_charges || 0);
@@ -517,6 +759,18 @@ export default function PurchasePage() {
 
         if (Number(d.rate || 0) <= 0) newErrors[`rate_${index}`] = "Unit price must be > 0";
         if (Number(d.qty || 0) <= 0) newErrors[`qty_${index}`] = "Qty must be > 0";
+        const isTempProduct = String(d.product_id).startsWith("temp-");
+        if (isTempProduct) {
+        const tempItem = tempProducts.find(
+          (t) => t.temp_variant_id === String(d.product_id)
+        );
+        if (!tempItem?.newProduct?.name) {
+          newErrors[`product_name_${index}`] = "Product name required";
+        }
+        if (!tempItem?.newProduct?.sku) {
+          newErrors[`sku_${index}`] = "SKU required for temp product";
+        }
+      }
       });
     }
 
@@ -553,28 +807,66 @@ export default function PurchasePage() {
         }
       }
 
-      const url = purchaseId ? `/api/purchase/${purchaseId}` : "/api/purchase";
-      const method = purchaseId ? "PUT" : "POST";
+      console.log("TEMP PRODUCTS", tempProducts);
+      const tempProductMap = new Map<string, TempProductCatalogItem>(
+        tempProducts.map((item) => [item.temp_variant_id, item])
+      );
+      const payloadDetails = details.map((detail) => {
+        let tempItem = tempProductMap.get(String(detail.product_id));
+        if (!tempItem && String(detail.product_id).startsWith("temp-")) {
+          tempItem = tempProducts.find(
+            (item) => item.temp_variant_id === String(detail.product_id)
+          );
+        }
+        if (!tempItem) return detail;
+        return {
+          ...detail,
+          isManual: true,
+          newProduct: {
+            name: tempItem.newProduct.name,
+            sku: tempItem.newProduct.sku,
+            categoryId: tempItem.newProduct.categoryId,
+            source: tempItem.newProduct.source,
+          },
+        };
+      });
+      const payload = {
+        header: { ...computedHeader, attachment_url: attachmentUrl, user_name: user?.name },
+        details: payloadDetails,
+      };
+      console.log("PO ITEMS", details);
+      console.log("PO PAYLOAD", payload);
+      const url = isEdit ? `/api/purchase/${purchaseId}` : "/api/purchase";
+      const method = isEdit ? "PUT" : "POST";
       const res = await fetch(url, {
-        method: method,
+        method,
         headers: {
           "Content-Type": "application/json",
           "x-tenant": company,
         },
-        body: JSON.stringify({
-          header: { ...computedHeader, attachment_url: attachmentUrl, user_name: user?.name },
-          details,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Failed to save purchase");
+      if (!res.ok || !data.success) {
+        notify(data.message || data.error || "Failed to save purchase", {
+          severity: "error",
+        });
+        return;
+      }
       router.push(`/${company}/transactions/purchase`);
     } catch (err: any) {
       console.error("Save Purchase Error:", err);
-      setErrorMessage(err.message);
+      notify(err.message || "Something went wrong", {
+        severity: "error",
+      });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRenew = () => {
+    if (!purchaseId || !company) return;
+    router.push(`/${company}/transactions/purchase/add?renewFrom=${purchaseId}`);
   };
 
   const billToSupplier = allSuppliers.find((s) => String(s.id) === String(computedHeader.bill_to));
@@ -620,80 +912,112 @@ export default function PurchasePage() {
       {errorMessage && <div className="text-red-600 font-semibold">{errorMessage}</div>}
 
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">{isEdit ? "Edit Purchase" : "Create Purchase"}</h1>
+        <h1 className="text-2xl font-bold">
+          {isEdit ? "Edit Purchase" : isRenewMode ? "Renew Purchase" : "Create Purchase"}
+        </h1>
 
-        {computedHeader.approval_status && (
-          <span
-            className={`px-3 py-1 text-xs rounded-full font-semibold
-              ${computedHeader.approval_status === "Approved" ? "bg-blue-400 text-black" : ""}
-              ${computedHeader.approval_status === "Awaiting for approval" ? "bg-yellow-400 text-black" : ""}
-              ${computedHeader.approval_status === "Completed" ? "bg-gray-300 text-black" : ""}
-              ${computedHeader.approval_status === "Partial" ? "bg-indigo-400 text-black" : ""}
-              ${computedHeader.approval_status === "Rejected" ? "bg-red-400 text-black" : ""}
-            `}
-          >
-            {computedHeader.approval_status}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {computedHeader.approval_status && (
+            <span
+              className={`px-3 py-1 text-xs rounded-full font-semibold
+                ${computedHeader.approval_status === "Approved" ? "bg-blue-400 text-black" : ""}
+                ${computedHeader.approval_status === "Awaiting for approval" ? "bg-yellow-400 text-black" : ""}
+                ${computedHeader.approval_status === "Completed" ? "bg-gray-300 text-black" : ""}
+                ${computedHeader.approval_status === "Partial" ? "bg-indigo-400 text-black" : ""}
+                ${computedHeader.approval_status === "Rejected" ? "bg-red-400 text-black" : ""}
+              `}
+            >
+              {computedHeader.approval_status}
+            </span>
+          )}
+          {isEdit && isRejected && (
+            <button
+              type="button"
+              onClick={handleRenew}
+              className="bg-[var(--color-blue-600)] text-white px-4 py-2 rounded text-sm font-semibold hover:opacity-90"
+            >
+              Renew
+            </button>
+          )}
+        </div>
 
         {errors.details && (
           <span className="text-red-500 text-sm font-medium whitespace-nowrap">{errors.details}</span>
         )}
       </div>
+      {computedHeader.renewed_from_po_id && (
+        <div className="mb-2 text-sm text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg px-3 py-2 inline-block">
+          Renewed from PO: {computedHeader.renewed_from_purchase_no || computedHeader.renewed_from_po_id}
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className={`space-y-6 ${!isEditable ? "opacity-70" : ""}`}>
-        <PurchaseHeaderForm
-          header={computedHeader}
-          setHeader={setHeader}
-          errors={errors}
-          setErrors={setErrors}
-          isEditable={isEditable}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          allSuppliers={allSuppliers}
-          allDespatchTerms={allDespatchTerms}
-          allPaymentTerms={allPaymentTerms}
-          currencyCode={currencyCode}
-          billToAddress={billToAddress}
-          shipToAddress={shipToAddress}
-          setAttachmentFile={setAttachmentFile}
-        />
+       <PurchaseHeaderForm
+  header={computedHeader}
+  setHeader={setHeader}
+  errors={errors}
+  setErrors={setErrors}
+  isEditable={isEditable}
+  activeTab={activeTab}
+  setActiveTab={setActiveTab}
+  allSuppliers={allSuppliers}
+  allDespatchTerms={allDespatchTerms}
+  allPaymentTerms={allPaymentTerms}
+  currencyCode={currencyCode}
+  billToAddress={billToAddress}
+  shipToAddress={shipToAddress}
+  setAttachmentFile={setAttachmentFile}
+/>
 
-        <PurchaseItemsTable
-          details={details}
-          errors={errors}
-          isEditable={isEditable}
-          allTaxes={allTaxes}
-          updateRow={updateRow}
-          removeRow={removeRow}
-          totalQty={totals.totalQty}
-          totalAmount={totals.totalAmount}
-          onAddItems={() => setShowProductPopup(true)}
-          showAddItems={activeTab === "items"}
-          onAddNewProduct={() => setShowAddProductModal(true)}
-          barcodeValue={barcodeValue}
-          onBarcodeChange={(value) => {
-            setBarcodeValue(value);
-            if (barcodeMessage) setBarcodeMessage("");
-          }}
-          onBarcodeSubmit={() => handleBarcodeSubmit()}
-          barcodeMessage={barcodeMessage}
-          barcodeInputRef={barcodeInputRef}
-          onTaxChange={handleTaxChange}
-          onBulkApply={applyBulkUpdates}
-          productTypeLabel={productTypeLabel}
-        />
+{activeTab === "items" ? (
+  <PurchaseItemsTable
+    details={details}
+    errors={errors}
+    isEditable={isEditable}
+    allTaxes={allTaxes}
+    updateRow={updateRow}
+    removeRow={removeRow}
+    totalQty={totals.totalQty}
+    totalAmount={totals.totalAmount}
+    onAddItems={() => setShowProductPopup(true)}
+    showAddItems={true}
+    onAddNewProduct={() => setShowAddProductModal(true)}
+    barcodeValue={barcodeValue}
+    onBarcodeChange={(value) => {
+      setBarcodeValue(value);
+      if (barcodeMessage) setBarcodeMessage("");
+    }}
+    onBarcodeSubmit={() => handleBarcodeSubmit()}
+    barcodeMessage={barcodeMessage}
+    barcodeInputRef={barcodeInputRef}
+    onTaxChange={handleTaxChange}
+    onBulkApply={applyBulkUpdates}
+    productTypeLabel={productTypeLabel}
+  />
+) : (
+  <div className="bg-white rounded-xl shadow p-4">
+    <h3 className="text-sm font-semibold text-gray-700 mb-3">
+      Purchase Summary
+    </h3>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+      <div>Total Items: <span className="font-semibold">{details.length}</span></div>
+      <div>Total Qty: <span className="font-semibold">{totals.totalQty}</span></div>
+      <div>Items Amount: <span className="font-semibold">{totals.totalAmount.toFixed(2)}</span></div>
+      <div>Grand Total: <span className="font-semibold">{grandTotal.toFixed(2)}</span></div>
+    </div>
+  </div>
+)}
 
-        <TotalsSection
-          formatMoney={formatMoney}
-          itemsSubtotal={itemsSubtotal}
-          productTax={productTax}
-          freightBase={freightBase}
-          freightTaxAmount={freightTax}
-          packagingAmount={packagingAmount}
-          extraChargesTotal={extraChargesTotal}
-          grandTotal={grandTotal}
-        />
+<TotalsSection
+  formatMoney={formatMoney}
+  itemsSubtotal={itemsSubtotal}
+  productTax={productTax}
+  freightBase={freightBase}
+  freightTaxAmount={freightTax}
+  packagingAmount={packagingAmount}
+  extraChargesTotal={extraChargesTotal}
+  grandTotal={grandTotal}
+/>
 
         <div className="flex justify-end gap-4">
           <button
@@ -704,7 +1028,11 @@ export default function PurchasePage() {
             Back
           </button>
           {isEditable && (
-            <button className="bg-[var(--color-blue-600)] text-white px-6 py-2 rounded hover:opacity-90">
+            <button 
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="bg-[var(--color-blue-600)] text-white px-6 py-2 rounded hover:opacity-90">
               {isEdit ? "Update Purchase" : "Create Purchase"}
             </button>
           )}
@@ -751,7 +1079,8 @@ export default function PurchasePage() {
       <AddProductModal
         open={showAddProductModal}
         onClose={() => setShowAddProductModal(false)}
-        onSaved={handleProductSaved}
+        saveMode="local"
+        onLocalSave={handleLocalProductSaved}
       />
     </div>
   );

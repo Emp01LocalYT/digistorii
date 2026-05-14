@@ -388,60 +388,63 @@ export default function TaxMasterPage() {
             {/* LIST */}
             {!showForm && (
                 <>
-                    <div className="relative max-w-sm">
-                        <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
+                    <div className="ui-table-card">
+            <div className="ui-search-section">
+              <div className="ui-search-wrapper">
+                        <MagnifyingGlassIcon className="ui-search-icon" />
                         <input
                             type="text"
                             placeholder="Search Tax..."
-                            className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                            className="ui-input"
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
- 
-                    <div className="bg-white rounded-2xl shadow-lg overflow-hidden mb-8">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-indigo-50 text-gray-600 text-sm">
-                                    <tr className="border-t hover:bg-blue-50 transition">
-                                        <th className="p-4 text-left">Tax Name</th>
-                                        <th>Total %</th>
-                                        <th>Effective From</th>
-                                        <th>Status</th>
-                                        <th>Action</th>
+            </div>
+                        <div className="ui-table-scroll">
+                            <table className="ui-table">
+                                <thead className="ui-table-head">
+                                    <tr className="ui-table-row">
+                                        <th className="ui-table-th">Tax Name</th>
+                                        <th className="ui-table-th">Total %</th>
+                                        <th className="ui-table-th">Effective From</th>
+                                        <th className="ui-table-th">Status</th>
+                                        <th className="ui-table-th-center">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {tableLoading ? (
-                                        <tr className="border-t hover:bg-blue-50 transition">
-                                            <td colSpan={5} className="text-center py-8 text-gray-400">
+                                        <tr className="ui-table-row">
+                                            <td colSpan={5} className="ui-loading-row">
                                                 Loading...
                                             </td>
                                         </tr>
                                     ) : paginatedTaxes.length > 0 ? (
                                         paginatedTaxes.map((tax) => (
-                                            <tr key={tax.id} className="border-t hover:bg-blue-50 transition">
-                                                <td className="p-4 text-left">{tax.tax_name}</td>
-                                                <td className="text-center pr-4">{tax.total_percentage}%</td>
-                                                <td className="text-center">{formatDate(tax.effective_from)}</td>
-                                                <td className="text-center">
+                                            <tr key={tax.id} className="ui-table-row">
+                                                <td className="ui-table-td">{tax.tax_name}</td>
+                                                <td className="ui-table-td">{tax.total_percentage}%</td>
+                                                <td className="ui-table-td">{formatDate(tax.effective_from)}</td>
+                                                <td className="ui-table-td">
                                                     {/* {tax.is_active ? "Active" : "Inactive"} */}
                                                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${tax.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                                         {tax.is_active ? "ACTIVE" : "INACTIVE"}
                                                     </span>
                                                 </td>
-                                                <td className="text-center">
+                                                <td className="ui-table-td-center">
+                                                    <div className="ui-table-actions">
                                                     <button
                                                         onClick={() => { handleEdit(tax); setErrors({}); setShowForm(true); }}
                                                         className="text-indigo-600"
                                                     >
                                                         <PencilSquareIcon className="w-5 h-5" />
                                                     </button>
+                                                     </div>
                                                 </td>
                                             </tr>
                                         ))
                                     ) : (
                                         <tr>
-                                            <td colSpan={5} className="text-center py-8 text-gray-400">
+                                            <td colSpan={5} className="ui-loading-row">
                                                 No records found.
                                             </td>
                                         </tr>
@@ -449,14 +452,14 @@ export default function TaxMasterPage() {
                                 </tbody>
                             </table>
                         </div>
-                        <div className="border-t border-gray-200 px-4 py-4 sm:px-6">
+                        <div className="ui-pagination-wrapper">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <p className="text-sm text-gray-700">
+                                <p className="ui-pagination-info">
                                     Showing <span className="font-medium">{showingFrom}</span> to{" "}
                                     <span className="font-medium">{showingTo}</span> of{" "}
                                     <span className="font-medium">{totalItems}</span> results
                                 </p>
-                                <div className="flex items-center gap-2">
+                                <div className="ui-table-actions">
                                     <label htmlFor="tax-rows-per-page" className="text-sm text-gray-600">
                                         Rows per page
                                     </label>
@@ -464,7 +467,7 @@ export default function TaxMasterPage() {
                                         id="tax-rows-per-page"
                                         value={rowsPerPage}
                                         onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                                        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                                        className="ui-pagination-select"
                                     >
                                         <option value={10}>10</option>
                                         <option value={20}>20</option>
@@ -479,7 +482,7 @@ export default function TaxMasterPage() {
                                         type="button"
                                         onClick={goToPreviousPage}
                                         disabled={currentPage === 1}
-                                        className="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="ui-pagination-icon-btn rounded-md"
                                     >
                                         Previous
                                     </button>
@@ -487,19 +490,19 @@ export default function TaxMasterPage() {
                                         type="button"
                                         onClick={goToNextPage}
                                         disabled={currentPage === totalPages}
-                                        className="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="ui-pagination-icon-btn rounded-md ml-3"
                                     >
                                         Next
                                     </button>
                                 </div>
 
                                 <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-                                    <nav aria-label="Pagination" className="isolate inline-flex -space-x-px rounded-md shadow-sm">
+                                    <nav aria-label="Pagination" className="ui-pagination-nav">
                                         <button
                                             type="button"
                                             onClick={goToPreviousPage}
                                             disabled={currentPage === 1}
-                                            className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                            className="ui-pagination-icon-btn rounded-l-md"
                                         >
                                             <span className="sr-only">Previous</span>
                                             <ChevronLeftIcon className="h-5 w-5" />
@@ -509,7 +512,7 @@ export default function TaxMasterPage() {
                                             page === "..." ? (
                                                 <span
                                                     key={`ellipsis-${idx}`}
-                                                    className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
+                                                    className="ui-pagination-btn ui-pagination-btn-inactive"
                                                 >
                                                     ...
                                                 </span>
@@ -519,9 +522,8 @@ export default function TaxMasterPage() {
                                                     type="button"
                                                     onClick={() => goToPage(page)}
                                                     aria-current={currentPage === page ? "page" : undefined}
-                                                    className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${currentPage === page
-                                                        ? "z-10 bg-indigo-600 text-white"
-                                                        : "text-gray-900 hover:bg-gray-50"
+                                                    className={`ui-pagination-btn ${currentPage === page
+                                                        ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                                                         }`}
                                                 >
                                                     {page}
@@ -533,7 +535,7 @@ export default function TaxMasterPage() {
                                             type="button"
                                             onClick={goToNextPage}
                                             disabled={currentPage === totalPages}
-                                            className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                            className="ui-pagination-icon-btn rounded-r-md"
                                         >
                                             <span className="sr-only">Next</span>
                                             <ChevronRightIcon className="h-5 w-5" />
@@ -646,7 +648,7 @@ export default function TaxMasterPage() {
                         <button
                             type="button"
                             onClick={() => { setShowForm(false); setErrors({}); setForm(initialState); }}
-                            className="bg-gray-300 px-6 py-2 rounded-lg"
+                            className="ui-btn ui-btn-secondary ui-btn-responsive"
                         >
                             Cancel
                         </button>
@@ -673,7 +675,7 @@ export default function TaxMasterPage() {
                         <tbody>
                             {savedTax.components.map((comp, index) => (
                                 <tr key={index} className="border-t">
-                                    <td className="p-3">
+                                    <td className="ui-table-td">
                                         <input
                                             value={comp.component_name}
                                             onChange={(e) => {
@@ -690,7 +692,7 @@ export default function TaxMasterPage() {
                                         )}
                                     </td>
  
-                                    <td className="p-3">
+                                    <td className="ui-table-td">
                                         <input
                                             type="number"
                                             value={comp.component_percentage === 0 ? "" : comp.component_percentage}
@@ -730,7 +732,7 @@ export default function TaxMasterPage() {
                                         )}
                                     </td>
  
-                                    {/* <td className="text-center">
+                                    {/* <td className="ui-table-td-center">
                     <button
                       onClick={() => removeComponent(index)}
                       className="text-red-600"
@@ -787,3 +789,9 @@ export default function TaxMasterPage() {
         </div>
     );
 }
+
+
+
+
+
+

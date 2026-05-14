@@ -29,6 +29,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    await client.query(
+      `
+        UPDATE "${schema}".product_pricing
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE tenant_id = $1
+          AND is_active = TRUE
+          AND expires_at IS NOT NULL
+          AND CURRENT_DATE > expires_at::date
+      `,
+      [company]
+    );
+
     const result = await client.query(
       `
         SELECT
@@ -43,6 +55,8 @@ export async function POST(req: NextRequest) {
           AND tm.is_active = TRUE
         WHERE pp.tenant_id = $1
           AND pp.is_active = TRUE
+          AND CURRENT_DATE >= pp.active_from::date
+          AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
           AND pp.variant_id = ANY($2::bigint[])
       `,
       [company, variantIds]

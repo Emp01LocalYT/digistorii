@@ -193,6 +193,162 @@
   }
 }
 
+@layer components {
+  /* =========================
+     SEARCH
+  ========================= */
+
+  .ui-search-section {
+    @apply border-b border-gray-100 p-4;
+  }
+
+  .ui-search-wrapper {
+    @apply relative max-w-md;
+  }
+
+  .ui-search-icon {
+    @apply pointer-events-none absolute left-3 top-2.5 h-5 w-5 text-gray-400;
+  }
+
+  .ui-input {
+    @apply w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm
+           placeholder-gray-500
+           focus:border-blue-500 focus:outline-none
+           focus:ring-2 focus:ring-blue-100
+           transition-all duration-200;
+  }
+
+  /* =========================
+     TABLE CARD
+  ========================= */
+
+  .ui-table-card {
+    @apply overflow-hidden rounded-xl border border-gray-200 bg-white;
+  }
+
+  .ui-table-scroll {
+    @apply max-h-[62vh] overflow-auto;
+  }
+
+  .ui-table {
+    @apply min-w-full text-left text-sm;
+  }
+
+  .ui-table-head {
+    @apply sticky top-0 z-20 bg-indigo-50 text-gray-600;
+  }
+
+  .ui-table-th {
+    @apply bg-indigo-50 px-4 py-3 text-gray-600 border-b border-gray-200;
+  }
+
+  .ui-table-th-center {
+    @apply bg-indigo-50 px-4 py-3 text-center text-gray-600 border-b border-gray-200;
+  }
+
+  .ui-table-row {
+    @apply border-t border-gray-100;
+  }
+
+  .ui-table-td {
+    @apply px-4 py-3;
+  }
+
+  .ui-table-td-center {
+    @apply px-4 py-3 text-center;
+  }
+
+  .ui-loading-row {
+    @apply text-center py-10 text-gray-400 animate-pulse;
+  }
+
+  .ui-empty-row {
+    @apply px-4 py-6 text-gray-500;
+  }
+
+  /* =========================
+     STICKY ACTION COLUMN
+  ========================= */
+
+  .ui-sticky-action {
+    @apply sticky right-0 bg-white px-4 py-3;
+  }
+
+  .ui-sticky-header-action {
+    @apply sticky right-0 bg-indigo-50;
+  }
+
+  .ui-table-actions {
+    @apply flex items-center justify-center gap-2;
+  }
+
+  /* =========================
+     PAGINATION
+  ========================= */
+
+  .ui-pagination-wrapper {
+    @apply border-t border-gray-100 px-4 py-4;
+  }
+
+  .ui-pagination-info {
+    @apply text-xs text-gray-600;
+  }
+
+  .ui-pagination-select {
+    @apply rounded border border-gray-300 px-2 py-1 text-xs;
+  }
+
+  .ui-pagination-nav {
+    @apply isolate inline-flex -space-x-px rounded-md shadow-sm;
+  }
+
+  .ui-pagination-btn {
+    @apply relative inline-flex items-center px-3 py-2 text-xs font-medium
+           ring-1 ring-inset ring-gray-300 hover:bg-gray-50;
+  }
+
+  .ui-pagination-btn-active {
+    @apply z-10 bg-blue-600 text-white;
+  }
+
+  .ui-pagination-btn-inactive {
+    @apply text-gray-700;
+  }
+
+  .ui-pagination-icon-btn {
+    @apply relative inline-flex items-center px-3 py-2 text-xs font-medium
+           text-gray-700 ring-1 ring-inset ring-gray-300
+           hover:bg-gray-50
+           disabled:cursor-not-allowed
+           disabled:opacity-50;
+  }
+
+  .ui-form-actions {
+    @apply flex flex-col gap-4 pt-6 border-t border-gray-100
+           sm:flex-row sm:justify-between sm:items-center;
+  }
+
+  .ui-btn {
+    @apply px-6 py-2 rounded-lg font-medium transition;
+  }
+
+  .ui-btn-secondary {
+    @apply bg-gray-300 text-gray-800 hover:bg-gray-400;
+  }
+
+  .ui-btn-primary {
+    @apply bg-[var(--color-blue-500)] text-white hover:opacity-90;
+  }
+
+  .ui-btn-responsive {
+    @apply w-full sm:w-auto;
+  }
+
+  .ui-btn-group {
+    @apply flex flex-col gap-3 sm:flex-row sm:gap-4 w-full sm:w-auto;
+  }
+}
+
 @utility menu-item {
   @apply relative flex items-center w-full gap-3 px-3 py-2 font-medium rounded-lg text-theme-sm;
 }

@@ -25,6 +25,18 @@ export async function GET(req: NextRequest) {
     const { company, schema } = await getTenantSchema(req);
     const includeCatalog = String(req.nextUrl.searchParams.get("catalog") || "").toLowerCase() === "yes";
 
+    await client.query(
+      `
+        UPDATE "${schema}".product_pricing
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE tenant_id = $1
+          AND is_active = TRUE
+          AND expires_at IS NOT NULL
+          AND CURRENT_DATE > expires_at::date
+      `,
+      [company]
+    );
+
     if (includeCatalog) {
       const result = await client.query(
         `
@@ -46,6 +58,8 @@ export async function GET(req: NextRequest) {
             ON pp.tenant_id = $1
             AND pp.variant_id = pv.id
             AND pp.is_active = TRUE
+            AND CURRENT_DATE >= pp.active_from::date
+            AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
         WHERE pv.status IN ('draft', 'active', 'out_of_stock')
           AND p.status = 1
           ORDER BY p.id ASC, pv.id ASC
@@ -82,7 +96,22 @@ export async function GET(req: NextRequest) {
           pp.final_selling_price,
           pp.active_from,
           pp.expires_at,
-          pp.is_active,
+          CASE
+            WHEN pp.is_active = TRUE
+              AND CURRENT_DATE >= pp.active_from::date
+              AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
+            THEN TRUE
+            ELSE FALSE
+          END AS is_active,
+          CASE
+            WHEN pp.is_active = TRUE
+              AND CURRENT_DATE >= pp.active_from::date
+              AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
+            THEN 'Active'
+            ELSE 'Inactive'
+          END AS status,
+          tm.id AS tax_id,
+          tm.tax_name,
           pp.created_at,
           pp.updated_at
         FROM "${schema}".product_pricing pp
@@ -90,8 +119,20 @@ export async function GET(req: NextRequest) {
           ON pv.id = pp.variant_id
         LEFT JOIN "${schema}".products p
           ON p.id = pv.product_id
+        LEFT JOIN "${schema}".tax_master tm
+          ON tm.total_percentage = pp.tax_percent
+          AND tm.is_active = TRUE
         WHERE pp.tenant_id = $1
-        ORDER BY pp.is_active DESC, pp.created_at DESC
+        ORDER BY
+          CASE
+            WHEN pp.is_active = TRUE
+              AND CURRENT_DATE >= pp.active_from::date
+              AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
+            THEN 1
+            ELSE 0
+          END DESC,
+          pp.active_from DESC,
+          pp.created_at DESC
       `,
       [company]
     );
@@ -294,7 +335,12 @@ export async function POST(req: NextRequest) {
           payload.final_selling_price,
           payload.effective_date,
           payload.expires_at,
-          TRUE
+          CASE
+            WHEN CURRENT_DATE >= payload.effective_date
+              AND (payload.expires_at IS NULL OR CURRENT_DATE <= payload.expires_at)
+            THEN TRUE
+            ELSE FALSE
+          END
         FROM unnest(
           $2::bigint[],
           $3::bigint[],
@@ -348,6 +394,17 @@ export async function POST(req: NextRequest) {
         expiresAtDates,
       ]
     );
+
+    await client.query(
+  `
+  UPDATE "${schema}".product_variants
+  SET status = 'active',
+      updated_at = NOW()
+  WHERE id = ANY($1::bigint[])
+  AND status = 'draft'
+  `,
+  [variantIds]
+);
 
     await client.query("COMMIT");
     return NextResponse.json({ message: "Pricing saved", insertedCount: normalizedRows.length });
