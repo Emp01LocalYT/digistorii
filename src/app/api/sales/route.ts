@@ -32,7 +32,8 @@ const getWarehouseFromCookie = (req: NextRequest) => {
 
   try {
     const parsed = JSON.parse(userCookie);
-    return toPositiveInt(parsed?.default_warehouse_id);
+    // warehouse_id is from company_user_map, not user_settings
+    return toPositiveInt(parsed?.warehouse_id);
   } catch {
     return null;
   }
@@ -138,14 +139,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const settingsRes = await client.query(
-      `SELECT default_warehouse_id, default_locator_id, branch_name FROM "${schema}".user_settings WHERE user_id = $1 LIMIT 1`,
-      [userId]
-    );
-    const settings = settingsRes.rows[0] || {};
-    const warehouseId = toPositiveInt(settings.default_warehouse_id) || null;
-    const locatorId = toPositiveInt(settings.default_locator_id) || null;
-    const branchName = settings.branch_name ? String(settings.branch_name).trim() : null;
+    // Get warehouse_id from user context (company_user_map), not from user_settings
+    const warehouseId = getWarehouseFromCookie(req);
+    if (!warehouseId) {
+      return NextResponse.json(
+        { success: false, error: "Warehouse not assigned for this user. Contact administrator." },
+        { status: 400 }
+      );
+    }
+    const locatorId = null; // locatorId is not used, warehouse is sufficient
+    const branchName = null; // branchName is not used
 
     const body = await req.json();
     console.log("STEP D - body received", body);

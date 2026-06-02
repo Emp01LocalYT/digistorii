@@ -146,7 +146,6 @@ type ThermalPrintDetail = {
 };
 
 export default function SalesForm() {
-  const [userWarehouse, setUserWarehouse] = useState<any>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const salesId = searchParams.get("id");
@@ -1285,33 +1284,12 @@ export default function SalesForm() {
     redirect?: boolean;
     reset?: boolean;
   };
-useEffect(() => {
-  const loadUserWarehouse = async () => {
-    try {
-      const res = await fetch("/api/warehouses/user", {
-        headers: {
-          "x-tenant": company,
-        },
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        setUserWarehouse(data.data);
-      }
-    } catch (err) {
-      console.error("Failed to load user warehouse", err);
-    }
-  };
-
-  if (company) loadUserWarehouse();
-}, [company]);
 
   const saveSales = async (printAfterSave: boolean, options: SaveOptions = {}) => {
     const { redirect = true, reset = true } = options;
     updateUiState({ errorMessage: "" });
-    if (!userWarehouse?.id) {
-      updateUiState({ errorMessage: "Warehouse not assigned for this user. Contact admin." });
+    if (!user?.warehouse_id) {
+      updateUiState({ errorMessage: "Warehouse not assigned for this user. Contact administrator." });
       return null;
     }
     if (!validate()) return null;
@@ -1324,7 +1302,7 @@ useEffect(() => {
         headers: { 
           "Content-Type": "application/json", 
           "x-tenant": company,
-          "x-warehouse-id": userWarehouse?.id?.toString(),
+          "x-warehouse-id": user?.warehouse_id?.toString(),
         },
         body: JSON.stringify({
           items: details.map((d) => ({
@@ -1335,7 +1313,7 @@ useEffect(() => {
 
       });
       const stockCheckData = await stockCheckRes.json();
-      console.log("STEP 1 - pricing response:", stockCheckData,"warehouse", userWarehouse?.id);
+      console.log("STEP 1 - pricing response:", stockCheckData,"warehouse", user?.warehouse_id);
       if (!stockCheckData.success) {
         console.error("Stock check failed:", stockCheckData);
         // stockCheckData.errors is an array of { product_id, requested, available, product_name }
