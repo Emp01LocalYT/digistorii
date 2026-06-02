@@ -10,6 +10,7 @@ import { useTenant } from "@/context/TenantContext";
 import { useUser } from "@/context/CurrentUserContext";
 import CustomerAnalyticsPanel from "@/components/sales/CustomerAnalyticsPanel";
 import SalesHeader from "@/components/sales/SalesHeader";
+import type { CustomerSelectOption } from "@/components/sales/SalesHeader";
 import SalesTable from "@/components/sales/SalesTable";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import ThermalInvoice from "@/components/ThermalInvoice";
@@ -65,6 +66,42 @@ const generateSalesNo = () => {
   return `SAL-${datePart}-${randomPart}`;
 };
 
+const normalizeCustomer = (raw: any): Customer | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const numericId = Number(raw.id ?? raw.customer_id ?? raw.customerId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+
+  const customerName = String(
+    raw.cust_name ?? raw.name ?? raw.customer_name ?? raw.customerName ?? ""
+  ).trim();
+  const customerPhone = String(
+    raw.phone ?? raw.phoneNumber ?? raw.contact_phone1 ?? raw.mobile_no ?? ""
+  ).trim();
+  const customerCode = String(raw.customer_code ?? raw.cust_code ?? "").trim();
+
+  return {
+    ...raw,
+    id: numericId,
+    customer_code: customerCode,
+    cust_code: customerCode || String(raw.cust_code || "").trim(),
+    name: customerName,
+    cust_name: customerName,
+    phone: customerPhone || null,
+  } as Customer;
+};
+
+const mapCustomerToSelectOption = (customer: Customer): CustomerSelectOption => {
+  const phoneNumber = String(customer.phone || "").trim();
+  const customerName = String(customer.cust_name || customer.name || "").trim();
+  return {
+    value: String(customer.id),
+    label: `${phoneNumber} - ${customerName}`,
+    phoneNumber,
+    customerName,
+    customer,
+  };
+};
+
 const getCustomerDisplayName = (customer?: Customer | null) => {
   if (!customer) return "";
   return String(customer.cust_name || customer.name || "");
@@ -109,7 +146,7 @@ type ThermalPrintDetail = {
 };
 
 export default function SalesForm() {
-  const [userSettings, setUserSettings] = useState<any>(null);
+  const [userWarehouse, setUserWarehouse] = useState<any>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const salesId = searchParams.get("id");
@@ -173,13 +210,13 @@ export default function SalesForm() {
     billsList: [] as SalesIndexRow[],
     billsLoading: false,
     billsError: "",
-    showCustomerModal: false,
-    customerSearchName: "",
+    showQuickCustomerPopup: false,
+    customerLookupInput: "",
     customerSearchPhone: "",
     newCustomerName: "",
     newCustomerPhone: "",
-    customerModalLoading: false,
-    customerModalError: "",
+    customerQuickAddLoading: false,
+    customerQuickAddError: "",
     purchaseHistory: [] as PurchaseHistoryRow[],
     purchaseMonthly: [] as MonthlySpendRow[],
     printSnapshot: null as { header: any; details: SalesDetail[] } | null,
@@ -188,6 +225,9 @@ export default function SalesForm() {
     header: ThermalPrintHeader;
     details: ThermalPrintDetail[];
   } | null>(null);
+  const [customerOptions, setCustomerOptions] = useState<CustomerSelectOption[]>([]);
+  const [selectedCustomerOption, setSelectedCustomerOption] =
+    useState<CustomerSelectOption | null>(null);
 
 
   const { header, details, couponCode, barcodeValue, barcodeMessage } = formState;
@@ -210,13 +250,12 @@ export default function SalesForm() {
     billsList,
     billsLoading,
     billsError,
-    showCustomerModal,
-    customerSearchName,
-    customerSearchPhone,
+    showQuickCustomerPopup,
+    customerLookupInput,
     newCustomerName,
     newCustomerPhone,
-    customerModalLoading,
-    customerModalError,
+    customerQuickAddLoading,
+    customerQuickAddError,
     purchaseHistory,
     purchaseMonthly,
     printSnapshot,
@@ -269,32 +308,19 @@ export default function SalesForm() {
     []
   );
 
-  const selectedCustomer = useMemo(
-    () =>
-      allCustomers.find((c) => String(c.id) === String(header.customer_id)),
-    [allCustomers, header.customer_id]
-  );
-
-  const selectedCustomerName = selectedCustomer
-    ? (() => {
-        const code = selectedCustomer.customer_code || selectedCustomer.cust_code;
-        const name = selectedCustomer.name || selectedCustomer.cust_name || "";
-        return code ? `${code} - ${name}` : name;
-      })()
-    : "";
-
-  const filteredCustomers = useMemo(() => {
-    const searchName = String(customerSearchName || "").trim().toLowerCase();
-    const searchPhone = String(customerSearchPhone || "").trim().toLowerCase();
-    return allCustomers.filter((c) => {
-      const nameValue = String(c.name || c.cust_name || "").toLowerCase();
-      const codeValue = String(c.customer_code || c.cust_code || "").toLowerCase();
-      const phoneValue = String(c.phone || "").toLowerCase();
-      const matchesName = !searchName || nameValue.includes(searchName) || codeValue.includes(searchName);
-      const matchesPhone = !searchPhone || phoneValue.includes(searchPhone);
-      return matchesName && matchesPhone;
-    });
-  }, [allCustomers, customerSearchName, customerSearchPhone]);
+  const filteredCustomerOptions = useMemo(() => {
+    const search = String(customerLookupInput || "").trim().toLowerCase();
+    console.log("[sales] search input:", search);
+    const filtered = !search
+      ? customerOptions
+      : customerOptions.filter((option) => {
+          const phone = String(option.phoneNumber || "").toLowerCase();
+          const name = String(option.customerName || "").toLowerCase();
+          return phone.includes(search) || name.includes(search);
+        });
+    console.log("[sales] filtered results:", filtered);
+    return filtered;
+  }, [customerLookupInput, customerOptions]);
 
   const setErrors = useCallback(
     (updater: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => {
@@ -890,6 +916,8 @@ export default function SalesForm() {
       purchaseHistory: [],
       purchaseMonthly: [],
     });
+    setCustomerOptions([]);
+    setSelectedCustomerOption(null);
   }, [company, updateMasterData, updateUiState]);
 
   useEffect(() => {
@@ -905,6 +933,9 @@ export default function SalesForm() {
         const data = await res.json();
         if (data?.success) {
           const payload = data.data || {};
+          const normalizedCustomers = (payload.customers ?? masterData.customers)
+            .map((customer: any) => normalizeCustomer(customer))
+            .filter((customer: Customer | null): customer is Customer => Boolean(customer));
           const normalizedTaxes = (payload.taxes ?? masterData.taxes).map((tax: any) => ({
             ...tax,
             tax_name:
@@ -915,7 +946,7 @@ export default function SalesForm() {
               "",
           }));
           updateMasterData({
-            customers: payload.customers ?? masterData.customers,
+            customers: normalizedCustomers,
             uoms: payload.uoms ?? masterData.uoms,
             taxes: normalizedTaxes,
           });
@@ -1255,9 +1286,9 @@ export default function SalesForm() {
     reset?: boolean;
   };
 useEffect(() => {
-  const loadUserSettings = async () => {
+  const loadUserWarehouse = async () => {
     try {
-      const res = await fetch("/api/user-settings/me", {
+      const res = await fetch("/api/warehouses/user", {
         headers: {
           "x-tenant": company,
         },
@@ -1266,21 +1297,21 @@ useEffect(() => {
       const data = await res.json();
 
       if (data.success) {
-        setUserSettings(data.data);
+        setUserWarehouse(data.data);
       }
     } catch (err) {
-      console.error("Failed to load user settings", err);
+      console.error("Failed to load user warehouse", err);
     }
   };
 
-  if (company) loadUserSettings();
+  if (company) loadUserWarehouse();
 }, [company]);
 
   const saveSales = async (printAfterSave: boolean, options: SaveOptions = {}) => {
     const { redirect = true, reset = true } = options;
     updateUiState({ errorMessage: "" });
-    if (!userSettings?.default_warehouse_id) {
-      updateUiState({ errorMessage: "Default warehouse not set for this user. Contact admin." });
+    if (!userWarehouse?.id) {
+      updateUiState({ errorMessage: "Warehouse not assigned for this user. Contact admin." });
       return null;
     }
     if (!validate()) return null;
@@ -1293,7 +1324,7 @@ useEffect(() => {
         headers: { 
           "Content-Type": "application/json", 
           "x-tenant": company,
-          "x-warehouse-id": userSettings?.default_warehouse_id?.toString(),
+          "x-warehouse-id": userWarehouse?.id?.toString(),
         },
         body: JSON.stringify({
           items: details.map((d) => ({
@@ -1304,7 +1335,7 @@ useEffect(() => {
 
       });
       const stockCheckData = await stockCheckRes.json();
-      console.log("STEP 1 - pricing response:", stockCheckData,"warehouse", userSettings?.default_warehouse_id);
+      console.log("STEP 1 - pricing response:", stockCheckData,"warehouse", userWarehouse?.id);
       if (!stockCheckData.success) {
         console.error("Stock check failed:", stockCheckData);
         // stockCheckData.errors is an array of { product_id, requested, available, product_name }
@@ -1448,7 +1479,7 @@ useEffect(() => {
     }
   };
   const loadCustomers = useCallback(async () => {
-    if (!company) return;
+    if (!company) return [] as Customer[];
     try {
       const res = await fetch("/api/customers", {
         headers: {
@@ -1457,49 +1488,104 @@ useEffect(() => {
       });
       const data = await res.json();
       if (data?.success) {
-        updateMasterData({ customers: data.data || [] });
+        const fetchedCustomers = Array.isArray(data.data) ? data.data : [];
+        console.log("[sales] fetched customers:", fetchedCustomers);
+        const normalizedCustomers = fetchedCustomers
+          .map((customer: any) => normalizeCustomer(customer))
+          .filter((customer: Customer | null): customer is Customer => Boolean(customer));
+        const mappedOptions = normalizedCustomers.map(mapCustomerToSelectOption);
+        console.log("[sales] mapped options:", mappedOptions);
+        updateMasterData({ customers: normalizedCustomers });
+        setCustomerOptions(mappedOptions);
+        return normalizedCustomers;
       }
     } catch (err) {
       console.error("Failed to refresh customer list", err);
     }
+    return [] as Customer[];
   }, [company, updateMasterData]);
-  const handleOpenCustomerModal = useCallback(() => {
-    updateUiState({
-      showCustomerModal: true,
-      customerSearchName: "",
-      customerSearchPhone: "",
-      newCustomerName: "",
-      newCustomerPhone: "",
-      customerModalError: "",
-    });
-  }, [updateUiState]);
 
   useEffect(() => {
-    if (!showCustomerModal) return;
+    if (!company) return;
     loadCustomers();
-  }, [loadCustomers, showCustomerModal]);
+  }, [company, loadCustomers]);
 
-  const closeCustomerModal = useCallback(() => {
+  useEffect(() => {
+    if (!header.customer_id) {
+      setSelectedCustomerOption(null);
+      return;
+    }
+    const selected =
+      customerOptions.find((option) => option.value === String(header.customer_id)) ?? null;
+    setSelectedCustomerOption(selected);
+  }, [customerOptions, header.customer_id]);
+
+  const handleCustomerSelect = useCallback(
+    (option: CustomerSelectOption | null) => {
+      console.log("[sales] selected customer option:", option);
+      if (option?.customer) {
+        console.log("[sales] selected customer object:", option.customer);
+      }
+      setSelectedCustomerOption(option);
+      setHeader((prev) => ({
+        ...prev,
+        customer_id: option ? String(option.value) : "",
+      }));
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.customer_id;
+        return newErrors;
+      });
+      updateUiState({
+        customerLookupInput: "",
+        customerQuickAddError: "",
+      });
+    },
+    [setErrors, setHeader, updateUiState]
+  );
+
+  const handleCustomerSearchInputChange = useCallback(
+    (value: string, meta: { action: string }) => {
+      console.log("[sales] search input:", value, "action:", meta.action);
+      if (meta.action !== "input-change" && meta.action !== "set-value") return;
+      updateUiState({ customerLookupInput: value });
+    },
+    [updateUiState]
+  );
+
+  const handleOpenQuickCustomerPopup = useCallback(() => {
     updateUiState({
-      showCustomerModal: false,
-      customerSearchName: "",
-      customerSearchPhone: "",
+      showQuickCustomerPopup: true,
+      newCustomerName: "",
+      newCustomerPhone: String(customerLookupInput || "").trim(),
+      customerQuickAddError: "",
+    });
+  }, [customerLookupInput, updateUiState]);
+
+  const closeQuickCustomerPopup = useCallback(() => {
+    updateUiState({
+      showQuickCustomerPopup: false,
       newCustomerName: "",
       newCustomerPhone: "",
-      customerModalLoading: false,
-      customerModalError: "",
+      customerQuickAddLoading: false,
+      customerQuickAddError: "",
     });
   }, [updateUiState]);
 
-
-
   const handleCreateCustomer = useCallback(async () => {
-    if (!newCustomerName.trim()) {
-      setUiState((prev) => ({ ...prev, customerModalError: "Customer name is required" }));
+    const trimmedName = String(newCustomerName || "").trim();
+    const trimmedPhone = String(newCustomerPhone || "").trim();
+
+    if (!trimmedName) {
+      setUiState((prev) => ({ ...prev, customerQuickAddError: "Customer name is required" }));
+      return;
+    }
+    if (!company) {
+      setUiState((prev) => ({ ...prev, customerQuickAddError: "Company context is missing" }));
       return;
     }
 
-    setUiState((prev) => ({ ...prev, customerModalLoading: true, customerModalError: "" }));
+    setUiState((prev) => ({ ...prev, customerQuickAddLoading: true, customerQuickAddError: "" }));
     try {
       const res = await fetch("/api/customers", {
         method: "POST",
@@ -1508,28 +1594,49 @@ useEffect(() => {
           "x-tenant": company,
         },
         body: JSON.stringify({
-          name: newCustomerName.trim(),
-          phone: newCustomerPhone.trim() || null,
+          name: trimmedName,
+          phone: trimmedPhone || null,
         }),
       });
       const data = await res.json();
-      if (!data?.success) {
+      if (!res.ok || !data?.success) {
         throw new Error(data?.error || "Failed to create customer");
       }
 
-      const createdCustomer = data.customer;
+      const createdCustomer = normalizeCustomer(
+        data?.customer || data?.data?.customer || data?.data
+      );
       if (createdCustomer?.id) {
-        updateMasterData({ customers: [createdCustomer, ...allCustomers] });
+        const createdOption = mapCustomerToSelectOption(createdCustomer);
+        setMasterData((prev) => ({
+          ...prev,
+          customers: [
+            createdCustomer,
+            ...prev.customers.filter(
+              (customer) => String(customer.id) !== String(createdCustomer.id)
+            ),
+          ],
+        }));
+        setCustomerOptions((prev) => [
+          createdOption,
+          ...prev.filter((option) => option.value !== createdOption.value),
+        ]);
+        setSelectedCustomerOption(createdOption);
         setHeader((prev) => ({
           ...prev,
           customer_id: String(createdCustomer.id),
         }));
       } else {
-        await loadCustomers();
-        const found = allCustomers.find(
-          (c) => c.name === newCustomerName.trim() && String(c.phone || "") === String(newCustomerPhone.trim())
+        const refreshedCustomers = await loadCustomers();
+        const found = refreshedCustomers.find(
+          (c) =>
+            String(c.name || c.cust_name || "").trim().toLowerCase() ===
+              trimmedName.toLowerCase() &&
+            String(c.phone || "").trim() === trimmedPhone
         );
         if (found) {
+          const foundOption = mapCustomerToSelectOption(found);
+          setSelectedCustomerOption(foundOption);
           setHeader((prev) => ({
             ...prev,
             customer_id: String(found.id),
@@ -1542,25 +1649,18 @@ useEffect(() => {
         delete newErrors.customer_id;
         return newErrors;
       });
-      closeCustomerModal();
+      updateUiState({ customerLookupInput: "" });
+      closeQuickCustomerPopup();
     } catch (err: any) {
       console.error("Create customer failed", err);
       setUiState((prev) => ({
         ...prev,
-        customerModalError: err?.message || "Unable to create customer",
+        customerQuickAddError: err?.message || "Unable to create customer",
       }));
     } finally {
-      setUiState((prev) => ({ ...prev, customerModalLoading: false }));
+      setUiState((prev) => ({ ...prev, customerQuickAddLoading: false }));
     }
-  }, [allCustomers, company, closeCustomerModal, loadCustomers, newCustomerName, newCustomerPhone, setErrors, setHeader, updateMasterData, setUiState]);
-
-  const handleCustomerSearchNameChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setUiState((prev) => ({ ...prev, customerSearchName: e.target.value }));
-  };
-
-  const handleCustomerSearchPhoneChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setUiState((prev) => ({ ...prev, customerSearchPhone: e.target.value }));
-  };
+  }, [company, closeQuickCustomerPopup, loadCustomers, newCustomerName, newCustomerPhone, setErrors, setHeader]);
 
   const handleNewCustomerNameChange = (e: ChangeEvent<HTMLInputElement>) => {
     setUiState((prev) => ({ ...prev, newCustomerName: e.target.value }));
@@ -1656,17 +1756,17 @@ useEffect(() => {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button
+          {/* <button
             type="button"
             onClick={() => handleSave()}
             className="bg-[var(--color-blue-600)] text-white px-5 py-2 rounded hover:opacity-90"
           >
             Save
-          </button>
+          </button> */}
           <button
             type="button"
             onClick={handleSaveAndPrint}
-            className="border border-gray-300 px-5 py-2 rounded hover:bg-gray-50"
+            className="bg-[var(--color-blue-600)] text-white px-5 py-2 rounded hover:opacity-90"
           >
             Save & Print
           </button>
@@ -1705,7 +1805,9 @@ useEffect(() => {
           <div className="space-y-6">
             <SalesHeader
               header={header}
-              selectedCustomerName={selectedCustomerName}
+              selectedCustomerOption={selectedCustomerOption}
+              customerOptions={filteredCustomerOptions}
+              customerSearchInput={customerLookupInput}
               barcodeValue={barcodeValue}
               barcodeMessage={barcodeMessage}
               barcodeInputRef={barcodeInputRef}
@@ -1714,7 +1816,9 @@ useEffect(() => {
               salesDateError={errors.sales_date}
               discountMode={discountMode}
               onDiscountModeChange={(value) => setDiscountMode(value)}
-              onOpenCustomerModal={handleOpenCustomerModal}
+              onCustomerSelect={handleCustomerSelect}
+              onCustomerSearchInputChange={handleCustomerSearchInputChange}
+              onOpenQuickCustomerPopup={handleOpenQuickCustomerPopup}
               onSalesDateChange={handleSalesDateChange}
               onCouponChange={handleCouponChange}
               onBarcodeChange={handleBarcodeChange}
@@ -1764,9 +1868,9 @@ useEffect(() => {
               </div>
             </div>
 
-            {header.customer_id && (
+            {/* {header.customer_id && (
               <CustomerAnalyticsPanel history={purchaseHistory} monthly={purchaseMonthly} />
-            )}
+            )} */}
           </aside>
         </div>
       </form>
@@ -1800,148 +1904,63 @@ useEffect(() => {
         }}
       />
 
-      {showCustomerModal &&
-        createPortal(
-          <div className="fixed inset-0 z-[99999]">
-            <div className="absolute inset-0 bg-black/40" onClick={closeCustomerModal} />
-            <div className="absolute inset-0 flex items-center justify-center p-4">
-              <div className="w-full max-w-6xl max-h-[85vh] bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between px-6 py-4 border-b">
-                  <div>
-                    <h2 className="text-lg font-semibold">Search Customer</h2>
-                    <p className="text-sm text-gray-500">
-                      Filter by name or phone, or add a new customer to select it immediately.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeCustomerModal}
-                    className="text-gray-500 hover:text-gray-900"
-                  >
-                    Close
-                  </button>
-                </div>
-                <div className="grid md:grid-cols-[1.6fr_1fr] gap-4 px-6 py-5 flex-1 overflow-hidden">
-                  <div className="space-y-4">
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <div>
-                        <label className="text-sm font-semibold mb-1 block">Name</label>
-                        <input
-                          type="text"
-                          value={customerSearchName}
-                          onChange={handleCustomerSearchNameChange}
-                          className="border p-2 rounded w-full"
-                          placeholder="Search by name"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-semibold mb-1 block">Phone</label>
-                        <input
-                          type="text"
-                          value={customerSearchPhone}
-                          onChange={handleCustomerSearchPhoneChange}
-                          className="border p-2 rounded w-full"
-                          placeholder="Search by phone"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="max-h-[55vh] overflow-y-auto border rounded-xl">
-                      <table className="w-full text-sm">
-                        <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10">
-                          <tr>
-                            <th className="p-3 text-left font-semibold">Code</th>
-                            <th className="p-3 text-left font-semibold">Customer</th>
-                            <th className="p-3 text-left font-semibold">Phone</th>
-                            <th className="p-3 text-left font-semibold">Email</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredCustomers.length === 0 ? (
-                            <tr>
-                              <td className="p-5 text-sm text-gray-500" colSpan={4}>
-                                No matching customers found.
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredCustomers.map((customer) => (
-                              <tr
-                                key={customer.id}
-                                onClick={() => {
-                                  setHeader((prev) => ({
-                                    ...prev,
-                                    customer_id: String(customer.id),
-                                  }));
-                                  setErrors((prev) => {
-                                    const newErrors = { ...prev };
-                                    delete newErrors.customer_id;
-                                    return newErrors;
-                                  });
-                                  closeCustomerModal();
-                                }}
-                                className="border-t hover:bg-blue-50 cursor-pointer transition"
-                              >
-                                <td className="p-3 text-gray-600">
-                                  {customer.customer_code || customer.cust_code || "-"}
-                                </td>
-                                <td className="p-3 font-medium text-gray-900">
-                                  {customer.name || customer.cust_name || "-"}
-                                </td>
-                                <td className="p-3 text-gray-600">{customer.phone || "-"}</td>
-                                <td className="p-3 text-gray-500">{customer.email || "-"}</td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 border-l border-gray-200 pl-4 md:pl-6">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-700">Create New Customer</h3>
-                      <p className="text-sm text-gray-500">
-                        Only name is required. Phone is optional but recommended.
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold mb-1 block">Customer Name</label>
-                      <input
-                        type="text"
-                        value={newCustomerName}
-                        onChange={handleNewCustomerNameChange}
-                        className="border p-2 rounded w-full"
-                        placeholder="Enter customer name"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm font-semibold mb-1 block">Phone</label>
-                      <input
-                        type="text"
-                        value={newCustomerPhone}
-                        onChange={handleNewCustomerPhoneChange}
-                        className="border p-2 rounded w-full"
-                        placeholder="Enter phone number"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleCreateCustomer}
-                      disabled={customerModalLoading}
-                      className="w-full bg-blue-600 text-white rounded-xl py-3 disabled:opacity-50"
-                    >
-                      {customerModalLoading ? "Creating..." : "Create and Select Customer"}
-                    </button>
-                    {customerModalError && (
-                      <p className="text-red-500 text-sm">{customerModalError}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
+      {showQuickCustomerPopup && (
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center p-4">
+          <button
+            type="button"
+            onClick={closeQuickCustomerPopup}
+            className="absolute inset-0 bg-black/30"
+            aria-label="Close customer popup"
+          />
+          <div className="relative w-full max-w-sm rounded-xl bg-white p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-gray-900">Add Customer</h2>
+              <button
+                type="button"
+                onClick={closeQuickCustomerPopup}
+                className="text-sm text-gray-500 hover:text-gray-800"
+              >
+                Close
+              </button>
             </div>
-          </div>,
-          document.body
-        )}
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="mb-1 block text-sm font-semibold">
+                  Customer Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={newCustomerName}
+                  onChange={handleNewCustomerNameChange}
+                  className="w-full rounded border p-2"
+                  placeholder="Enter customer name"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-semibold">Phone Number</label>
+                <input
+                  type="text"
+                  value={newCustomerPhone}
+                  onChange={handleNewCustomerPhoneChange}
+                  className="w-full rounded border p-2"
+                  placeholder="Phone number"
+                />
+              </div>
+              {customerQuickAddError && (
+                <p className="text-sm text-red-500">{customerQuickAddError}</p>
+              )}
+              <button
+                type="button"
+                onClick={handleCreateCustomer}
+                disabled={customerQuickAddLoading}
+                className="w-full rounded bg-blue-600 py-2.5 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {customerQuickAddLoading ? "Saving..." : "Save Customer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showBillsPanel &&
         createPortal(
