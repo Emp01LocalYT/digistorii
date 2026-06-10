@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
@@ -14,6 +14,7 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@fullcalendar/react": "^6.1.20",
+    "@headlessui/react": "^2.2.10",
     "@heroicons/react": "^2.2.0",
     "@mui/icons-material": "^5.18.0",
     "@mui/material": "^5.18.0",
@@ -35,6 +36,7 @@
     "next": "^16.0.10",
     "pg": "^8.18.0",
     "postcss": "^8.5.6",
+    "razorpay": "^2.9.6",
     "react": "19.2.3",
     "react-apexcharts": "^2.0.1",
     "react-barcode": "^1.6.1",

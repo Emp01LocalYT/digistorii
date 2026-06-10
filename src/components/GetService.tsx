@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/apiFetch";
 
-
 export default function GetService() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     ownerName: "",
     ownerEmail: "",
@@ -14,40 +15,33 @@ export default function GetService() {
     slug: "",
     password: "",
   });
-  const [slugStatus, setSlugStatus] = useState("");
-  const [emailStatus, setEmailStatus] = useState("");
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-
-
     setIsSubmitting(true);
-    setEmailStatus("");
+    setError("");
 
     try {
       const company = formData.slug;
-
- const response = await apiFetch("/api/setup", company, {
+      const response = await apiFetch("/api/setup", company, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-
       const data = await response.json();
-      if (!response.ok) {
-        const message = data?.message || "Unable to create business";
-        if (String(message).toLowerCase().includes("email")) {
-          setEmailStatus("taken");
-        }
-        alert(message);
+
+      if (!response.ok || !data?.success) {
+        setError(data?.message || "Unable to create business");
         return;
       }
 
-      setEmailStatus("available");
-      alert("Business and owner user created successfully!");
+      const onboardingUrl =
+        data?.onboardingUrl || `/setup?company=${encodeURIComponent(formData.slug)}`;
+      router.push(onboardingUrl);
+    } catch {
+      setError("Unable to create your account right now. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -56,17 +50,28 @@ export default function GetService() {
   return (
     <section className="py-20 bg-gradient-to-br from-gray-50 to-blue-50 min-h-screen">
       <div className="max-w-5xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Launch Your Business Website Today
-          </h2>
+        <div className="mb-8 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
+          <p className="text-sm font-semibold text-blue-700">Onboarding Step 1 of 7</p>
+          <p className="mt-1 text-sm text-blue-600">
+            Create your account and company workspace.
+          </p>
+        </div>
+
+        <div className="text-center mb-10">
+          <h2 className="text-4xl font-bold text-gray-900 mb-3">Create Your Company Account</h2>
           <p className="text-lg text-gray-600">
-            Fill in the details below and we&apos;ll set up your complete online store in 24 hours
+            We will create your tenant schema, admin account, and start onboarding.
           </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12">
           <form onSubmit={handleSubmit} className="space-y-8">
+            {error && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-5">
                 <h3 className="text-xl font-bold text-gray-900">Business Details</h3>
@@ -86,35 +91,26 @@ export default function GetService() {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Choose Your Website URL*
+                    Website URL*
                   </label>
-                  <div className="flex gap-2">
-                    <div className="flex-1 flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                      <span className="bg-gray-100 px-4 py-3 text-gray-600 text-sm">
-                        getyourwebsite.com/
-                      </span>
-                      <input
-                        type="text"
-                        required
-                        value={formData.slug}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            slug: e.target.value.trim().toLowerCase(),
-                          })
-                        }
-                        className="flex-1 px-4 py-3 focus:outline-none"
-                        placeholder="pizzapalace"
-                      />
-                    </div>
-                  
+                  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                    <span className="bg-gray-100 px-4 py-3 text-gray-600 text-sm">
+                      getyourwebsite.com/
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={formData.slug}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          slug: e.target.value.trim().toLowerCase(),
+                        })
+                      }
+                      className="flex-1 px-4 py-3 focus:outline-none"
+                      placeholder="your-company"
+                    />
                   </div>
-                  {slugStatus === "available" && (
-                    <p className="mt-2 text-sm text-green-600">Slug is available</p>
-                  )}
-                  {slugStatus === "taken" && (
-                    <p className="mt-2 text-sm text-red-600">Slug already taken</p>
-                  )}
                 </div>
               </div>
 
@@ -123,7 +119,7 @@ export default function GetService() {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Business Owner Name*
+                    Owner Name*
                   </label>
                   <input
                     type="text"
@@ -136,7 +132,7 @@ export default function GetService() {
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Business Owner Email*
+                    Owner Email*
                   </label>
                   <input
                     type="email"
@@ -145,15 +141,15 @@ export default function GetService() {
                     onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                  {emailStatus === "taken" && (
-                    <p className="mt-2 text-sm text-red-600">Email already registered</p>
-                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Phone</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Owner Phone
+                  </label>
                   <input
                     type="tel"
+                    required
                     value={formData.ownerPhone}
                     onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -179,14 +175,10 @@ export default function GetService() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-lg font-bold text-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-blue-700 transition-all shadow-lg disabled:opacity-70"
             >
-              {isSubmitting ? "Creating..." : "Create My Website"}
+              {isSubmitting ? "Creating..." : "Create Account & Continue"}
             </button>
-
-            <p className="text-center text-sm text-gray-500">
-              By signing up, you agree to our Terms of Service and Privacy Policy
-            </p>
           </form>
         </div>
       </div>

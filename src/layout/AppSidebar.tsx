@@ -90,6 +90,7 @@ const navItems: NavItem[] = [
       {name: "Materials" , path : "/inventory/materials" , pro: false},
       { name: "UOM", path: "/inventory/uom", pro: false },
       { name: "Tax", path: "/inventory/tax", pro: false },
+      { name: "Payment Modes", path: "/inventory/payment-mode", pro: false },
       { name: "Payment Terms", path: "/inventory/payment-terms", pro: false },
       // { name: "Currencies", path: "/inventory/currencies", pro: false },
       { name: "Currencies", path: "/inventory/currency-rate", pro: false },

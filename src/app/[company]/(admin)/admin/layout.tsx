@@ -52,11 +52,26 @@ export default function AdminLayout({
 
           if (data.success) {
             setUser(data.user);
-            setCheckingAuth(false);
+            return;
           } else {
             router.replace(`/${tenant}/admin/login`);
           }
         } else {
+          const onboardingRes = await fetch(
+            `/api/onboarding?company=${encodeURIComponent(tenant)}`
+          );
+          if (onboardingRes.ok) {
+            const onboardingData = await onboardingRes.json();
+            if (
+              onboardingData?.success &&
+              onboardingData?.company?.setup_stage &&
+              onboardingData.company.setup_stage !== "LIVE"
+            ) {
+              router.replace(`/setup?company=${encodeURIComponent(tenant)}`);
+              return;
+            }
+          }
+
           setCheckingAuth(false);
         }
       } catch (err) {

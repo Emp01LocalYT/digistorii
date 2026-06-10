@@ -6,9 +6,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import { useReactToPrint } from "react-to-print";
+import {
+  ArrowPathIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  PrinterIcon,
+} from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { useUser } from "@/context/CurrentUserContext";
-import CustomerAnalyticsPanel from "@/components/sales/CustomerAnalyticsPanel";
 import SalesHeader from "@/components/sales/SalesHeader";
 import type { CustomerSelectOption } from "@/components/sales/SalesHeader";
 import SalesTable from "@/components/sales/SalesTable";
@@ -22,12 +27,15 @@ import type {
   ActiveTodayDiscount,
   Customer,
   MonthlySpendRow,
+  PaymentMode,
   Product,
   ProductRow,
   PurchaseHistoryRow,
   SalesDetail,
   SalesHeader as SalesHeaderType,
+  SalesPayment,
   SalesIndexRow,
+  Warehouse,
 } from "@/types/sales";
 
 const ProductLookupModal = dynamic(
@@ -65,6 +73,19 @@ const generateSalesNo = () => {
   const randomPart = Math.floor(Math.random() * 9000 + 1000);
   return `SAL-${datePart}-${randomPart}`;
 };
+
+const roundMoney = (value: unknown) => Number(Number(value || 0).toFixed(2));
+
+const calculatePaymentStatus = (totalAmount: number, paidAmount: number) => {
+  const total = roundMoney(totalAmount);
+  const paid = roundMoney(paidAmount);
+  if (paid <= 0) return "unpaid";
+  if (Math.abs(total - paid) <= 0.01) return "paid";
+  return "partial";
+};
+
+const formatPaymentStatusLabel = (status: string) =>
+  status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unpaid";
 
 const normalizeCustomer = (raw: any): Customer | null => {
   if (!raw || typeof raw !== "object") return null;
@@ -175,6 +196,7 @@ export default function SalesForm() {
     invoice_date: "",
     sales_date: new Date().toISOString().split("T")[0],
     status: "Entered",
+    payment_status: "unpaid",
     subtotal: 0,
     tax_amount: 0,
     total_amount: 0,
@@ -185,6 +207,7 @@ export default function SalesForm() {
   const [formState, setFormState] = useState(() => ({
     header: initialHeader,
     details: [] as SalesDetail[],
+    payments: [] as SalesPayment[],
     couponCode: "",
     barcodeValue: "",
     barcodeMessage: "",
@@ -194,6 +217,8 @@ export default function SalesForm() {
     taxes: [] as any[],
     customers: [] as Customer[],
     uoms: [] as any[],
+    warehouses: [] as Warehouse[],
+    paymentModes: [] as PaymentMode[],
     activeDiscountsForToday: [] as ActiveTodayDiscount[],
   }));
   const [uiState, setUiState] = useState(() => ({
@@ -227,14 +252,18 @@ export default function SalesForm() {
   const [customerOptions, setCustomerOptions] = useState<CustomerSelectOption[]>([]);
   const [selectedCustomerOption, setSelectedCustomerOption] =
     useState<CustomerSelectOption | null>(null);
+  const [paymentPanelOpen, setPaymentPanelOpen] = useState(false);
+  const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
 
 
-  const { header, details, couponCode, barcodeValue, barcodeMessage } = formState;
+  const { header, details, payments, couponCode, barcodeValue, barcodeMessage } = formState;
   const {
     products: allProducts,
     taxes: allTaxes,
     customers: allCustomers,
     uoms: allUoms,
+    warehouses,
+    paymentModes,
     activeDiscountsForToday,
   } = masterData;
   const {
@@ -261,6 +290,7 @@ export default function SalesForm() {
   } = uiState;
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const paymentAmountRefs = useRef<Array<HTMLInputElement | null>>([]);
   const barcodeHandlerRef = useRef<(value: string) => void>(() => {});
   const printRef = useRef<HTMLDivElement>(null);
   const thermalRef = useRef<HTMLDivElement>(null);
@@ -302,6 +332,15 @@ export default function SalesForm() {
       setFormState((prev) => ({
         ...prev,
         details: typeof updater === "function" ? (updater as any)(prev.details) : updater,
+      }));
+    },
+    []
+  );
+  const setPayments = useCallback(
+    (updater: SalesPayment[] | ((prev: SalesPayment[]) => SalesPayment[])) => {
+      setFormState((prev) => ({
+        ...prev,
+        payments: typeof updater === "function" ? (updater as any)(prev.payments) : updater,
       }));
     },
     []
@@ -514,6 +553,33 @@ export default function SalesForm() {
 
   const billingTotals = useMemo(() => calculateSalesTotals(details), [details]);
 
+  const selectedWarehouse = useMemo(
+    () =>
+      warehouses.find(
+        (warehouse) => String(warehouse.id) === String(user?.warehouse_id || header.warehouse_id || "")
+      ) || null,
+    [header.warehouse_id, user?.warehouse_id, warehouses]
+  );
+
+  const totalPaidAmount = useMemo(
+    () => roundMoney(payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)),
+    [payments]
+  );
+
+  const balanceAmount = useMemo(
+    () => roundMoney(Math.max(Number(billingTotals.total || 0) - totalPaidAmount, 0)),
+    [billingTotals.total, totalPaidAmount]
+  );
+  const resolvedActiveLineIndex = useMemo(() => {
+    if (details.length === 0) return null;
+    if (activeLineIndex === null) return details.length - 1;
+    return Math.min(activeLineIndex, details.length - 1);
+  }, [activeLineIndex, details.length]);
+  const activeLine = useMemo(
+    () => (resolvedActiveLineIndex === null ? null : details[resolvedActiveLineIndex] || null),
+    [details, resolvedActiveLineIndex]
+  );
+
   const toggleProduct = (id: number) => {
     setSelectedProducts((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
@@ -528,7 +594,7 @@ export default function SalesForm() {
           ? "percentage"
           : row.discount_type === "amount" || row.discount_type === "fixed"
             ? "fixed"
-            : row.discount_type,
+            : undefined,
       };
       return applySalesRowCalculation(normalizedRow, discountMode) as SalesDetail;
     },
@@ -816,6 +882,7 @@ export default function SalesForm() {
           setHeader((prev) => ({
             ...prev,
             ...data.data.header,
+            payment_status: data.data.header?.payment_status || "unpaid",
           }));
           const rawDetails = Array.isArray(data.data.details) ? data.data.details : [];
           const detectedType = rawDetails.find((row: any) => row?.discount_type);
@@ -850,6 +917,17 @@ export default function SalesForm() {
             return applyBillingCalculation(baseRow);
           });
           setDetails(fetchedDetails);
+          const fetchedPayments = Array.isArray(data.data.payments)
+            ? data.data.payments.map((payment: any) => ({
+                id: Number(payment.id),
+                payment_mode_id: Number(payment.payment_mode_id),
+                payment_mode_name: String(payment.payment_mode_name || ""),
+                amount: Number(payment.amount || 0),
+                location_id: payment.location_id != null ? Number(payment.location_id) : null,
+                warehouse_id: payment.warehouse_id != null ? Number(payment.warehouse_id) : null,
+              }))
+            : [];
+          setPayments(fetchedPayments);
           setSavedProductIds(fetchedDetails.map((d: any) => String(d.product_id)));
         }
       } catch (err) {
@@ -869,6 +947,7 @@ export default function SalesForm() {
     applyBillingCalculation,
     discountMode,
     setDetails,
+    setPayments,
     setHeader,
     setSavedProductIds,
     setDiscountMode,
@@ -909,6 +988,8 @@ export default function SalesForm() {
       customers: [],
       uoms: [],
       taxes: [],
+      warehouses: [],
+      paymentModes: [],
     });
     updateUiState({
       billsList: [],
@@ -948,6 +1029,8 @@ export default function SalesForm() {
             customers: normalizedCustomers,
             uoms: payload.uoms ?? masterData.uoms,
             taxes: normalizedTaxes,
+            warehouses: payload.warehouses ?? masterData.warehouses,
+            paymentModes: payload.payment_modes ?? masterData.paymentModes,
           });
           if (payload.sales_no) {
             setHeader((prev) => ({ ...prev, sales_no: payload.sales_no }));
@@ -1127,13 +1210,30 @@ export default function SalesForm() {
 
 
   useEffect(() => {
+    const nextPaymentStatus = calculatePaymentStatus(billingTotals.total, totalPaidAmount);
     setHeader((prev) => ({
       ...prev,
+      warehouse_id: user?.warehouse_id ?? prev.warehouse_id ?? "",
+      location_id: selectedWarehouse?.location_id ?? prev.location_id ?? "",
+      warehouse_name: selectedWarehouse?.name ?? prev.warehouse_name ?? "",
+      location_name: selectedWarehouse?.location_name ?? prev.location_name ?? "",
       subtotal: Number(billingTotals.taxable.toFixed(2)),
       tax_amount: Number(billingTotals.tax.toFixed(2)),
       total_amount: Number(billingTotals.total.toFixed(2)),
+      payment_status: nextPaymentStatus,
     }));
-  }, [billingTotals, setHeader]);
+  }, [billingTotals, selectedWarehouse, setHeader, totalPaidAmount, user?.warehouse_id]);
+
+  useEffect(() => {
+    if (details.length === 0) {
+      setActiveLineIndex(null);
+      return;
+    }
+    setActiveLineIndex((prev) => {
+      if (prev === null) return details.length - 1;
+      return Math.min(prev, details.length - 1);
+    });
+  }, [details.length]);
 
   const updateRow = useCallback(
     (index: number, field: string, value: any) => {
@@ -1200,6 +1300,75 @@ export default function SalesForm() {
   const removeRow = (index: number) =>
     setDetails((prev) => prev.filter((_, i) => i !== index));
 
+  const togglePaymentMode = useCallback(
+    (mode: PaymentMode, checked: boolean) => {
+      setPayments((prev) => {
+        if (checked) {
+          if (prev.some((payment) => payment.payment_mode_id === mode.id)) return prev;
+          return [
+            ...prev,
+            {
+              payment_mode_id: mode.id,
+              payment_mode_name: mode.payment_mode_name,
+              amount: "",
+              location_id: selectedWarehouse?.location_id ?? null,
+              warehouse_id: selectedWarehouse?.id ?? null,
+            },
+          ];
+        }
+        return prev.filter((payment) => payment.payment_mode_id !== mode.id);
+      });
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[`payment_mode_${mode.id}`];
+        delete next.payments;
+        return next;
+      });
+    },
+    [selectedWarehouse, setErrors, setPayments]
+  );
+
+  const updatePaymentAmount = useCallback(
+    (paymentModeId: number, value: string) => {
+      const parsedValue = value === "" ? "" : Number(value);
+      setPayments((prev) =>
+        prev.map((payment) =>
+          payment.payment_mode_id === paymentModeId
+            ? {
+                ...payment,
+                amount:
+                  parsedValue === "" || Number.isFinite(parsedValue)
+                    ? parsedValue
+                    : payment.amount,
+              }
+            : payment
+        )
+      );
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[`payment_mode_${paymentModeId}`];
+        delete next.payments;
+        return next;
+      });
+    },
+    [setErrors, setPayments]
+  );
+
+  const handlePaymentAmountKeyDown = useCallback(
+    (index: number, e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      const nextRef = paymentAmountRefs.current[index + 1];
+      if (nextRef) {
+        nextRef.focus();
+        nextRef.select();
+        return;
+      }
+      barcodeInputRef.current?.focus();
+    },
+    []
+  );
+
   const handleSelectBill = (bill: SalesIndexRow) => {
     updateUiState({ showBillsPanel: false });
     if (!bill?.id) return;
@@ -1225,6 +1394,18 @@ export default function SalesForm() {
       });
     }
 
+    const normalizedTotalPaid = roundMoney(
+      payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+    );
+    if (normalizedTotalPaid - Number(header.total_amount || 0) > 0.01) {
+      newErrors.payments = "Paid amount cannot exceed grand total";
+    }
+    payments.forEach((payment) => {
+      if (Number(payment.amount || 0) <= 0) {
+        newErrors[`payment_mode_${payment.payment_mode_id}`] = "Enter payment amount";
+      }
+    });
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -1240,6 +1421,7 @@ export default function SalesForm() {
         user_name: user?.name || prev.header.user_name || "",
       },
       details: [],
+      payments: [],
       couponCode: "",
       barcodeValue: "",
       barcodeMessage: "",
@@ -1340,6 +1522,10 @@ export default function SalesForm() {
         discount_type: discountMode,
         discount_amount: Number(row.discount || 0),
       }));
+      const payloadPayments = payments.map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount || 0),
+      }));
       console.log("STEP 4 - calling sales API:", url, method);
       const res = await fetch(url, {
         method: method,
@@ -1348,8 +1534,15 @@ export default function SalesForm() {
           "x-tenant": company,
         },
         body: JSON.stringify({
-          header: { ...header, user_name: user?.name },
+          header: {
+            ...header,
+            user_name: user?.name,
+            warehouse_id: selectedWarehouse?.id ?? user?.warehouse_id ?? header.warehouse_id,
+            location_id: selectedWarehouse?.location_id ?? header.location_id,
+            payment_status: calculatePaymentStatus(billingTotals.total, totalPaidAmount),
+          },
           details: payloadDetails,
+          payments: payloadPayments,
         }),
       });
       console.log("STEP 5 - sales API response status:", res.status);
@@ -1361,6 +1554,8 @@ export default function SalesForm() {
         ...header,
         sales_no: data.sales_no || header.sales_no,
         user_name: user?.name || header.user_name,
+        payment_status:
+          data.payment_status || calculatePaymentStatus(billingTotals.total, totalPaidAmount),
       };
 
       if (printAfterSave) {
@@ -1607,7 +1802,7 @@ export default function SalesForm() {
       } else {
         const refreshedCustomers = await loadCustomers();
         const found = refreshedCustomers.find(
-          (c) =>
+          (c: Customer) =>
             String(c.name || c.cust_name || "").trim().toLowerCase() ===
               trimmedName.toLowerCase() &&
             String(c.phone || "").trim() === trimmedPhone
@@ -1679,6 +1874,24 @@ export default function SalesForm() {
     updateUiState({ showProductPopup: true });
   };
 
+  const handleQuickRateChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (resolvedActiveLineIndex === null) return;
+    const value = e.target.value === "" ? "" : Number(e.target.value);
+    handleRateChange(resolvedActiveLineIndex, value);
+  };
+
+  const handleQuickQtyChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (resolvedActiveLineIndex === null) return;
+    const value = e.target.value === "" ? "" : Number(e.target.value);
+    handleQtyChange(resolvedActiveLineIndex, value);
+  };
+
+  const handleQuickDiscountChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (resolvedActiveLineIndex === null) return;
+    const value = e.target.value === "" ? "" : Number(e.target.value);
+    handleDiscountChange(resolvedActiveLineIndex, value);
+  };
+
   const handleQuickPrint = useCallback(() => {
     updateUiState({
       printSnapshot: {
@@ -1722,50 +1935,29 @@ export default function SalesForm() {
           </div>,
           document.body
         )}
-      {errorMessage && <div className="text-red-600 font-semibold">{errorMessage}</div>}
+      {errorMessage ? (
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600">
+          {errorMessage}
+        </div>
+      ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{isEdit ? "Edit Billing" : "Create Billing"}</h1>
-          {errors.details && (
-            <span className="text-red-500 text-sm font-medium whitespace-nowrap">
-              {errors.details}
-            </span>
-          )}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3 text-sm text-slate-600">
+          <span className="font-semibold text-slate-800">{isEdit ? "Edit Billing" : "Fast Billing"}</span>
+          {errors.details ? <span className="font-medium text-red-500">{errors.details}</span> : null}
         </div>
         <div className="flex items-center gap-2">
-          {/* <button
-            type="button"
-            onClick={() => handleSave()}
-            className="bg-[var(--color-blue-600)] text-white px-5 py-2 rounded hover:opacity-90"
-          >
-            Save
-          </button> */}
-          <button
-            type="button"
-            onClick={handleSaveAndPrint}
-            className="bg-[var(--color-blue-600)] text-white px-5 py-2 rounded hover:opacity-90"
-          >
-            Save & Print
-          </button>
-          {/* <button
-            type="button"
-            onClick={handleQuickPrint}
-            className="border border-gray-300 px-5 py-2 rounded hover:bg-gray-50"
-          >
-            Print
-          </button> */}
           <button
             type="button"
             onClick={() => router.push(`/${company}`)}
-            className="border border-gray-300 px-4 py-2 rounded hover:bg-gray-100"
+            className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
-            Back to Home
+            Back
           </button>
           <button
             type="button"
             onClick={openBillsPanel}
-            className="bg-gray-900 text-white px-4 py-2 rounded hover:opacity-90"
+            className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white hover:bg-slate-800"
           >
             View Bills
           </button>
@@ -1777,78 +1969,329 @@ export default function SalesForm() {
           e.preventDefault();
           handleSave();
         }}
-        className="space-y-6"
+        className="space-y-3"
       >
-        <div className="grid xl:grid-cols-[1fr_360px] gap-6">
-          <div className="space-y-6">
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="space-y-3">
             <SalesHeader
               header={header}
               selectedCustomerOption={selectedCustomerOption}
               customerOptions={filteredCustomerOptions}
               customerSearchInput={customerLookupInput}
-              barcodeValue={barcodeValue}
-              barcodeMessage={barcodeMessage}
-              barcodeInputRef={barcodeInputRef}
               salesNoError={errors.sales_no}
               customerError={errors.customer_id}
               salesDateError={errors.sales_date}
-              discountMode={discountMode}
-              onDiscountModeChange={(value) => setDiscountMode(value)}
               onCustomerSelect={handleCustomerSelect}
               onCustomerSearchInputChange={handleCustomerSearchInputChange}
               onOpenQuickCustomerPopup={handleOpenQuickCustomerPopup}
               onSalesDateChange={handleSalesDateChange}
-              onCouponChange={handleCouponChange}
-              onBarcodeChange={handleBarcodeChange}
-              onBarcodeKeyDown={handleBarcodeKeyDown}
-              onOpenProductPopup={handleOpenProductPopup}
-              couponCode={couponCode}
             />
 
-            <SalesTable
-              details={details}
-              errors={errors}
-              taxes={allTaxes}
-              onRateChange={handleRateChange}
-              onQtyChange={handleQtyChange}
-              onDiscountChange={handleDiscountChange}
-              onTaxChange={handleTaxChange}
-              onRemove={removeRow}
-            />
+            <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+              <div className="grid gap-3 md:grid-cols-12">
+                <div className="md:col-span-5">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Scan Item / Search Product
+                  </label>
+                  <div className="relative">
+                    <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      ref={barcodeInputRef}
+                      type="text"
+                      value={barcodeValue}
+                      onChange={handleBarcodeChange}
+                      onKeyDown={handleBarcodeKeyDown}
+                      placeholder="Barcode, product code, or name"
+                      className="h-10 w-full rounded-lg border border-gray-200 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+                  <p className={`mt-1 text-xs ${barcodeMessage ? "text-red-500" : "text-gray-500"}`}>
+                    {barcodeMessage || "Scan with Enter for instant add, or browse products to add."}
+                  </p>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Rate
+                  </label>
+                  <input
+                    type="number"
+                    value={activeLine ? activeLine.rate : ""}
+                    onChange={handleQuickRateChange}
+                    disabled={!activeLine}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50"
+                    placeholder="Rate"
+                  />
+                </div>
+                <div className="md:col-span-1">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Qty
+                  </label>
+                  <input
+                    type="number"
+                    value={activeLine ? activeLine.qty : ""}
+                    onChange={handleQuickQtyChange}
+                    disabled={!activeLine}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50"
+                    placeholder="Qty"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Discount
+                  </label>
+                  <input
+                    type="number"
+                    value={activeLine ? activeLine.discount_value ?? "" : ""}
+                    onChange={handleQuickDiscountChange}
+                    disabled={!activeLine}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-gray-50"
+                    placeholder="Discount"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Add
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleOpenProductPopup}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700"
+                  >
+                    <PlusIcon className="h-4 w-4" />
+                    Add Item
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                <span>
+                  Active line: {activeLine ? `${activeLine.product_name} x ${activeLine.qty}` : "No item selected yet"}
+                </span>
+                <span>Same scanned item increases quantity automatically.</span>
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
+                <div className="text-sm font-semibold text-slate-800">Billing Items</div>
+                <div className="text-xs text-slate-500">
+                  {details.length} item{details.length === 1 ? "" : "s"} in bill
+                </div>
+              </div>
+              <SalesTable
+                details={details}
+                errors={errors}
+                taxes={allTaxes}
+                activeIndex={resolvedActiveLineIndex}
+                onRateChange={handleRateChange}
+                onQtyChange={handleQtyChange}
+                onDiscountChange={handleDiscountChange}
+                onTaxChange={handleTaxChange}
+                onRemove={removeRow}
+                onSelectRow={setActiveLineIndex}
+              />
+            </section>
+
+            <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+              <div className="grid gap-3 md:grid-cols-12">
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Warehouse
+                  </label>
+                  <input
+                    value={selectedWarehouse?.name || header.warehouse_name || ""}
+                    readOnly
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-slate-700"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Location
+                  </label>
+                  <input
+                    value={selectedWarehouse?.location_name || header.location_name || ""}
+                    readOnly
+                    className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-slate-700"
+                  />
+                </div>
+                <div className="md:col-span-3">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Payment Mode
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentPanelOpen((prev) => !prev)}
+                      className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-200 px-3 text-sm text-slate-700"
+                    >
+                      <span className="truncate">
+                        {payments.length
+                          ? payments
+                              .map((payment) => payment.payment_mode_name || payment.mode_name || "Payment")
+                              .join(", ")
+                          : "Select payment mode"}
+                      </span>
+                      <span className="text-xs text-slate-400">{paymentPanelOpen ? "Close" : "Open"}</span>
+                    </button>
+                    {paymentPanelOpen ? (
+                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
+                        <div className="max-h-64 space-y-2 overflow-auto">
+                          {paymentModes.map((mode, index) => {
+                            const selectedPayment = payments.find(
+                              (payment) => payment.payment_mode_id === mode.id
+                            );
+                            return (
+                              <div key={mode.id} className="rounded-lg border border-gray-100 p-2">
+                                <label className="flex items-center gap-2 text-sm text-slate-700">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(selectedPayment)}
+                                    onChange={(e) => togglePaymentMode(mode, e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span className="flex-1">{mode.payment_mode_name}</span>
+                                </label>
+                                {selectedPayment ? (
+                                  <input
+                                    ref={(element) => {
+                                      paymentAmountRefs.current[index] = element;
+                                    }}
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={selectedPayment.amount}
+                                    onChange={(e) => updatePaymentAmount(mode.id, e.target.value)}
+                                    onKeyDown={(e) => handlePaymentAmountKeyDown(index, e)}
+                                    placeholder="Amount"
+                                    className={`mt-2 h-9 w-full rounded-lg border px-3 text-sm outline-none ${
+                                      errors[`payment_mode_${mode.id}`]
+                                        ? "border-red-500 focus:ring-2 focus:ring-red-100"
+                                        : "border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                    }`}
+                                  />
+                                ) : null}
+                                {errors[`payment_mode_${mode.id}`] ? (
+                                  <p className="mt-1 text-xs text-red-500">{errors[`payment_mode_${mode.id}`]}</p>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {errors.payments ? <p className="mt-2 text-xs text-red-500">{errors.payments}</p> : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Coupon Code
+                  </label>
+                  <input
+                    type="text"
+                    value={couponCode}
+                    onChange={handleCouponChange}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder="Coupon"
+                  />
+                </div>
+                <div className="md:col-span-3">
+                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Discount Mode
+                  </label>
+                  <select
+                    value={discountMode}
+                    onChange={(e) => setDiscountMode(e.target.value as "percent" | "amount")}
+                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="percent">Percentage</option>
+                    <option value="amount">Amount</option>
+                  </select>
+                </div>
+              </div>
+            </section>
           </div>
 
-          <aside className="space-y-4 sticky top-4">
-            <div className="bg-white p-4 rounded-xl shadow">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Final Receipt Summary
+          <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Billing Summary
               </div>
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span>Subtotal</span>
+                  <span>Item Count</span>
+                  <span className="font-medium">{details.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Total Qty</span>
+                  <span className="font-medium">
+                    {details.reduce((sum, row) => sum + Number(row.qty || 0), 0).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Sub Total</span>
                   <span>{billingTotals.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Total Discount</span>
+                  <span>Discount Amount</span>
                   <span>-{billingTotals.discount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Taxable Amt</span>
-                  <span>{billingTotals.taxable.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Tax</span>
+                  <span>Tax Amount</span>
                   <span>{billingTotals.tax.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between font-semibold text-base">
-                  <span>Grand Total</span>
-                  <span>{billingTotals.total.toFixed(2)}</span>
+                <div className="flex justify-between">
+                  <span>Round Off</span>
+                  <span>{(billingTotals.total - billingTotals.taxable - billingTotals.tax).toFixed(2)}</span>
+                </div>
+                <div className="rounded-xl bg-slate-900 px-3 py-3 text-white">
+                  <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-300">
+                    <span>Net Amount</span>
+                    <span>{header.payment_status ? header.payment_status.toUpperCase() : "UNPAID"}</span>
+                  </div>
+                  <div className="mt-1 text-2xl font-bold">{billingTotals.total.toFixed(2)}</div>
+                </div>
+                <div className="border-t border-gray-100 pt-2">
+                  <div className="flex justify-between">
+                    <span>Paid</span>
+                    <span>{totalPaidAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between">
+                    <span>Balance</span>
+                    <span>{balanceAmount.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* {header.customer_id && (
-              <CustomerAnalyticsPanel history={purchaseHistory} monthly={purchaseMonthly} />
-            )} */}
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Actions
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                <button
+                  type="submit"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-700"
+                >
+                  <PlusIcon className="h-4 w-4" />
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAndPrint}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  <PrinterIcon className="h-4 w-4" />
+                  Print
+                </button>
+                <button
+                  type="button"
+                  onClick={resetFormAfterSave}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <ArrowPathIcon className="h-4 w-4" />
+                  Reset
+                </button>
+              </div>
+            </div>
           </aside>
         </div>
       </form>

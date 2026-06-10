@@ -1,255 +1,150 @@
-import { pool } from "../../../lib/db";
-import { hashPassword } from "../../../lib/hash";
 import { NextResponse } from "next/server";
-import { createCompanySchema } from "../../../lib/schema";
+import { pool } from "@/lib/db";
+import { hashPassword } from "@/lib/hash";
+import { createCompanySchema } from "@/lib/schema";
+import { ensureDB } from "@/lib/ensure-db";
 
-// export async function POST(req: Request) {
-//     const body = await req.json();
-//     const client = await pool.connect();
+type SetupPayload = {
+  businessName?: string;
+  company_name?: string;
+  slug?: string;
+  subdomain_url?: string;
+  ownerName?: string;
+  full_name?: string;
+  ownerEmail?: string;
+  email?: string;
+  ownerPhone?: string;
+  phone?: string;
+  password?: string;
+};
 
-//     try {
-//         await client.query("BEGIN");
-//    /* ---------------- Check if company exists ---------------- */
-//         const existingCompany = await client.query(
-//             `SELECT id, schema_name FROM public.companies WHERE subdomain_url = $1`,
-//             [body.slug]
-//         );
+function normalizePayload(payload: SetupPayload) {
+  const businessName = (payload.businessName || payload.company_name || "").trim();
+  const slug = (payload.slug || payload.subdomain_url || "").trim().toLowerCase();
+  const ownerName = (payload.ownerName || payload.full_name || "").trim();
+  const ownerEmail = (payload.ownerEmail || payload.email || "").trim().toLowerCase();
+  const ownerPhone = (payload.ownerPhone || payload.phone || "").trim();
+  const password = payload.password || "";
 
-//         let companyId: number;
-//         if (existingCompany.rows.length > 0) {
-//             companyId = existingCompany.rows[0].id;
-//         } else {
-//             /* ---------------- Insert Company ---------------- */
-//             const companyResult = await client.query(
-//                 `INSERT INTO public.companies 
-//                   (company_name, subdomain_url)
-//                   VALUES ($1,$2)
-//                   RETURNING id`,
-//                 [
-//                     body.businessName,
-//                     body.slug
-                    
-//                 ]
-//             );
+  if (!businessName || !slug || !ownerName || !ownerEmail || !ownerPhone || !password) {
+    throw new Error("Missing required fields");
+  }
 
-//             companyId = companyResult.rows[0].id;
-//             const schemaName = `tenant_${companyId}`;
-//             console.log("Creating schema for company:", schemaName);
-//             /* ---------------- Create Schema ---------------- */
-//             // await client.query(`CREATE SCHEMA "${body.schema_name}"`);
-//             const schemaResult = await client.query(
-//             `Update public.companies SET schema_name = $1 WHERE id = $2`,
-//             [schemaName, companyId]);
-//              await createCompanySchema(client,schemaName);
-//              console.log("Schema created:", schemaName);
-//         }
+  if (!/^[a-z0-9-]{3,40}$/.test(slug)) {
+    throw new Error("Invalid slug format");
+  }
 
-//         /* ---------------- Check if email already exists for this company ---------------- */
-//         const existingEmail = await client.query(
-//             `SELECT id FROM public.users WHERE company_id = $1 AND email = $2`,
-//             [companyId, body.ownerEmail]
-//         );
-//         if (existingEmail.rows.length > 0) {
-//             throw new Error("Email already exists for this company");
-//         }
+  if (password.length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
 
-//         /* ---------------- Check if phone already exists for this company ---------------- */
-//         const existingPhone = await client.query(
-//             `SELECT id FROM public.users WHERE company_id = $1 AND phone = $2`,
-//             [companyId, body.ownerPhone]
-//         );
-//         if (existingPhone.rows.length > 0) {
-//             throw new Error("Phone number already exists for this company");
-//         }
-
-
-        
-
-//         /* ---------------- Hash Password ---------------- */
-//         const hashed = await hashPassword(body.password);
-
-//         /* ---------------- Insert User ---------------- */
-//         await client.query(
-//             `INSERT INTO public.users
-//              (company_id, name,  email,phone, password_hash, role)
-//              VALUES ($1,$2,$3,$4,$5,'ADMIN')`,
-//             [
-//                 companyId,
-//                 body.ownerName,
-//                 body.ownerEmail,
-//                 body.ownerPhone,
-//                 hashed
-//             ]
-//         );
-
-//         await client.query("COMMIT");
-
-//         return NextResponse.json({
-//             message: "Company and Admin User created successfully",
-//         });
-//     } catch (err: any) {
-//         await client.query("ROLLBACK");
-//         if (err.code === "23505") {
-//             return NextResponse.json(
-//                 { message: "Duplicate entry detected (email/phone/username/subdomain)" },
-//                 { status: 400 }
-//             );
-//         }
-//         return NextResponse.json(
-//             { message: err.message || "Something went wrong" },
-//             { status: 400 }
-//         );
-//     } finally {
-//         client.release();
-//     }
-// }
+  return {
+    businessName,
+    slug,
+    ownerName,
+    ownerEmail,
+    ownerPhone,
+    password,
+  };
+}
 
 export async function POST(req: Request) {
-  console.log("API HIT: /api/register-company");
-
-  const body = await req.json();
-  console.log("Request body:", body);
-
+  await ensureDB();
+  const body = (await req.json()) as SetupPayload;
+  const input = normalizePayload(body);
   const client = await pool.connect();
 
   try {
-    console.log("DB connected");
-
     await client.query("BEGIN");
-    console.log("Transaction started");
-
-    /* ---------------- Check if company exists ---------------- */
-    console.log("Checking company slug:", body.slug);
 
     const existingCompany = await client.query(
-      `SELECT id, schema_name FROM public.companies WHERE subdomain_url = $1`,
-      [body.slug]
+      `SELECT id FROM public.companies WHERE subdomain_url = $1`,
+      [input.slug]
     );
-
-    console.log("Existing company result:", existingCompany.rows);
-
-    let companyId: number;
-
-    if (existingCompany.rows.length > 0) {
-      console.log("Company already exists");
-      companyId = existingCompany.rows[0].id;
-    } else {
-      console.log("Creating new company");
-
-      const companyResult = await client.query(
-        `INSERT INTO public.companies 
-        (company_name, subdomain_url)
-        VALUES ($1,$2)
-        RETURNING id`,
-        [body.businessName, body.slug]
-      );
-
-      console.log("Company inserted:", companyResult.rows);
-
-      companyId = companyResult.rows[0].id;
-
-      const schemaName = `tenant_${companyId}`;
-      console.log("Generated schema name:", schemaName);
-
-      console.log("Updating schema_name in companies table");
-
-      await client.query(
-        `UPDATE public.companies SET schema_name = $1 WHERE id = $2`,
-        [schemaName, companyId]
-      );
-
-      console.log("Calling createCompanySchema");
-
-      await createCompanySchema(client, schemaName);
-
-      console.log("Schema created successfully:", schemaName);
+    if (existingCompany.rowCount) {
+      throw new Error("Company URL already taken");
     }
 
-    /* ---------------- Email Check ---------------- */
-    console.log("Checking existing email:", body.ownerEmail);
+    const companyResult = await client.query(
+      `INSERT INTO public.companies
+       (company_name, subdomain_url, schema_name, setup_stage)
+       VALUES ($1, $2, $3, 'ACCOUNT_CREATED')
+       RETURNING id, subdomain_url`,
+      [input.businessName, input.slug, `tenant_pending_${Date.now()}`]
+    );
+
+    const companyId = Number(companyResult.rows[0].id);
+    const schemaName = `tenant_${companyId}`;
+
+    await client.query(
+      `UPDATE public.companies
+       SET schema_name = $1, setup_stage = 'ACCOUNT_CREATED', updated_at = NOW()
+       WHERE id = $2`,
+      [schemaName, companyId]
+    );
+
+    await createCompanySchema(client, schemaName);
 
     const existingEmail = await client.query(
       `SELECT id FROM public.users WHERE company_id = $1 AND email = $2`,
-      [companyId, body.ownerEmail]
+      [companyId, input.ownerEmail]
     );
-
-    if (existingEmail.rows.length > 0) {
-      console.log("Email already exists");
+    if (existingEmail.rowCount) {
       throw new Error("Email already exists for this company");
     }
 
-    console.log("Email available");
-
-    /* ---------------- Phone Check ---------------- */
-
-    console.log("Checking existing phone:", body.ownerPhone);
-
     const existingPhone = await client.query(
       `SELECT id FROM public.users WHERE company_id = $1 AND phone = $2`,
-      [companyId, body.ownerPhone]
+      [companyId, input.ownerPhone]
     );
-
-    if (existingPhone.rows.length > 0) {
-      console.log("Phone already exists");
+    if (existingPhone.rowCount) {
       throw new Error("Phone number already exists for this company");
     }
 
-    console.log("Phone available");
-
-    /* ---------------- Hash Password ---------------- */
-
-    console.log("Hashing password");
-
-    const hashed = await hashPassword(body.password);
-
-    console.log("Password hashed");
-
-    /* ---------------- Insert User ---------------- */
-
-    console.log("Creating admin user");
-
-    await client.query(
+    const passwordHash = await hashPassword(input.password);
+    const userResult = await client.query(
       `INSERT INTO public.users
        (company_id, name, email, phone, password_hash, role)
-       VALUES ($1,$2,$3,$4,$5,'ADMIN')`,
-      [
-        companyId,
-        body.ownerName,
-        body.ownerEmail,
-        body.ownerPhone,
-        hashed,
-      ]
+       VALUES ($1, $2, $3, $4, $5, 'ADMIN')
+       RETURNING id`,
+      [companyId, input.ownerName, input.ownerEmail, input.ownerPhone, passwordHash]
     );
 
-    console.log("Admin user created");
+    const ownerUserId = Number(userResult.rows[0].id);
+    const defaultUsername = input.ownerEmail.split("@")[0] || `owner${ownerUserId}`;
+
+    await client.query(
+      `INSERT INTO public.company_user_map
+       (user_id, company_id, username, role, is_active)
+       VALUES ($1, $2, $3, 'OWNER', TRUE)
+       ON CONFLICT (user_id, company_id) DO UPDATE
+       SET role = EXCLUDED.role, is_active = TRUE`,
+      [ownerUserId, companyId, defaultUsername]
+    );
 
     await client.query("COMMIT");
-    console.log("Transaction committed");
 
     return NextResponse.json({
+      success: true,
       message: "Company and Admin User created successfully",
+      companyId,
+      slug: input.slug,
+      setup_stage: "ACCOUNT_CREATED",
+      onboardingUrl: `/setup?company=${encodeURIComponent(input.slug)}`,
     });
-
   } catch (err: any) {
-    console.error("ERROR OCCURRED:", err);
-
     await client.query("ROLLBACK");
-    console.log("Transaction rolled back");
-
     if (err.code === "23505") {
-      console.log("Postgres duplicate constraint triggered");
       return NextResponse.json(
-        { message: "Duplicate entry detected (email/phone/username/subdomain)" },
+        { success: false, message: "Duplicate entry detected" },
         { status: 400 }
       );
     }
-
     return NextResponse.json(
-      { message: err.message || "Something went wrong" },
+      { success: false, message: err.message || "Something went wrong" },
       { status: 400 }
     );
   } finally {
     client.release();
-    console.log("DB connection released");
   }
 }

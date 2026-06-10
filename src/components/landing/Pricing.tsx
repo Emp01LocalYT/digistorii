@@ -1,132 +1,225 @@
 "use client";
-import { useState } from "react";
- 
-export default function Pricing() {
-  const [selectedPlan, setSelectedPlan] = useState("Growth");
- 
-  const plans = [
-    {
-      name: "Starter",
-      price: "₹999",
-      description: "Perfect for small businesses & freelancers",
-      features: [
-        "1 Company Setup",
-        "GST Billing & Invoices",
-        "Customer & Supplier Management",
-        "Basic Expense Tracking",
-        "Standard Reports",
-      ],
-    },
-    {
-      name: "Growth",
-      price: "₹1999",
-      description: "Best for growing SMEs",
-      features: [
-        "Everything in Starter",
-        "Inventory Management",
-        "Advanced Financial Reports",
-        "Sales & Profit Dashboard",
-        "Priority Email Support",
-      ],
-    },
-    {
-      name: "Pro",
-      price: "₹3999",
-      description: "For scaling businesses & multi-branch companies",
-      features: [
-        "Everything in Growth",
-        "Multi-User Access",
-        "Multi-Company Management",
-        "Advanced Analytics",
-        "Dedicated Support",
-      ],
-    },
-  ];
- 
+
+import Link from "next/link";
+import {
+  BillingInterval,
+  PAID_PLAN_CODES,
+  PLAN_CONFIG,
+  PLAN_PRICING,
+  PlanCode,
+} from "@/lib/onboarding";
+
+type PricingProps = {
+  mode?: "marketing" | "onboarding";
+  selectedPlan?: PlanCode | null;
+  selectedBillingInterval?: BillingInterval;
+  onSelectPlan?: (plan: PlanCode) => void;
+  onSelectBillingInterval?: (interval: BillingInterval) => void;
+  onContinue?: (plan: PlanCode, billingInterval?: BillingInterval) => void;
+  loading?: boolean;
+};
+
+const PLAN_ORDER = PAID_PLAN_CODES;
+
+export function PlanCards({
+  selectedPlan,
+  selectedBillingInterval = "monthly",
+  onSelectPlan,
+  onSelectBillingInterval,
+  onContinue,
+  loading = false,
+}: Omit<PricingProps, "mode">) {
   return (
-    <section className="py-24 bg-gradient-to-b from-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-6">
- 
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            Transparent Pricing for Every Business Stage
-          </h2>
-          <p className="text-lg text-gray-600">
-            Click a plan to select it.
-          </p>
+    <div className="space-y-6">
+      {onSelectBillingInterval && (
+        <div className="flex items-center justify-center">
+          <div className="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+            <button
+              type="button"
+              onClick={() => onSelectBillingInterval("monthly")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                selectedBillingInterval === "monthly"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelectBillingInterval("yearly")}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                selectedBillingInterval === "yearly"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Yearly
+              <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                Save 20%
+              </span>
+            </button>
+          </div>
         </div>
- 
-        <div className="grid md:grid-cols-3 gap-10 max-w-6xl mx-auto">
-          {plans.map((plan, idx) => {
-            const isSelected = selectedPlan === plan.name;
- 
-            return (
+      )}
+
+      <div className="grid md:grid-cols-3 gap-8">
+        {PLAN_ORDER.map((planCode) => {
+          const plan = PLAN_CONFIG[planCode];
+          const isSelected = selectedPlan === planCode;
+          const monthlyPrice = PLAN_PRICING[planCode].monthly;
+          const yearlyPrice = PLAN_PRICING[planCode].yearly;
+          const price = selectedBillingInterval === "yearly" ? yearlyPrice : monthlyPrice;
+
+          return (
+            <div
+              key={planCode}
+              className={`relative rounded-2xl border p-7 transition-all duration-300 cursor-pointer
+              ${
+                isSelected
+                  ? "border-blue-500 bg-blue-50/60 shadow-lg scale-[1.02]"
+                  : "border-gray-100 bg-white shadow-sm hover:border-blue-200 hover:shadow-md"
+              }`}
+            >
               <div
-                key={idx}
-                onClick={() => setSelectedPlan(plan.name)}
-                className={`cursor-pointer relative rounded-3xl p-10 transition-all duration-300 ${
-                  isSelected
-                    ? "bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-2xl scale-105"
-                    : "bg-white border border-gray-200 shadow-md hover:shadow-xl"
+                className={`absolute top-0 left-0 h-1 w-full rounded-t-2xl ${
+                  isSelected ? "bg-blue-500" : "bg-transparent"
                 }`}
-              >
-                {isSelected && (
-                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-yellow-400 text-gray-900 text-xs font-bold px-4 py-1 rounded-full shadow">
-                    SELECTED
-                  </div>
-                )}
- 
-                <h3 className="text-2xl font-bold mb-3">
-                  {plan.name}
-                </h3>
- 
-                <p className={`text-sm mb-6 ${isSelected ? "text-blue-100" : "text-gray-600"}`}>
-                  {plan.description}
+              />
+
+              <h3 className="text-xl font-semibold text-gray-900">{plan.title}</h3>
+
+              <p className="mt-1 text-xs text-gray-500">
+                {plan.ecommerce_access ? "Ecommerce enabled" : "Ecommerce disabled"}
+              </p>
+
+              <div className="mt-5 flex items-end gap-2">
+                <span className="text-3xl font-semibold text-gray-900">Rs.{price.toLocaleString("en-IN")}</span>
+                <span className="text-xs text-gray-400 mb-1">
+                  / {selectedBillingInterval === "yearly" ? "year" : "month"}
+                </span>
+              </div>
+              {selectedBillingInterval === "yearly" && (
+                <p className="mt-1 text-xs text-green-700">
+                  {PLAN_PRICING[planCode].yearly_savings_label} (Rs.
+                  {(monthlyPrice * 12).toLocaleString("en-IN")} yearly regular)
                 </p>
- 
-                <div className="mb-8">
-                  <span className="text-5xl font-bold">
-                    {plan.price}
-                  </span>
-                  <span className="text-lg ml-2 opacity-80">
-                    / month
+              )}
+
+              <div className="mt-6 space-y-3 text-sm">
+                <div className="flex justify-between border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Users</span>
+                  <span className="font-medium text-gray-900">{plan.max_users}</span>
+                </div>
+
+                <div className="flex justify-between border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Locations</span>
+                  <span className="font-medium text-gray-900">{plan.max_locations}</span>
+                </div>
+
+                <div className="flex justify-between border-b border-gray-100 pb-2">
+                  <span className="text-gray-500">Warehouses</span>
+                  <span className="font-medium text-gray-900">{plan.max_warehouses}</span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Ecommerce</span>
+                  <span
+                    className={`font-medium ${
+                      plan.ecommerce_access ? "text-blue-600" : "text-gray-400"
+                    }`}
+                  >
+                    {plan.ecommerce_access ? "Enabled" : "Disabled"}
                   </span>
                 </div>
- 
-                <ul className="space-y-4 mb-10">
-                  {plan.features.map((feature, i) => (
-                    <li key={i} className="flex items-start gap-3">
-                      <span
-                        className={`w-5 h-5 mt-1 rounded-full flex items-center justify-center text-xs ${
-                          isSelected
-                            ? "bg-white text-blue-600"
-                            : "bg-blue-600 text-white"
-                        }`}
-                      >
-                        ✓
-                      </span>
-                      <span className="text-sm">
-                        {feature}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
- 
-                <button
-                  className={`w-full py-3 rounded-xl font-semibold transition-all ${
-                    isSelected
-                      ? "bg-white text-blue-600 hover:bg-blue-50"
-                      : "bg-blue-600 text-white hover:bg-blue-700"
-                  }`}
-                >
-                  Get Started
-                </button>
               </div>
-            );
-          })}
+
+              {(onSelectPlan || onContinue) && (
+                <div className="mt-7 flex gap-2">
+                  {onSelectPlan && (
+                    <button
+                      type="button"
+                      onClick={() => onSelectPlan(planCode)}
+                      className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all
+                      ${
+                        isSelected
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : "bg-gray-50 text-gray-700 hover:bg-blue-50 hover:text-blue-600"
+                      }`}
+                    >
+                      {isSelected ? "Selected" : "Select"}
+                    </button>
+                  )}
+
+                  {onContinue && isSelected && (
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => onContinue(planCode, selectedBillingInterval)}
+                      className="flex-1 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-800 disabled:opacity-70"
+                    >
+                      {loading ? "Saving..." : "Continue"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export default function Pricing({
+  mode = "marketing",
+  selectedPlan = null,
+  selectedBillingInterval = "monthly",
+  onSelectPlan,
+  onSelectBillingInterval,
+  onContinue,
+  loading = false,
+}: PricingProps) {
+  if (mode === "onboarding") {
+    return (
+      <section>
+        <div className="mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Step 2: Select Plan</h2>
+          <p className="mt-1 text-gray-600">
+            Choose the plan that matches your business today. You can upgrade later.
+          </p>
+        </div>
+        <PlanCards
+          selectedPlan={selectedPlan}
+          selectedBillingInterval={selectedBillingInterval}
+          onSelectPlan={onSelectPlan}
+          onSelectBillingInterval={onSelectBillingInterval}
+          onContinue={onContinue}
+          loading={loading}
+        />
+      </section>
+    );
+  }
+
+  return (
+    <section className="py-20 bg-gradient-to-b from-white to-gray-50">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-gray-900 mb-3">Simple Plans</h2>
+          <p className="text-lg text-gray-600">Start free, then scale when you are ready.</p>
+        </div>
+
+        <PlanCards selectedPlan={null} />
+
+        <div className="mt-10 text-center">
+          <Link
+            href="/"
+            className="inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Create Your Account
+          </Link>
         </div>
       </div>
     </section>
   );
 }
- 

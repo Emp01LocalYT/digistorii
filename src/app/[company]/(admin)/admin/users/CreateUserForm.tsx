@@ -1,7 +1,7 @@
 "use client";
  
 import { useEffect, useState, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { PlusIcon } from "@heroicons/react/24/outline";
  
 const FloatingInput = ({
@@ -61,11 +61,19 @@ type User = {
   email: string;
   phone: string;
   password: string;
-  status: boolean,
-  default_warehouse_id?: string;
+  status: boolean;
+  role: "ADMIN" | "MANAGER" | "CASHIER" | "WAREHOUSE_STAFF";
+  location_id: string;
+  warehouse_id: string;
 };
 
 type WarehouseOption = {
+  id: number;
+  name: string;
+  location_id: number;
+};
+
+type LocationOption = {
   id: number;
   name: string;
 };
@@ -86,6 +94,7 @@ export default function CreateUserForm({ company, userId }: Props) {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
   // const userId = params.id;
   const hasFetched = useRef(false);
   const [users, setUsers] = useState([
@@ -97,11 +106,18 @@ export default function CreateUserForm({ company, userId }: Props) {
       phone: "",
       password: "",
       status: true,
-      default_warehouse_id: "",
+      role: "CASHIER",
+      location_id: "",
+      warehouse_id: "",
     },
   ]);
   /* ---------------- Add Row ---------------- */
   const addRow = () => {
+    const defaultLocationId = locations[0] ? String(locations[0].id) : "";
+    const defaultWarehouse =
+      warehouses.find((warehouse) => String(warehouse.location_id) === defaultLocationId) ||
+      warehouses[0];
+    const defaultWarehouseId = defaultWarehouse ? String(defaultWarehouse.id) : "";
     setUsers([
       ...users,
       {
@@ -112,7 +128,9 @@ export default function CreateUserForm({ company, userId }: Props) {
         phone: "",
         password: "",
         status: true,
-        default_warehouse_id: "",
+        role: "CASHIER",
+        location_id: defaultLocationId,
+        warehouse_id: defaultWarehouseId,
       },
     ]);
     setErrors([]);
@@ -147,9 +165,9 @@ export default function CreateUserForm({ company, userId }: Props) {
               phone: data.user.phone,
               password: "",
               status: !!data.user.is_active,
-              default_warehouse_id: data.user.default_warehouse_id
-                ? String(data.user.default_warehouse_id)
-                : "",
+              role: data.user.role || "CASHIER",
+              location_id: data.user.location_id ? String(data.user.location_id) : "",
+              warehouse_id: data.user.warehouse_id ? String(data.user.warehouse_id) : "",
             },
           ]);
         } else {
@@ -166,21 +184,63 @@ export default function CreateUserForm({ company, userId }: Props) {
 
   useEffect(() => {
     if (!tenant) return;
-    const loadWarehouses = async () => {
+    const loadMasterOptions = async () => {
       try {
-        const res = await fetch("/api/warehouses", {
-          headers: { "x-tenant": tenant },
-        });
-        const data = await res.json();
-        if (res.ok && data?.success) {
-          setWarehouses(data.data || []);
+        const [locationRes, warehouseRes] = await Promise.all([
+          fetch("/api/locations", {
+            headers: { "x-tenant": tenant },
+          }),
+          fetch("/api/warehouses", {
+            headers: { "x-tenant": tenant },
+          }),
+        ]);
+        const locationData = await locationRes.json();
+        const warehouseData = await warehouseRes.json();
+
+        if (locationRes.ok && locationData?.success) {
+          setLocations(locationData.data || []);
+        }
+        if (warehouseRes.ok && warehouseData?.success) {
+          setWarehouses(warehouseData.data || []);
         }
       } catch (err) {
-        console.error("Failed to load warehouses", err);
+        console.error("Failed to load location/warehouse options", err);
       }
     };
-    loadWarehouses();
+    loadMasterOptions();
   }, [tenant]);
+
+  useEffect(() => {
+    const defaultLocationId = locations[0] ? String(locations[0].id) : "";
+    const defaultWarehouseId = warehouses[0] ? String(warehouses[0].id) : "";
+    if (!defaultLocationId && !defaultWarehouseId) return;
+
+    setUsers((prev) =>
+      prev.map((user) => {
+        const currentLocation = user.location_id || defaultLocationId;
+        const matchingWarehouse = warehouses.find(
+          (warehouse) => String(warehouse.location_id) === currentLocation
+        );
+        const selectedWarehouse = warehouses.find(
+          (warehouse) => String(warehouse.id) === String(user.warehouse_id)
+        );
+        const selectedWarehouseMatchesLocation =
+          !!selectedWarehouse &&
+          String(selectedWarehouse.location_id) === String(currentLocation);
+        const nextWarehouseId = selectedWarehouseMatchesLocation
+          ? String(selectedWarehouse.id)
+          : matchingWarehouse
+          ? String(matchingWarehouse.id)
+          : defaultWarehouseId;
+
+        return {
+          ...user,
+          location_id: currentLocation,
+          warehouse_id: nextWarehouseId,
+        };
+      })
+    );
+  }, [locations, warehouses]);
  
   /* ---------------- Handle Change ---------------- */
   const handleChange = (
@@ -260,7 +320,22 @@ export default function CreateUserForm({ company, userId }: Props) {
       else if (phoneCount[user.phone] > 1) {
         err.phone = "Duplicate phone";
       }
- 
+
+      if (!user.role) {
+        err.role = "Role is required";
+      }
+      if (!user.location_id) {
+        err.location_id = "Location is required";
+      }
+      if (!user.warehouse_id) {
+        err.warehouse_id = "Warehouse is required";
+      } else if (user.location_id) {
+        const warehouse = warehouses.find((w) => String(w.id) === String(user.warehouse_id));
+        if (!warehouse || String(warehouse.location_id) !== String(user.location_id)) {
+          err.warehouse_id = "Warehouse must belong to selected location";
+        }
+      }
+
       if (!userId) {
         if (!user.password) { err.password = "Password is required"; }
         else if (user.password.length < 6) { err.password = "Password must be at least 6 characters"; }
@@ -338,7 +413,14 @@ export default function CreateUserForm({ company, userId }: Props) {
             email: "",
             phone: "",
             password: "",
-            status: true
+            status: true,
+            role: "CASHIER",
+            location_id: locations[0] ? String(locations[0].id) : "",
+            warehouse_id:
+              warehouses.find(
+                (warehouse) =>
+                  String(warehouse.location_id) === String(locations[0]?.id || "")
+              )?.id?.toString() || (warehouses[0] ? String(warehouses[0].id) : ""),
           },
         ]);
         router.push(`/${tenant}/admin`);
@@ -431,25 +513,94 @@ export default function CreateUserForm({ company, userId }: Props) {
               }
             />
 
-            {/* <div className="w-full">
+            <div className="w-full">
               <label className="text-sm font-semibold mb-1 block">
-                Default Warehouse
+                Role <span className="text-red-500">*</span>
               </label>
               <select
-                value={user.default_warehouse_id ?? ""}
-                onChange={(e) =>
-                  handleChange(index, "default_warehouse_id", e.target.value)
-                }
+                value={user.role}
+                onChange={(e) => handleChange(index, "role", e.target.value)}
                 className="floating-input"
+                required
               >
-                <option value="">Select Warehouse</option>
-                {warehouses.map((w) => (
-                  <option key={w.id} value={String(w.id)}>
-                    {w.name}
+                <option value="ADMIN">ADMIN</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="CASHIER">CASHIER</option>
+                <option value="WAREHOUSE_STAFF">WAREHOUSE_STAFF</option>
+              </select>
+              {errors[index]?.role && (
+                <p className="text-sm text-red-500 mt-1">{errors[index]?.role}</p>
+              )}
+            </div>
+
+            <div className="w-full">
+              <label className="text-sm font-semibold mb-1 block">
+                Location <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={user.location_id}
+                onChange={(e) => {
+                  const nextLocationId = e.target.value;
+                  const nextWarehouses = warehouses.filter(
+                    (warehouse) => String(warehouse.location_id) === nextLocationId
+                  );
+                  const currentWarehouseMatches = nextWarehouses.some(
+                    (warehouse) => String(warehouse.id) === user.warehouse_id
+                  );
+                  const nextWarehouseId = currentWarehouseMatches
+                    ? user.warehouse_id
+                    : nextWarehouses[0]
+                    ? String(nextWarehouses[0].id)
+                    : "";
+                  const updated = [...users];
+                  updated[index] = {
+                    ...updated[index],
+                    location_id: nextLocationId,
+                    warehouse_id: nextWarehouseId,
+                  };
+                  setUsers(updated);
+                }}
+                className="floating-input"
+                required
+              >
+                <option value="">Select Location</option>
+                {locations.map((location) => (
+                  <option key={location.id} value={String(location.id)}>
+                    {location.name}
                   </option>
                 ))}
               </select>
-            </div> */}
+              {errors[index]?.location_id && (
+                <p className="text-sm text-red-500 mt-1">{errors[index]?.location_id}</p>
+              )}
+            </div>
+
+            <div className="w-full">
+              <label className="text-sm font-semibold mb-1 block">
+                Warehouse <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={user.warehouse_id}
+                onChange={(e) => handleChange(index, "warehouse_id", e.target.value)}
+                className="floating-input"
+                required
+              >
+                <option value="">Select Warehouse</option>
+                {warehouses
+                  .filter(
+                    (warehouse) =>
+                      !user.location_id || String(warehouse.location_id) === String(user.location_id)
+                  )
+                  .map((warehouse) => (
+                    <option key={warehouse.id} value={String(warehouse.id)}>
+                      {warehouse.name}
+                    </option>
+                  ))}
+              </select>
+              {errors[index]?.warehouse_id && (
+                <p className="text-sm text-red-500 mt-1">{errors[index]?.warehouse_id}</p>
+              )}
+            </div>
 
             <FloatingInput
               label="Password"

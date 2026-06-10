@@ -158,7 +158,7 @@ export default function LocationMasterPage() {
       setErrors({});
       setActiveTab("address");
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify(error?.message || "Save  failed", { severity: "warning" });
     } finally {
       setFormLoading(false);
     }
@@ -212,14 +212,14 @@ export default function LocationMasterPage() {
           <div className="fixed inset-0 z-[99999] bg-black/20 backdrop-blur-sm flex items-center justify-center">
             <div className="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center gap-3">
               <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-gray-700 font-semibold text-lg">Saving Location...</p>
+              <p className="text-gray-700 font-semibold text-lg">Saving Store Location...</p>
             </div>
           </div>,
           document.body
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Location Master" : "Location List"}</h1>
+        <h1 className="text-2xl font-bold">{showForm ? "Store Location Master" : "Store Location List"}</h1>
         {!showForm && (
           <button
             onClick={() => {
@@ -231,7 +231,7 @@ export default function LocationMasterPage() {
             className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"
           >
             <PlusIcon className="w-4 h-4" />
-            Add Location
+            Add Store Location
           </button>
         )}
       </div>

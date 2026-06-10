@@ -8,41 +8,45 @@ type SalesTableProps = {
   details: SalesDetail[];
   errors: Record<string, string | undefined>;
   taxes: any[];
+  activeIndex?: number | null;
   onRateChange: (index: number, value: number | "") => void;
   onQtyChange: (index: number, value: number | "") => void;
   onDiscountChange: (index: number, value: number | "") => void;
   onTaxChange: (index: number, taxId: number | null) => void;
   onRemove: (index: number) => void;
+  onSelectRow?: (index: number) => void;
 };
 
 const SalesTable = memo(function SalesTable({
   details,
   errors,
   taxes,
+  activeIndex = null,
   onRateChange,
   onQtyChange,
   onDiscountChange,
   onTaxChange,
   onRemove,
+  onSelectRow,
 }: SalesTableProps) {
   return (
-    <div className="bg-white rounded-xl shadow overflow-auto max-h-[480px]">
-      <table className="w-full text-sm table-auto border-separate border-spacing-0">
-        <thead className="bg-gray-50 text-sm">
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <div className="max-h-[58vh] overflow-auto">
+        <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-sm">
+        <thead className="sticky top-0 z-10 bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600">
           <tr>
-            <th className="p-3 text-sm text-left">Product Id</th>
-            <th className="p-3 text-sm text-left">Product Name</th>
-            <th className="p-3 text-sm text-left">Description</th>
-            {/* <th className="p-3 text-sm">UOM</th> */}
-            <th className="p-3 text-sm">Unit Price</th>
-            <th className="p-3 text-sm">Discount</th>
-            <th className="p-3 text-sm">Disc.Amt</th>
-            <th className="p-3 text-sm">Qty</th>
-            <th className="p-3 text-sm">Amount</th>
-            <th className="p-3 text-sm">Tax %</th>
-            <th className="p-3 text-sm">Tax Amt</th>
-            <th className="p-3 text-sm">Total</th>
-            <th className="p-3"></th>
+            <th className="px-3 py-2 text-left font-semibold">Product Id</th>
+            <th className="px-3 py-2 text-left font-semibold">Product Name</th>
+            <th className="px-3 py-2 text-left font-semibold">Description</th>
+            <th className="px-3 py-2 text-center font-semibold">Unit Price</th>
+            <th className="px-3 py-2 text-center font-semibold">Discount</th>
+            <th className="px-3 py-2 text-center font-semibold">Disc.Amt</th>
+            <th className="px-3 py-2 text-center font-semibold">Qty</th>
+            <th className="px-3 py-2 text-center font-semibold">Amount</th>
+            <th className="px-3 py-2 text-center font-semibold">Tax %</th>
+            <th className="px-3 py-2 text-center font-semibold">Tax Amt</th>
+            <th className="px-3 py-2 text-center font-semibold">Total</th>
+            <th className="px-3 py-2"></th>
           </tr>
         </thead>
 
@@ -53,6 +57,7 @@ const SalesTable = memo(function SalesTable({
               row={row}
               index={index}
               taxes={taxes}
+              isActive={activeIndex === index}
               productError={errors[`product_${index}`]}
               rateError={errors[`rate_${index}`]}
               qtyError={errors[`qty_${index}`]}
@@ -61,10 +66,12 @@ const SalesTable = memo(function SalesTable({
               onDiscountChange={onDiscountChange}
               onTaxChange={onTaxChange}
               onRemove={onRemove}
+              onSelect={onSelectRow}
             />
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 });

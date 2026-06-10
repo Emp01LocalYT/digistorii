@@ -1,6 +1,8 @@
 export type PurchaseDetail = {
   id?: number;
   product_id: string; // variant_id
+  temp_id?: string;
+  is_new?: boolean;
   product_code?: string;
   product_name?: string;
   description: string;
@@ -8,6 +10,9 @@ export type PurchaseDetail = {
   uom_code?: string;
   uom_name?: string;
   hsn_no: string;
+  sku?: string;
+  category_id?: string;
+  source?: "own" | "vendor";
   rate: number | "";
   qty: number | "";
   amount: number;

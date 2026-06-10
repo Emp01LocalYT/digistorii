@@ -1,182 +1,157 @@
 "use client";
 
 import { memo } from "react";
-import type { ChangeEvent, KeyboardEvent, RefObject } from "react";
+import type { ChangeEvent } from "react";
+import Select from "react-select";
+import type { InputActionMeta, SingleValue } from "react-select";
 import type {
-  Locator,
+  Customer,
   SalesHeader as SalesHeaderType,
-  Warehouse,
 } from "@/types/sales";
+
+export type CustomerSelectOption = {
+  value: string;
+  label: string;
+  customerName: string;
+  phoneNumber: string;
+  customer: Customer;
+};
 
 type SalesHeaderProps = {
   header: SalesHeaderType;
-  couponCode: string;
-  discountMode: "percent" | "amount";
   salesNoError?: string;
   customerError?: string;
   salesDateError?: string;
-  barcodeValue: string;
-  barcodeMessage: string;
-  barcodeInputRef: RefObject<HTMLInputElement | null>;
-  selectedCustomerName: string;
-  onOpenCustomerModal: () => void;
-  onDiscountModeChange: (mode: "percent" | "amount") => void;
+  selectedCustomerOption?: CustomerSelectOption | null;
+  customerOptions?: CustomerSelectOption[];
+  customerSearchInput?: string;
+  onCustomerSelect?: (option: CustomerSelectOption | null) => void;
+  onCustomerSearchInputChange?: (value: string, meta: InputActionMeta) => void;
+  onOpenQuickCustomerPopup?: () => void;
+  onOpenCustomerModal?: () => void;
   onSalesDateChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  // onBranchNameChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  onCouponChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  onBarcodeChange: (e: ChangeEvent<HTMLInputElement>) => void;
-  onBarcodeKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
-  onOpenProductPopup: () => void;
 };
 
 const SalesHeader = memo(function SalesHeader({
   header,
-  couponCode,
   salesNoError,
   customerError,
   salesDateError,
-  barcodeValue,
-  barcodeMessage,
-  discountMode,
-  barcodeInputRef,
-  selectedCustomerName,
+  selectedCustomerOption = null,
+  customerOptions = [],
+  customerSearchInput = "",
+  onCustomerSelect,
+  onCustomerSearchInputChange,
+  onOpenQuickCustomerPopup,
   onOpenCustomerModal,
-  onDiscountModeChange,
   onSalesDateChange,
-  // onBranchNameChange,
-  onCouponChange,
-  onBarcodeChange,
-  onBarcodeKeyDown,
-  onOpenProductPopup,
 }: SalesHeaderProps) {
   return (
-    <div className="bg-white p-6 rounded-xl shadow space-y-4">
-      {/*row1*/}
-      <div className="grid md:grid-cols-3 gap-4">
-      <div>
-        <label className="text-sm font-semibold">
-          Bill No<span className="text-red-500">*</span>
-        </label>
-        <input
-          value={header.sales_no}
-          readOnly
-          className="border p-2 rounded w-full bg-gray-100 text-indigo-600 font-semibold"
-        />
-        {salesNoError && <p className="text-red-500 text-sm mt-1">{salesNoError}</p>}
-      </div>
-      <div>
-        <label className="text-sm font-semibold mb-1 block">
-          Bill Date<span className="text-red-500">*</span>
-        </label>
-        <input
-          type="date"
-          value={header.sales_date}
-          min={new Date().toISOString().split("T")[0]}
-          onChange={onSalesDateChange}
-          className={`border p-2 rounded w-full ${salesDateError ? "border-red-500" : ""}`}
-        />
-        {salesDateError && <p className="text-red-500 text-sm mt-1">{salesDateError}</p>}
-      </div>
-
-      <div>
-        <label className="text-sm font-semibold mb-1 block">
-          Customer <span className="text-red-500">*</span>
-        </label>
-        <div className="flex gap-2">
+    <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
+      <div className="grid gap-3 md:grid-cols-12">
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Bill No
+          </label>
           <input
-            type="text"
-            value={selectedCustomerName}
+            value={header.sales_no}
             readOnly
-            placeholder="Select Customer"
-            className={`border p-2 rounded w-full bg-gray-50 ${
-              customerError ? "border-red-500" : ""
-            }`}
+            className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-slate-700"
           />
-          <button
-            type="button"
-            onClick={onOpenCustomerModal}
-            className="bg-blue-600 text-white px-4 rounded"
-          >
-            Search
-          </button>
+          {salesNoError ? <p className="mt-1 text-xs text-red-500">{salesNoError}</p> : null}
         </div>
-        {customerError && <p className="text-red-500 text-sm mt-1">{customerError}</p>}
-      </div>
-</div>
 
-      {/*row2*/}
-      {/* <div className="grid md:grid-cols-1 gap-4">
-        <div>
-          <label className="text-sm font-semibold mb-1 block">Branch Name</label>
+        <div className="md:col-span-2">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Bill Date <span className="text-red-500">*</span>
+          </label>
           <input
-            type="text"
-            value={String(header.branch_name ?? "")}
-            onChange={onBranchNameChange}
-            className="border p-2 rounded w-full"
-            placeholder="Enter branch name"
+            type="date"
+            value={header.sales_date}
+            min={new Date().toISOString().split("T")[0]}
+            onChange={onSalesDateChange}
+            className={`h-10 w-full rounded-lg border px-3 text-sm ${salesDateError ? "border-red-500" : "border-gray-200"}`}
           />
+          {salesDateError ? <p className="mt-1 text-xs text-red-500">{salesDateError}</p> : null}
         </div>
-      </div> */}
-{/*row2*/}
-    <div className="flex gap-3 items-end">
-      <input
-            ref={barcodeInputRef}
-            type="text"
-            value={barcodeValue}
-            onChange={onBarcodeChange}
-            onKeyDown={onBarcodeKeyDown}
-            placeholder="Scan barcode"
-            className="border p-2 rounded w-56"
-          />
-          {barcodeMessage ? (
-            <span className="text-xs text-red-500 mt-1">{barcodeMessage}</span>
-          ) : null}
-        
-        <button
-          type="button"
-          onClick={onOpenProductPopup}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 h-[42px] rounded font-medium flex items-center justify-center gap-1 whitespace-nowrap"
-        >
-          Select Items
-        </button>
+
+        <div className="md:col-span-8">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Customer <span className="text-red-500">*</span>
+          </label>
+          <div className="flex gap-2">
+            <div className="flex-1 min-w-0">
+              <Select
+                placeholder="Enter customer phone number"
+                value={selectedCustomerOption}
+                options={customerOptions}
+                inputValue={customerSearchInput}
+                isSearchable
+                maxMenuHeight={260}
+                menuPortalTarget={document.body}
+                menuPosition="fixed"
+                filterOption={(candidate, rawInput) => {
+                  const search = String(rawInput || "").trim().toLowerCase();
+                  if (!search) return true;
+                  const phone = String(
+                    candidate.data.phoneNumber ||
+                      candidate.data.customer?.phone ||
+                      ""
+                  ).toLowerCase();
+                  const name = String(
+                    candidate.data.customerName ||
+                      candidate.data.customer?.cust_name ||
+                      candidate.data.customer?.name ||
+                      ""
+                  ).toLowerCase();
+                  return phone.includes(search) || name.includes(search);
+                }}
+                styles={{
+                  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+                  menu: (base) => ({ ...base, zIndex: 9999 }),
+                  control: (base, state) => ({
+                    ...base,
+                    minHeight: 40,
+                    borderRadius: 10,
+                    borderColor: customerError
+                      ? "#ef4444"
+                      : state.isFocused
+                        ? "#2563eb"
+                        : base.borderColor,
+                    boxShadow: state.isFocused
+                      ? `0 0 0 1px ${customerError ? "#ef4444" : "#2563eb"}`
+                      : base.boxShadow,
+                    "&:hover": {
+                      borderColor: customerError ? "#ef4444" : "#2563eb",
+                    },
+                  }),
+                }}
+              onInputChange={onCustomerSearchInputChange}
+              onChange={(option: SingleValue<CustomerSelectOption>) => {
+                  onCustomerSelect?.(option ?? null);
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={onOpenQuickCustomerPopup || onOpenCustomerModal}
+              className="h-10 w-10 rounded-lg bg-slate-500 text-lg leading-none text-white hover:bg-slate-800"
+              aria-label="Add customer"
+            >
+              +
+            </button>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            <span>
+              Name: {selectedCustomerOption?.customerName || header.customer_name || "Not selected"}
+            </span>
+            <span>
+              Mobile: {selectedCustomerOption?.phoneNumber || header.customer_phone || "-"}
+            </span>
+          </div>
+          {customerError ? <p className="mt-1 text-xs text-red-500">{customerError}</p> : null}
         </div>
-      
-
-{/*row3*/}
-      <div className="grid md:grid-cols-2 gap-4">
-  
-  {/* Coupon */}
-  <div>
-    <label className="text-sm font-semibold block mb-1">
-      Coupon Code
-    </label>
-    <input
-      type="text"
-      value={couponCode}
-      onChange={onCouponChange}
-      className="border p-2 rounded w-full"
-      placeholder="Enter Coupon"
-    />
-  </div>
-
-  {/* Discount Mode */}
-  <div>
-    <label className="text-sm font-semibold block mb-1">
-      Discount Mode
-    </label>
-    <select
-      value={discountMode}
-      onChange={(e) =>
-        onDiscountModeChange(e.target.value as "percent" | "amount")
-      }
-      className="border p-2 rounded w-full"
-    >
-      <option value="percent">%</option>
-      <option value="amount">₹</option>
-    </select>
-  </div>
-
-</div>
+      </div>
     </div>
   );
 });

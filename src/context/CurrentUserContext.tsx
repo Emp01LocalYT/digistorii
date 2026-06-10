@@ -5,11 +5,20 @@ import { createContext, useContext, useState } from "react";
  
 type User = {
   id: number;
+  user_id?: number;
+  company_id?: number;
   username: string;
   name: string;
   email: string;
   phone: string;
   role: string;
+  location_id?: number | null;
+  warehouse_id?: number | null;
+  plan_id?: number | null;
+  max_warehouse?: number | null;
+  max_location?: number | null;
+  max_warehouses?: number | null;
+  max_locations?: number | null;
   default_warehouse_id?: number | null;
   default_locator_id?: number | null;
   branch_name?: string | null;

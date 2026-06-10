@@ -13,16 +13,7 @@ export async function initializeDatabase() {
   const client = await pool.connect();
 
   try {
-    const result = await client.query(`
-      SELECT to_regclass('public.companies') as exists;
-    `);
- 
-    if (result.rows[0].exists) {
-      // Already created → skip
-      global.dbInitialized = true;
-      return;
-    }
-    console.log("Running DB initialization (first time only)...");
+    console.log("Running DB initialization / migrations...");
     await client.query("BEGIN");
  
     // Enable UUID extension
@@ -43,13 +34,15 @@ export async function initializeDatabase() {
         country VARCHAR(100),
         subdomain_url VARCHAR(200) NOT NULL UNIQUE,
         schema_name VARCHAR(100) NOT NULL UNIQUE,
-        subscription_plan VARCHAR(50) DEFAULT 'FREE',
+        subscription_plan VARCHAR(50) DEFAULT 'BASIC',
+        setup_stage VARCHAR(40) DEFAULT 'ACCOUNT_CREATED',
         status VARCHAR(20) DEFAULT 'ACTIVE',
         created_at TIMESTAMP DEFAULT now(),
         updated_at TIMESTAMP DEFAULT now()
       );
     `);
- 
+
+
     // ===============================
     // USERS TABLE
     // ===============================
@@ -71,7 +64,174 @@ export async function initializeDatabase() {
         UNIQUE(company_id, email)
       );
     `);
- 
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payments (
+  id                    SERIAL PRIMARY KEY,
+  company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  subscription_id       INTEGER REFERENCES company_subscriptions(id),
+  plan_name             TEXT NOT NULL,
+  plan_price            INTEGER NOT NULL,
+  billing_interval      VARCHAR(20) DEFAULT 'monthly',
+  razorpay_order_id     TEXT,
+  razorpay_payment_id   TEXT,
+  razorpay_signature    TEXT,
+  amount                INTEGER NOT NULL,
+  currency              TEXT DEFAULT 'INR',
+  status                TEXT DEFAULT 'created',
+  payment_status        TEXT DEFAULT 'created',
+  subscription_start    TIMESTAMP,
+  subscription_end      TIMESTAMP,
+  created_at            TIMESTAMP DEFAULT NOW(),
+  updated_at            TIMESTAMP DEFAULT NOW()
+);
+`);
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS plans (
+  id             SERIAL PRIMARY KEY,
+  name           VARCHAR(50) NOT NULL UNIQUE,  -- 'STARTER', 'GROWTH', 'ENTERPRISE'
+  price_monthly  INTEGER NOT NULL DEFAULT 0,   -- in paise (INR smallest unit)
+  price_yearly   INTEGER NOT NULL DEFAULT 0,
+  is_active      BOOLEAN DEFAULT TRUE,
+  created_at     TIMESTAMP DEFAULT NOW()
+);
+`);
+await client.query(`
+  CREATE TABLE IF NOT EXISTS plan_features (
+  id           SERIAL PRIMARY KEY,
+  plan_id      INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  feature_key  VARCHAR(100) NOT NULL,   -- 'max_users', 'max_locations', 'max_pos_terminals', 'ecommerce_access'
+  value_int    INTEGER,                 -- used for numeric limits
+  value_bool   BOOLEAN,                -- used for feature flags
+  UNIQUE(plan_id, feature_key)
+);`);
+await client.query(`
+  CREATE TABLE IF NOT EXISTS company_subscriptions (
+  id                    SERIAL PRIMARY KEY,
+  company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  plan_id               INTEGER NOT NULL REFERENCES plans(id),
+  plan_code             VARCHAR(50),
+  ecommerce_access      BOOLEAN DEFAULT FALSE,
+  max_users             INTEGER DEFAULT 5,
+  max_warehouses        INTEGER DEFAULT 1,
+  max_locations         INTEGER DEFAULT 1,
+  billing_interval      VARCHAR(20) DEFAULT 'monthly',
+  amount                INTEGER DEFAULT 0,
+  payment_status        VARCHAR(20) DEFAULT 'created',
+  razorpay_order_id     TEXT,
+  subscription_start    TIMESTAMP,
+  subscription_end      TIMESTAMP,
+  status                VARCHAR(20) DEFAULT 'TRIALING',  -- 'TRIALING', 'ACTIVE', 'PAST_DUE', 'CANCELLED'
+  trial_ends_at         TIMESTAMP,
+  current_period_start  TIMESTAMP,
+  current_period_end    TIMESTAMP,
+  cancelled_at          TIMESTAMP,
+  created_at            TIMESTAMP DEFAULT NOW(),
+  updated_at            TIMESTAMP DEFAULT NOW()
+);`);
+
+await client.query(`
+  ALTER TABLE public.company_subscriptions
+  ADD COLUMN IF NOT EXISTS max_locations INTEGER DEFAULT 1;
+`);
+
+await client.query(`
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_company_subscriptions_company
+  ON company_subscriptions(company_id);
+`);
+
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS company_user_map (
+  id           SERIAL PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  company_id   INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  username     VARCHAR(100),
+  role         VARCHAR(50) NOT NULL DEFAULT 'CASHIER',  -- 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'
+  location_id  INTEGER,
+  warehouse_id INTEGER,
+  is_active    BOOLEAN DEFAULT TRUE,
+  joined_at    TIMESTAMP DEFAULT NOW(),
+  UNIQUE(company_id, username),
+  UNIQUE(user_id, company_id)
+);
+  `);
+
+    await client.query(`
+      INSERT INTO plans (name, price_monthly, price_yearly, is_active)
+      VALUES
+        ('BASIC', 99, 950, TRUE),
+        ('STARTER', 999, 9590, TRUE),
+        ('GROWTH', 1999, 19190, TRUE)
+      ON CONFLICT (name) DO UPDATE
+      SET
+        price_monthly = EXCLUDED.price_monthly,
+        price_yearly = EXCLUDED.price_yearly,
+        is_active = EXCLUDED.is_active;
+    `);
+
+    await client.query(`
+      INSERT INTO plan_features (plan_id, feature_key, value_int, value_bool)
+      SELECT p.id, v.feature_key, v.value_int, v.value_bool
+      FROM plans p
+      JOIN (
+        VALUES
+          ('BASIC', 'max_users', 5, NULL::BOOLEAN),
+          ('BASIC', 'max_locations', 1, NULL::BOOLEAN),
+          ('BASIC', 'max_warehouses', 1, NULL::BOOLEAN),
+          ('BASIC', 'ecommerce_access', NULL::INTEGER, FALSE),
+          ('STARTER', 'max_users', 10, NULL::BOOLEAN),
+          ('STARTER', 'max_locations', 2, NULL::BOOLEAN),
+          ('STARTER', 'max_warehouses', 2, NULL::BOOLEAN),
+          ('STARTER', 'ecommerce_access', NULL::INTEGER, TRUE),
+          ('GROWTH', 'max_users', 20, NULL::BOOLEAN),
+          ('GROWTH', 'max_locations', 10, NULL::BOOLEAN),
+          ('GROWTH', 'max_warehouses', 10, NULL::BOOLEAN),
+          ('GROWTH', 'ecommerce_access', NULL::INTEGER, TRUE)
+      ) AS v(plan_name, feature_key, value_int, value_bool)
+        ON v.plan_name = p.name
+      ON CONFLICT (plan_id, feature_key) DO UPDATE
+      SET
+        value_int = EXCLUDED.value_int,
+        value_bool = EXCLUDED.value_bool;
+    `);
+
+
+//     INSERT INTO plan_features (plan_id, feature_key, value_int, value_bool)
+// SELECT p.id, v.feature_key, v.value_int, v.value_bool
+// FROM plans p
+// JOIN (
+//   VALUES
+//     -- 1) INSTORE Plan
+//     ('INSTORE', 'max_users', 5, NULL::BOOLEAN),
+//     ('INSTORE', 'max_locations', 1, NULL::BOOLEAN),
+//     ('INSTORE', 'max_warehouses', 1, NULL::BOOLEAN),
+//     ('INSTORE', 'ecommerce_access', NULL::INTEGER, FALSE),
+
+//     -- 3) BASIC Plan (Includes ecommerce)
+//     ('BASIC', 'max_warehouses', 1, NULL::BOOLEAN),
+//     ('BASIC', 'ecommerce_access', NULL::INTEGER, TRUE),
+
+//     -- 4) GROWTH Plan
+//     ('GROWTH', 'max_users', 10, NULL::BOOLEAN),
+
+//     -- 5) ENTERPRISE Plan (-1 typically denotes 'Unlimited')
+//     ('ENTERPRISE', 'max_users', -1, NULL::BOOLEAN),
+//     ('ENTERPRISE', 'max_warehouses', -1, NULL::BOOLEAN),
+//     ('ENTERPRISE', 'ecommerce_access', NULL::INTEGER, TRUE),
+
+//     -- 6) ADVANCED Plan (Customizable / Unlimited / Flexible)
+//     ('ADVANCED', 'max_users', -1, NULL::BOOLEAN),
+//     ('ADVANCED', 'max_locations', -1, NULL::BOOLEAN),
+//     ('ADVANCED', 'max_warehouses', -1, NULL::BOOLEAN),
+//     ('ADVANCED', 'ecommerce_access', NULL::INTEGER, TRUE)
+// ) AS v(plan_name, feature_key, value_int, value_bool)
+//   ON v.plan_name = p.name
+// ON CONFLICT (plan_id, feature_key) DO UPDATE
+// SET
+//   value_int = EXCLUDED.value_int,
+//   value_bool = EXCLUDED.value_bool;
     await client.query("COMMIT");
     console.log("DB initialized successfully");
     global.dbInitialized = true;
@@ -82,3 +242,4 @@ export async function initializeDatabase() {
     client.release();
   }
 }
+

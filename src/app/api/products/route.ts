@@ -1,9 +1,13 @@
 //C:\Users\yanna\template_tailwind\src\app\api\products\route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
-
 import { buildAutoSku, getTenantSchema } from "@/lib/tenant";
 import { getNextProductCodeByType } from "@/lib/document-number-generator";
+import {
+  buildInternalBarcode,
+  normalizeBarcode,
+  validateBarcodeOrThrow,
+} from "@/lib/product-barcode";
 type VariantInput = {
   color?: string;
   size?: string;
@@ -55,6 +59,14 @@ async function resolveUniqueSku(
   }
 }
 
+async function barcodeExists(client: any, schema: string, barcode: string): Promise<boolean> {
+  const res = await client.query(
+    `SELECT 1 FROM "${schema}".product_variants WHERE barcode = $1 LIMIT 1`,
+    [barcode]
+  );
+  return res.rowCount > 0;
+}
+
 const VARIANT_STATUSES = new Set(["draft", "active", "inactive"]);
 
 function normalizeVariantStatus(value: any): "draft" | "active" | "inactive"  {
@@ -69,8 +81,9 @@ export async function GET(req: NextRequest) {
   try {
     const params = req.nextUrl.searchParams;
     const nextCode = params.get("next_code");
-    // const company = params.get("company") || "";
     const search = params.get("search") || "";
+    const barcode = normalizeBarcode(params.get("barcode") || "");
+    const barcodeLookup = params.get("barcode_lookup") === "1";
     const category = params.get("category") || "";
     const source = params.get("source") || "";
     const status = params.get("status") || "";
@@ -96,6 +109,35 @@ export async function GET(req: NextRequest) {
       const typeParam = params.get("type") || "finished_good";
       const productCode = await getNextProductCodeByType(schema, typeParam);
       return NextResponse.json({ product_code: productCode });
+    }
+
+    if (barcodeLookup && barcode) {
+      const result = await client.query(
+        `
+          SELECT
+            p.id,
+            p.product_code,
+            p.name,
+            p.${productTypeColumn} AS type,
+            p.category,
+            p.material,
+            p.source,
+            p.status,
+            pv.id AS variant_id,
+            pv.color,
+            pv.size,
+            pv.fitting,
+            pv.gender,
+            pv.sku,
+            pv.barcode
+          FROM "${schema}".product_variants pv
+          INNER JOIN "${schema}".products p ON p.id = pv.product_id
+          WHERE pv.barcode = $1
+          LIMIT 1
+        `,
+        [barcode]
+      );
+      return NextResponse.json({ found: (result.rowCount || 0) > 0, product: result.rows[0] || null });
     }
 
     const values: Array<string | number> = [];
@@ -276,11 +318,9 @@ export async function POST(req: NextRequest) {
           ];
 
     const usedSkuKeys = new Set<string>();
+    const usedBarcodeKeys = new Set<string>();
 
     for (const row of variantsToInsert) {
-      if (row && Object.prototype.hasOwnProperty.call(row, "barcode")) {
-        delete (row as { barcode?: string }).barcode;
-      }
       const color = String(row.color || "").trim();
       const size = String(row.size || "").trim();
       const qty = Number(row.qty ?? 0);
@@ -289,6 +329,7 @@ export async function POST(req: NextRequest) {
       }
 
       const inputSku = String(row.sku || "").trim();
+      const inputBarcode = normalizeBarcode(row.barcode);
       let sku = "";
       if (inputSku) {
         const key = inputSku.toUpperCase();
@@ -308,13 +349,23 @@ export async function POST(req: NextRequest) {
       const lowStockThreshold = Number(row.low_stock_threshold ?? 5);
       const backordersAllowed = row.backorders_allowed === true;
       const variantStatus = normalizeVariantStatus(row.status);
+      if (inputBarcode) {
+        validateBarcodeOrThrow(inputBarcode);
+        if (usedBarcodeKeys.has(inputBarcode)) {
+          throw new Error(`Duplicate barcode "${inputBarcode}" in variants`);
+        }
+        if (await barcodeExists(client, schema, inputBarcode)) {
+          throw new Error(`Barcode "${inputBarcode}" already exists`);
+        }
+        usedBarcodeKeys.add(inputBarcode);
+      }
 
       const insertedVariant = await client.query(
         `
           INSERT INTO "${schema}".product_variants
-            (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING id, sku
+            (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING id, sku, barcode
         `,
         [
           productId,
@@ -325,23 +376,31 @@ export async function POST(req: NextRequest) {
           lowStockThreshold,
           backordersAllowed,
           variantStatus,
+          inputBarcode || null,
         ]
       );
       const variantRow = insertedVariant.rows[0];
-      const barcodeRes = await client.query(
-        `
-          UPDATE "${schema}".product_variants
-          SET barcode = LPAD(id::text, 10, '0')
-          WHERE id = $1
-          RETURNING barcode
-        `,
-        [variantRow.id]
-      );
+      const barcodeText = String(variantRow.barcode || "").trim();
+      const finalBarcode = barcodeText
+        ? barcodeText
+        : String(
+            (
+              await client.query(
+                `
+                  UPDATE "${schema}".product_variants
+                  SET barcode = $2
+                  WHERE id = $1
+                  RETURNING barcode
+                `,
+                [variantRow.id, buildInternalBarcode(Number(variantRow.id))]
+              )
+            ).rows[0]?.barcode || ""
+          );
       insertedVariantIds.push(variantRow.id as number);
       insertedVariants.push({
         id: variantRow.id as number,
         sku: String(variantRow.sku || sku),
-        barcode: String(barcodeRes.rows[0]?.barcode || ""),
+        barcode: finalBarcode,
       });
       console.log("inserted variants pro 290",insertedVariants);    
     }

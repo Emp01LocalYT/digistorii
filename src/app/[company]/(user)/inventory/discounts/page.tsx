@@ -706,7 +706,7 @@ export default function DiscountSchemesPage() {
 
           <section className="rounded-xl border border-gray-200 p-5 space-y-4">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-600">Discount Details</h3>
-            <div className="grid md:grid-cols-2 gap-5">
+            <div className="grid md:grid-cols-4 gap-5">
               <div>
                 <label className="text-sm font-semibold mb-1 block">
                   Name <span className="text-red-500">*</span>

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { buildAutoSku, getTenantSchema } from "@/lib/tenant";
+import {
+  buildInternalBarcode,
+  normalizeBarcode,
+  validateBarcodeOrThrow,
+} from "@/lib/product-barcode";
 
 type VariantInput = {
   id?: number;
@@ -65,6 +70,26 @@ async function resolveUniqueSku(
     candidate = `${baseSku}-${counter}`;
     counter += 1;
   }
+}
+
+async function barcodeExists(
+  client: any,
+  schema: string,
+  barcode: string,
+  excludeVariantId?: number
+): Promise<boolean> {
+  if (excludeVariantId) {
+    const res = await client.query(
+      `SELECT 1 FROM "${schema}".product_variants WHERE barcode = $1 AND id <> $2 LIMIT 1`,
+      [barcode, excludeVariantId]
+    );
+    return res.rowCount > 0;
+  }
+  const res = await client.query(
+    `SELECT 1 FROM "${schema}".product_variants WHERE barcode = $1 LIMIT 1`,
+    [barcode]
+  );
+  return res.rowCount > 0;
 }
 
 const VARIANT_STATUSES = new Set(["draft", "active", "inactive"]);
@@ -252,23 +277,24 @@ export async function PUT(
     };
 
     const existingVariantsRes = await client.query(
-      `SELECT id, sku, color, size, status FROM "${schema}".product_variants WHERE product_id = $1`,
+      `SELECT id, sku, color, size, status, barcode FROM "${schema}".product_variants WHERE product_id = $1`,
       [id]
     );
     const existingVariantsById = new Map<
       number,
-      { sku: string; color: string; size: string; status: string }
+      { sku: string; color: string; size: string; status: string; barcode: string }
     >();
     const existingSkuMap = new Map<string, number>();
     existingVariantsRes.rows.forEach(
-      (row: { id: number; sku: string; color: string; size: string; status: string }) => {
+      (row: { id: number; sku: string; color: string; size: string; status: string; barcode: string }) => {
       const sku = String(row.sku || "");
-      existingVariantsById.set(Number(row.id), {
-        sku,
-        color: String(row.color || ""),
-        size: String(row.size || ""),
-        status: String(row.status || "draft"),
-      });
+        existingVariantsById.set(Number(row.id), {
+          sku,
+          color: String(row.color || ""),
+          size: String(row.size || ""),
+          status: String(row.status || "draft"),
+          barcode: String(row.barcode || ""),
+        });
       if (sku) existingSkuMap.set(sku.toUpperCase(), Number(row.id));
     }
     );
@@ -279,12 +305,10 @@ export async function PUT(
     const payloadVariantIds: number[] = [];
     const variantIdByIndex: number[] = [];
     const usedSkuKeys = new Set<string>();
+    const usedBarcodeKeys = new Set<string>();
     const claimedExistingVariantIds = new Set<number>();
 
     for (const row of variantsPayload) {
-      if (row && Object.prototype.hasOwnProperty.call(row, "barcode")) {
-        throw new Error("Barcode cannot be modified after generation.");
-      }
       let payloadId = Number((row as VariantInput).id);
       console.log("Variant id",payloadId);
       let isExisting = Number.isFinite(payloadId) && existingVariantsById.has(payloadId);
@@ -296,6 +320,7 @@ export async function PUT(
       }
 
       const inputSku = String(row.sku || "").trim();
+      const inputBarcode = normalizeBarcode(row.barcode);
       if (!isExisting && inputSku) {
         const matchId = existingSkuMap.get(inputSku.toUpperCase());
         if (matchId && !claimedExistingVariantIds.has(matchId)) {
@@ -305,6 +330,7 @@ export async function PUT(
       }
       const existingVariant = isExisting ? existingVariantsById.get(payloadId) : undefined;
       const existingSku = existingVariant?.sku || "";
+      const existingBarcode = String((existingVariant as any)?.barcode || "");
       let sku = inputSku || existingSku;
 
       if (inputSku) {
@@ -349,6 +375,17 @@ export async function PUT(
       );
       const lowStockThreshold = Number(row.low_stock_threshold ?? 5);
       const backordersAllowed = row.backorders_allowed === true;
+      const finalBarcode = inputBarcode || existingBarcode;
+      if (finalBarcode) {
+        validateBarcodeOrThrow(finalBarcode);
+        if (usedBarcodeKeys.has(finalBarcode)) {
+          throw new Error(`Duplicate barcode "${finalBarcode}" in variants`);
+        }
+        if (await barcodeExists(client, schema, finalBarcode, isExisting ? payloadId : undefined)) {
+          throw new Error(`Barcode "${finalBarcode}" already exists`);
+        }
+        usedBarcodeKeys.add(finalBarcode);
+      }
        console.log("existing",isExisting);
       if (isExisting) {
         claimedExistingVariantIds.add(payloadId);
@@ -358,13 +395,15 @@ export async function PUT(
             SET low_stock_threshold = $1,
                 backorders_allowed = $2,
                 status = $3,
+                barcode = $4,
                 updated_at = NOW()
-            WHERE id = $4
+            WHERE id = $5
           `,
           [
             lowStockThreshold,
             backordersAllowed,
             variantStatus,
+            finalBarcode || buildInternalBarcode(payloadId),
             payloadId,
           ]
         );
@@ -375,9 +414,9 @@ export async function PUT(
         const insertedVariant = await client.query(
           `
             INSERT INTO "${schema}".product_variants
-              (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            RETURNING id
+              (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, barcode
           `,
           [
             id,
@@ -388,17 +427,20 @@ export async function PUT(
             lowStockThreshold,
             backordersAllowed,
             variantStatus,
+            finalBarcode || null,
           ]
         );
         const newId = insertedVariant.rows[0].id as number;
-        await client.query(
-          `
-            UPDATE "${schema}".product_variants
-            SET barcode = LPAD(id::text, 10, '0')
-            WHERE id = $1
-          `,
-          [newId]
-        );
+        if (!String(insertedVariant.rows[0].barcode || "").trim()) {
+          await client.query(
+            `
+              UPDATE "${schema}".product_variants
+              SET barcode = $2
+              WHERE id = $1
+            `,
+            [newId, buildInternalBarcode(newId)]
+          );
+        }
         payloadVariantIds.push(newId);
         variantIdByIndex.push(newId);
         console.log("inserted variants line 359",variantIdByIndex);

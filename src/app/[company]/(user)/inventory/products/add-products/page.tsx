@@ -11,6 +11,7 @@ import { PlusOutlined, PrinterOutlined } from "@ant-design/icons";
 import { useTenant } from "@/context/TenantContext";
 import { useNotify } from "@/hooks/useNotify";
 import { apiFetch } from "@/lib/apiFetch";
+import { normalizeBarcode, validateBarcodeOrThrow } from "@/lib/product-barcode";
 import '@ant-design/v5-patch-for-react-19';
 // import CategoryModal from "../components/CategoryModal";
 const CategoryModal = dynamic(() => import("../components/CategoryModal"));
@@ -149,6 +150,7 @@ export function ProductForm({
   const notify = useNotify();
   const { company } = useTenant();
   const productId = productIdOverride ?? searchParams.get("id");
+  const initialBarcode = searchParams.get("barcode") || "";
   // const mode = modeOverride ?? searchParams.get("mode") || "add";
   // const mode = (modeOverride ?? searchParams.get("mode")) || "add";
   const mode = modeOverride ?? (searchParams.get("mode") || "add");
@@ -187,6 +189,7 @@ export function ProductForm({
   const [printModalOpen, setPrintModalOpen] = useState(false);
   const [printTitle, setPrintTitle] = useState("Barcode Labels");
   const [printVariants, setPrintVariants] = useState<Variant[]>([]);
+  const [variantBarcodeErrors, setVariantBarcodeErrors] = useState<Record<number, string>>({});
 
   const variantStatusOptions: { value: VariantStatus; label: string }[] = [
     { value: "draft", label: "Draft" },
@@ -435,6 +438,15 @@ async function handleImageUpload(
     loadAllData();
   }, [company, productId, productType]);
 
+  useEffect(() => {
+    if (productId || !initialBarcode) return;
+    setVariants((prev) =>
+      prev.map((variant, index) =>
+        index === 0 ? { ...variant, barcode: initialBarcode } : variant
+      )
+    );
+  }, [initialBarcode, productId]);
+
   function flattenCategories(nodes: CategoryNode[], parentPath: string[] = []): FlatCategory[] {
     const rows: FlatCategory[] = [];
     nodes.forEach((node) => {
@@ -501,6 +513,29 @@ async function handleImageUpload(
   function updateVariant(index: number, key: keyof Variant, value: string | boolean) {
     setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, [key]: value } : v)));
   }
+
+  useEffect(() => {
+    const next: Record<number, string> = {};
+    const seen = new Map<string, number>();
+    variants.forEach((variant, index) => {
+      const barcode = normalizeBarcode(variant.barcode);
+      if (!barcode) return;
+      try {
+        validateBarcodeOrThrow(barcode);
+      } catch (error: any) {
+        next[index] = error.message;
+        return;
+      }
+      const duplicateIndex = seen.get(barcode);
+      if (duplicateIndex !== undefined) {
+        next[index] = "Barcode is duplicated in this form";
+        next[duplicateIndex] = "Barcode is duplicated in this form";
+        return;
+      }
+      seen.set(barcode, index);
+    });
+    setVariantBarcodeErrors(next);
+  }, [variants]);
 
   function addImage() {
     setImages((prev) => [...prev, { ...EMPTY_IMAGE }]);
@@ -601,6 +636,7 @@ async function handleImageUpload(
         color: v.color.trim(),
         size: v.size.trim(),
         sku: v.sku.trim(),
+        barcode: normalizeBarcode(v.barcode),
         qty: Number(v.qty),
         low_stock_threshold: Number(v.low_stock_threshold || 5),
         backorders_allowed: Boolean(v.backorders_allowed),
@@ -610,6 +646,10 @@ async function handleImageUpload(
 
     if (productType === "finished_good" && !cleanedVariants.length) {
       notify("At least one variant is required", { severity: "warning" });
+      return;
+    }
+    if (Object.keys(variantBarcodeErrors).length > 0) {
+      notify("Please fix variant barcode errors before saving", { severity: "warning" });
       return;
     }
 
@@ -1080,15 +1120,21 @@ async function handleImageUpload(
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        {variant.id ? (
-                          <span className="block font-mono text-xs text-gray-500">
-                            {variant.barcode || "-"}
+                        <input
+                          value={variant.barcode || ""}
+                          onChange={(e) => updateVariant(index, "barcode", e.target.value)}
+                          disabled={readOnly}
+                          placeholder="Scan or enter barcode"
+                          className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs disabled:bg-gray-100"
+                        />
+                        <span className="mt-1 block text-[11px] italic text-gray-400">
+                          Leave blank to auto-generate internal barcode
+                        </span>
+                        {variantBarcodeErrors[index] ? (
+                          <span className="mt-1 block text-[11px] text-red-500">
+                            {variantBarcodeErrors[index]}
                           </span>
-                        ) : (
-                          <span className="block text-xs italic text-gray-400">
-                            Auto-generated on save
-                          </span>
-                        )}
+                        ) : null}
                       </td>
                       <td className="px-3 py-2">
                         <input

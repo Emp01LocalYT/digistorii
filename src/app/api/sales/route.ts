@@ -53,16 +53,79 @@ function getUserIdFromCookie(req: NextRequest): number | null {
   }
 }
 
-async function ensureSalesHeaderColumns(client: any, schema: string) {
-  await client.query(
-    `ALTER TABLE "${schema}".sales_header ADD COLUMN IF NOT EXISTS warehouse_id INT`
+const roundMoney = (value: unknown) => Number(Number(value || 0).toFixed(2));
+
+const normalizePaymentRows = (payments: any): Array<{ payment_mode_id: number; amount: number }> => {
+  if (!Array.isArray(payments)) return [];
+  return payments
+    .map((row) => ({
+      payment_mode_id: toPositiveInt(row?.payment_mode_id),
+      amount: roundMoney(row?.amount),
+    }))
+    .filter(
+      (row): row is { payment_mode_id: number; amount: number } =>
+        Boolean(row.payment_mode_id) && Number.isFinite(row.amount) && row.amount > 0
+    );
+};
+
+const calculatePaymentStatus = (totalAmount: number, paidAmount: number) => {
+  const total = roundMoney(totalAmount);
+  const paid = roundMoney(paidAmount);
+  if (paid <= 0) return "unpaid";
+  if (Math.abs(paid - total) <= 0.01) return "paid";
+  return "partial";
+};
+
+async function resolveWarehouseContext(client: any, schema: string, warehouseId: number) {
+  const warehouseRes = await client.query(
+    `SELECT id, name, location_id FROM "${schema}".warehouses WHERE id = $1 LIMIT 1`,
+    [warehouseId]
   );
-  await client.query(
-    `ALTER TABLE "${schema}".sales_header ADD COLUMN IF NOT EXISTS locator_id INT`
+  if (!warehouseRes.rowCount) {
+    throw new Error("Warehouse not found");
+  }
+  return {
+    warehouse_id: Number(warehouseRes.rows[0].id),
+    warehouse_name: String(warehouseRes.rows[0].name || ""),
+    location_id: toPositiveInt(warehouseRes.rows[0].location_id),
+  };
+}
+
+
+async function replaceSalesPayments(
+  client: any,
+  schema: string,
+  salesId: number,
+  payments: Array<{ payment_mode_id: number; amount: number }>,
+  createdBy: string | number | null,
+  locationId: number | null,
+  warehouseId: number
+) {
+  await client.query(`DELETE FROM "${schema}".sales_payments WHERE sales_id = $1`, [salesId]);
+  if (!payments.length) return;
+  for (const payment of payments) {
+    await client.query(
+      `INSERT INTO "${schema}".sales_payments
+        (sales_id, payment_mode_id, amount, created_at, created_by, location_id, warehouse_id)
+       VALUES ($1, $2, $3, NOW(), $4, $5, $6)`,
+      [salesId, payment.payment_mode_id, payment.amount, createdBy, locationId, warehouseId]
+    );
+  }
+}
+
+async function validatePaymentModes(
+  client: any,
+  schema: string,
+  paymentModeIds: number[]
+) {
+  if (!paymentModeIds.length) return;
+  const res = await client.query(
+    `SELECT id FROM "${schema}".payment_modes WHERE id = ANY($1::int[]) AND is_active = TRUE`,
+    [paymentModeIds]
   );
-  await client.query(
-    `ALTER TABLE "${schema}".sales_header ADD COLUMN IF NOT EXISTS branch_name VARCHAR(100)`
-  );
+  if (res.rowCount !== paymentModeIds.length) {
+    throw new Error("One or more payment modes are invalid");
+  }
 }
  
  
@@ -78,6 +141,8 @@ export async function GET(req: NextRequest) {
         s.name as customer_name,
         s.email as customer_email,
         s.phone as customer_phone,
+        w.name as warehouse_name,
+        l.name as location_name,
         CONCAT_WS(', ',
           ca.address_line1,
           ca.address_line2,
@@ -88,6 +153,10 @@ export async function GET(req: NextRequest) {
       FROM ${schema}.sales_header h
       LEFT JOIN ${schema}.customers s
       ON h.customer_id = s.id
+      LEFT JOIN ${schema}.warehouses w
+      ON h.warehouse_id = w.id
+      LEFT JOIN ${schema}.locations l
+      ON h.location_id = l.id
       LEFT JOIN ${schema}.customer_addresses ca
       ON ca.customer_id = s.id 
       ORDER BY h.id DESC
@@ -147,12 +216,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const locatorId = null; // locatorId is not used, warehouse is sufficient
-    const branchName = null; // branchName is not used
 
     const body = await req.json();
     console.log("STEP D - body received", body);
-    const { header, details } = body;
+    const { header, details, payments } = body;
 
     if (!header || !details?.length) {
       return NextResponse.json(
@@ -162,7 +229,23 @@ export async function POST(req: NextRequest) {
     }
     console.log("STEP E - starting transaction");
     await client.query("BEGIN");
-    // await ensureSalesHeaderColumns(client, schema);
+
+    const warehouseContext = await resolveWarehouseContext(client, schema, warehouseId);
+    const locatorId = null;
+    const normalizedPayments = normalizePaymentRows(payments);
+    await validatePaymentModes(
+      client,
+      schema,
+      normalizedPayments.map((row) => row.payment_mode_id)
+    );
+    const paidAmount = roundMoney(
+      normalizedPayments.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+    );
+    const totalAmount = roundMoney(header.total_amount);
+    if (paidAmount - totalAmount > 0.01) {
+      throw new Error("Paid amount cannot exceed grand total");
+    }
+    const paymentStatus = calculatePaymentStatus(totalAmount, paidAmount);
 
     // Generate sales_no
     const salesNo = await generateSalesNo(schema);
@@ -170,8 +253,8 @@ export async function POST(req: NextRequest) {
     // Insert header
     const headerQuery = `
       INSERT INTO ${schema}.sales_header
-        (sales_no, customer_id, sales_date, currency, warehouse_id, locator_id, branch_name, status, subtotal, tax_amount, total_amount, created_by, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+        (sales_no, customer_id, sales_date, currency, warehouse_id, location_id, locator_id, status, payment_status, subtotal, tax_amount, total_amount, created_by, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
       RETURNING id
     `;
     const statusValue = header.status || "Entered";
@@ -180,10 +263,11 @@ export async function POST(req: NextRequest) {
       header.customer_id,
       header.sales_date,
       header.currency,
-      warehouseId,
+      warehouseContext.warehouse_id,
+      warehouseContext.location_id,
       locatorId,
-      branchName,
       statusValue,
+      paymentStatus,
       header.subtotal,
       header.tax_amount,
       header.total_amount,
@@ -195,9 +279,18 @@ export async function POST(req: NextRequest) {
     if (!headerRes.rows.length) throw new Error("Failed to save sales header");
 
     const salesId = headerRes.rows[0].id;
+    await replaceSalesPayments(
+      client,
+      schema,
+      salesId,
+      normalizedPayments,
+      userId,
+      warehouseContext.location_id,
+      warehouseContext.warehouse_id
+    );
  
     const shouldAllocate = isFinalStatus(statusValue);
-    let allocationWarehouseId: number | null = warehouseId;
+    let allocationWarehouseId: number | null = warehouseContext.warehouse_id;
     if (shouldAllocate) {
       if (!allocationWarehouseId) {
         throw new Error("Warehouse not set for this sale");
@@ -252,6 +345,7 @@ export async function POST(req: NextRequest) {
       message: "Sales saved successfully",
       sales_no: salesNo,
       id: salesId,
+      payment_status: paymentStatus,
     });
   } catch (err: any) {
     await client.query("ROLLBACK");

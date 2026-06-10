@@ -9,6 +9,7 @@ export function middleware(req: NextRequest) {
     if (
         pathname.startsWith("/_next") ||
         pathname.startsWith("/api") ||
+        pathname.startsWith("/setup") ||
         pathname.startsWith("/favicon.ico") ||
         pathname.includes(".")
     ) {

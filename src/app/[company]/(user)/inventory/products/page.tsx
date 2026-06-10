@@ -36,6 +36,23 @@ type MaterialOption = {
   material_name: string;
 };
 
+type ImportSheet = {
+  sheetName: string;
+  headers: string[];
+  previewRows: Record<string, unknown>[];
+};
+
+type MappingTemplate = {
+  id: number;
+  template_name: string;
+  sheet_name: string;
+  mapping_json: {
+    templateName?: string;
+    sheetName: string;
+    fields: Record<string, string>;
+  };
+};
+
 export default function ProductsPage() {
   const { company } = useTenant();
 
@@ -54,6 +71,15 @@ export default function ProductsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [importStep, setImportStep] = useState<"select" | "mapping" | "preview">("select");
+  const [importSheets, setImportSheets] = useState<ImportSheet[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState("");
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
+  const [mappingName, setMappingName] = useState("");
+  const [importPreview, setImportPreview] = useState<any>(null);
+  const [mappingTemplates, setMappingTemplates] = useState<MappingTemplate[]>([]);
+  const [barcodeValue, setBarcodeValue] = useState("");
+  const [barcodeMessage, setBarcodeMessage] = useState("");
   const productTypeLabel: Record<string, string> = {
   finished_good: "Finished Good",
   raw_material: "Raw Material",
@@ -167,9 +193,17 @@ export default function ProductsPage() {
     }
   }
 
+  async function loadImportMeta() {
+    if (!company) return;
+    const res = await apiFetch("/api/products/import", company);
+    const data = await res.json();
+    if (res.ok) setMappingTemplates(data.templates || []);
+  }
+
   useEffect(() => {
     if (!company) return;
     fetchProducts();
+    loadImportMeta();
   }, [company, search, category, source, status,type]);
 
   async function archiveProduct(productId: number) {
@@ -190,32 +224,115 @@ export default function ProductsPage() {
     }
   }
 
-  async function parseAndImport() {
+  async function parseWorkbook() {
     if (!importFile) return;
     setImportLoading(true);
     setMessage("");
     try {
       const form = new FormData();
-      form.append("confirm", "true");
+      form.append("action", "parse");
       form.append("file", importFile);
       const res = await apiFetch("/api/products/import", company, { method: "POST", body: form });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Import failed");
-      console.log("Tried but failed in import")
-      const warningCount = Array.isArray(data.warnings) ? data.warnings.length : 0;
-      const warningText = warningCount ? ` (${warningCount} image warning${warningCount > 1 ? "s" : ""})` : "";
-      setMessage(
-        `Imported ${data.productCount} products and ${data.variantCount} variants.${warningText}`
-      );
-      setImportFile(null);
-      setImportOpen(false);
-      fetchProducts();
+      if (!res.ok) throw new Error(data.message || "Failed to parse workbook");
+      setImportSheets(data.sheets || []);
+      setSelectedSheet(data.sheets?.[0]?.sheetName || "");
+      const firstHeaders = data.sheets?.[0]?.headers || [];
+      const nextMapping: Record<string, string> = {};
+      ["name","description","category","material","uom","hsn_code","weight","length","width","height","color","size","fitting","gender","parent_sku","sku","low_stock_threshold","backorders_allowed","barcode"].forEach((field) => {
+        const match = firstHeaders.find((header:string) => header.toLowerCase().replace(/[^a-z0-9]/g,"") === field.replace(/[^a-z0-9]/g,""));
+        if (match) nextMapping[field] = match;
+      });
+      setFieldMapping(nextMapping);
+      setImportStep("mapping");
     } catch (error: any) {
-      setMessage(error.message || "Import failed");
-      console.log("Not attempted in try")
+      setMessage(error.message || "Failed to parse workbook");
     } finally {
       setImportLoading(false);
     }
+  }
+
+  async function previewImport() {
+    if (!importFile || !selectedSheet) return;
+    setImportLoading(true);
+    try {
+      const form = new FormData();
+      form.append("action", "preview");
+      form.append("file", importFile);
+      form.append("mapping", JSON.stringify({ templateName: mappingName, sheetName: selectedSheet, fields: fieldMapping }));
+      const res = await apiFetch("/api/products/import", company, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to preview import");
+      setImportPreview(data);
+      setImportStep("preview");
+    } catch (error: any) {
+      setMessage(error.message || "Failed to preview import");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function commitImport() {
+    if (!importFile || !selectedSheet) return;
+    setImportLoading(true);
+    try {
+      const form = new FormData();
+      form.append("action", "import");
+      form.append("file", importFile);
+      form.append("mapping", JSON.stringify({ templateName: mappingName, sheetName: selectedSheet, fields: fieldMapping }));
+      const res = await apiFetch("/api/products/import", company, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Import failed");
+      setMessage(
+        data.message ||
+          `Uploaded ${data.uploadedRows ?? data.variantCount ?? 0} rows as ${data.productCount ?? 0} products and ${data.variantCount ?? 0} variants.`
+      );
+      setImportOpen(false);
+      setImportFile(null);
+      setImportStep("select");
+      setImportPreview(null);
+      fetchProducts();
+      loadImportMeta();
+    } catch (error: any) {
+      setMessage(error.message || "Import failed");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function undoLastImport() {
+    setImportLoading(true);
+    try {
+      const form = new FormData();
+      form.append("action", "undo");
+      const res = await apiFetch("/api/products/import", company, { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Undo failed");
+      setMessage("Last import undone successfully.");
+      fetchProducts();
+      loadImportMeta();
+    } catch (error: any) {
+      setMessage(error.message || "Undo failed");
+    } finally {
+      setImportLoading(false);
+    }
+  }
+
+  async function handleBarcodeLookup() {
+    const input = String(barcodeValue || "").trim();
+    if (!input) return;
+    setBarcodeMessage("");
+    const res = await apiFetch(`/api/products?barcode_lookup=1&barcode=${encodeURIComponent(input)}`, company);
+    const data = await res.json();
+    if (!res.ok) {
+      setBarcodeMessage(data.message || "Barcode lookup failed");
+      return;
+    }
+    if (data.found && data.product?.id) {
+      window.location.href = `/${company}/inventory/products/add-products?id=${data.product.id}&mode=edit`;
+      return;
+    }
+    window.location.href = `/${company}/inventory/products/add-products?mode=add&barcode=${encodeURIComponent(input)}`;
   }
 
   const filteredData = useMemo(() => products, [products]);
@@ -265,12 +382,18 @@ export default function ProductsPage() {
           >
             + Add Product 
           </Link>
-          {/* <button
+          <button
             onClick={() => setImportOpen(true)}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Bulk Import Excel
-          </button> */}
+          </button>
+          <button
+            onClick={undoLastImport}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Undo Last Import
+          </button>
         </div>
       </div>
 
@@ -285,6 +408,10 @@ export default function ProductsPage() {
         }}
         categoryOptions={categoryFilterOptions}
         showStatus
+        barcodeValue={barcodeValue}
+        barcodeMessage={barcodeMessage}
+        onBarcodeChange={setBarcodeValue}
+        onBarcodeSubmit={handleBarcodeLookup}
       />
 
       {message ? (
@@ -483,29 +610,120 @@ className="text-indigo-600" title="View Details"    >
               x
             </button>
             <div className="space-y-4">
-              <button
-                type="button"
-                onClick={downloadTemplate}
-                className="inline-flex text-xs text-gray-600 underline hover:text-gray-800"
-              >
-                Download Template
-              </button>
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                className="block w-full text-sm"
-              />
-              <div className="text-xs text-gray-600">
-                Selected file: {importFile?.name || "No file selected"}
-              </div>
-              <button
-                onClick={parseAndImport}
-                disabled={!importFile || importLoading}
-                className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {importLoading ? "Importing..." : "Import"}
-              </button>
+              {importStep === "select" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={downloadTemplate}
+                    className="inline-flex text-xs text-gray-600 underline hover:text-gray-800"
+                  >
+                    Download Example Template
+                  </button>
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    className="block w-full text-sm"
+                  />
+                  <div className="text-xs text-gray-600">
+                    Selected file: {importFile?.name || "No file selected"}
+                  </div>
+                  {mappingTemplates.length ? (
+                    <select
+                      value={mappingName}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setMappingName(next);
+                        const template = mappingTemplates.find((item) => item.template_name === next);
+                        if (template) {
+                          setSelectedSheet(template.mapping_json.sheetName || template.sheet_name);
+                          setFieldMapping(template.mapping_json.fields || {});
+                        }
+                      }}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select saved mapping</option>
+                      {mappingTemplates.map((item) => (
+                        <option key={item.id} value={item.template_name}>
+                          {item.template_name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <button
+                    onClick={parseWorkbook}
+                    disabled={!importFile || importLoading}
+                    className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {importLoading ? "Parsing..." : "Parse Workbook"}
+                  </button>
+                </>
+              ) : null}
+              {importStep === "mapping" ? (
+                <>
+                  <input
+                    value={mappingName}
+                    onChange={(e) => setMappingName(e.target.value)}
+                    placeholder="Mapping template name"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <select
+                    value={selectedSheet}
+                    onChange={(e) => setSelectedSheet(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {importSheets.map((sheet) => (
+                      <option key={sheet.sheetName} value={sheet.sheetName}>
+                        {sheet.sheetName}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid max-h-72 gap-2 overflow-y-auto">
+                    {["name","description","category","material","uom","hsn_code","weight","length","width","height","color","size","fitting","gender","parent_sku","sku","low_stock_threshold","backorders_allowed","barcode"].map((field) => (
+                      <label key={field} className="grid grid-cols-2 items-center gap-2 text-sm">
+                        <span>{field}</span>
+                        <select
+                          value={fieldMapping[field] || ""}
+                          onChange={(e) => setFieldMapping((prev) => ({ ...prev, [field]: e.target.value }))}
+                          className="rounded border border-gray-300 px-2 py-1"
+                        >
+                          <option value="">Skip</option>
+                          {(importSheets.find((sheet) => sheet.sheetName === selectedSheet)?.headers || []).map((header) => (
+                            <option key={header} value={header}>{header}</option>
+                          ))}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    onClick={previewImport}
+                    disabled={importLoading}
+                    className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+                  >
+                    Preview Import
+                  </button>
+                </>
+              ) : null}
+              {importStep === "preview" ? (
+                <>
+                  <div className="max-h-72 overflow-y-auto rounded border border-gray-200 p-3 text-xs">
+                    <p>Total rows: {importPreview?.totalRows || 0}</p>
+                    <p>Valid rows: {importPreview?.validRows || 0}</p>
+                    <p>Failed rows: {importPreview?.failedRows || 0}</p>
+                    <p>Errors: {importPreview?.rowErrors?.length || 0}</p>
+                    {(importPreview?.rowErrors || []).slice(0, 10).map((row:any) => (
+                      <p key={row.rowNumber}>Row {row.rowNumber}: {row.errors.join(", ")}</p>
+                    ))}
+                  </div>
+                  <button
+                    onClick={commitImport}
+                    disabled={importLoading}
+                    className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white"
+                  >
+                    {importLoading ? "Importing..." : "Confirm Import"}
+                  </button>
+                </>
+              ) : null}
             </div>
           </div>
         </div>

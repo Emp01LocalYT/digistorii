@@ -29,16 +29,79 @@ const toPositiveInt = (value: unknown) => {
     return parsed;
 };
 
-async function ensureSalesHeaderColumns(client: any, schema: string) {
-    await client.query(
-        `ALTER TABLE "${schema}".sales_header ADD COLUMN IF NOT EXISTS warehouse_id INT`
+const roundMoney = (value: unknown) => Number(Number(value || 0).toFixed(2));
+
+const normalizePaymentRows = (payments: any): Array<{ payment_mode_id: number; amount: number }> => {
+    if (!Array.isArray(payments)) return [];
+    return payments
+        .map((row) => ({
+            payment_mode_id: toPositiveInt(row?.payment_mode_id),
+            amount: roundMoney(row?.amount),
+        }))
+        .filter(
+            (row): row is { payment_mode_id: number; amount: number } =>
+                Boolean(row.payment_mode_id) && Number.isFinite(row.amount) && row.amount > 0
+        );
+};
+
+const calculatePaymentStatus = (totalAmount: number, paidAmount: number) => {
+    const total = roundMoney(totalAmount);
+    const paid = roundMoney(paidAmount);
+    if (paid <= 0) return "unpaid";
+    if (Math.abs(paid - total) <= 0.01) return "paid";
+    return "partial";
+};
+
+
+async function resolveWarehouseContext(client: any, schema: string, warehouseId: number) {
+    const warehouseRes = await client.query(
+        `SELECT id, name, location_id FROM "${schema}".warehouses WHERE id = $1 LIMIT 1`,
+        [warehouseId]
     );
-    await client.query(
-        `ALTER TABLE "${schema}".sales_header ADD COLUMN IF NOT EXISTS locator_id INT`
+    if (!warehouseRes.rowCount) {
+        throw new Error("Warehouse not found");
+    }
+    return {
+        warehouse_id: Number(warehouseRes.rows[0].id),
+        warehouse_name: String(warehouseRes.rows[0].name || ""),
+        location_id: toPositiveInt(warehouseRes.rows[0].location_id),
+    };
+}
+
+async function validatePaymentModes(
+    client: any,
+    schema: string,
+    paymentModeIds: number[]
+) {
+    if (!paymentModeIds.length) return;
+    const res = await client.query(
+        `SELECT id FROM "${schema}".payment_modes WHERE id = ANY($1::int[]) AND is_active = TRUE`,
+        [paymentModeIds]
     );
-    await client.query(
-        `ALTER TABLE "${schema}".sales_header ADD COLUMN IF NOT EXISTS branch_name VARCHAR(100)`
-    );
+    if (res.rowCount !== paymentModeIds.length) {
+        throw new Error("One or more payment modes are invalid");
+    }
+}
+
+async function replaceSalesPayments(
+    client: any,
+    schema: string,
+    salesId: number,
+    payments: Array<{ payment_mode_id: number; amount: number }>,
+    createdBy: string | number | null,
+    locationId: number | null,
+    warehouseId: number
+) {
+    await client.query(`DELETE FROM "${schema}".sales_payments WHERE sales_id = $1`, [salesId]);
+    if (!payments.length) return;
+    for (const payment of payments) {
+        await client.query(
+            `INSERT INTO "${schema}".sales_payments
+              (sales_id, payment_mode_id, amount, created_at, created_by, location_id, warehouse_id)
+             VALUES ($1, $2, $3, NOW(), $4, $5, $6)`,
+            [salesId, payment.payment_mode_id, payment.amount, createdBy, locationId, warehouseId]
+        );
+    }
 }
  
 export async function GET(
@@ -57,9 +120,13 @@ export async function GET(
             `SELECT sh.*,s.name as customer_name,
             s.email as customer_email,
             s.phone as customer_phone,
+            w.name as warehouse_name,
+            loc.name as location_name,
             CONCAT_WS(', ', sa.address_line1, sa.address_line2, sa.city, sa.state, sa.pincode) as customer_address 
             FROM ${schema}.sales_header sh 
             LEFT JOIN ${schema}.customers s ON sh.customer_id = s.id 
+            LEFT JOIN "${schema}".warehouses w ON sh.warehouse_id = w.id
+            LEFT JOIN "${schema}".locations loc ON sh.location_id = loc.id
             LEFT JOIN ${schema}.customer_addresses sa ON s.id = sa.customer_id
             WHERE sh.id=$1`,
             [saleId]
@@ -94,12 +161,32 @@ export async function GET(
             WHERE d.sales_id = $1`,
             [saleId]
         );
+
+        const paymentsRes = await client.query(
+            `SELECT
+                sp.id,
+                sp.sales_id,
+                sp.payment_mode_id,
+                pm.name AS payment_mode_name,
+                sp.amount,
+                sp.location_id,
+                sp.warehouse_id,
+                sp.created_at,
+                sp.created_by
+            FROM "${schema}".sales_payments sp
+            LEFT JOIN "${schema}".payment_modes pm
+              ON pm.id = sp.payment_mode_id
+            WHERE sp.sales_id = $1
+            ORDER BY sp.id ASC`,
+            [saleId]
+        );
  
         return NextResponse.json({
             success: true,
             data: {
                 header: headerRes.rows[0],
-                details: detailRes.rows
+                details: detailRes.rows,
+                payments: paymentsRes.rows
             }
         });
  
@@ -136,15 +223,15 @@ export async function PUT(
  
         const body = await req.json();
  
-        const { header, details } = body;
+        const { header, details, payments } = body;
  
         const {
             customer_id,
             sales_date,
             currency,
             warehouse_id,
+            location_id,
             locator_id,
-            branch_name,
             subtotal,
             tax_amount,
             total_amount,
@@ -153,11 +240,27 @@ export async function PUT(
         console.log("Received Update Data:", body);
  
         await client.query("BEGIN");
-        await ensureSalesHeaderColumns(client, schema);
 
         const normalizedWarehouseId = toPositiveInt(warehouse_id);
+        if (!normalizedWarehouseId) {
+            throw new Error("Warehouse is required");
+        }
+        const warehouseContext = await resolveWarehouseContext(client, schema, normalizedWarehouseId);
         const normalizedLocatorId = toPositiveInt(locator_id);
-        const normalizedBranchName = branch_name ? String(branch_name).trim() : null;
+        const normalizedPayments = normalizePaymentRows(payments);
+        await validatePaymentModes(
+            client,
+            schema,
+            normalizedPayments.map((row) => row.payment_mode_id)
+        );
+        const paidAmount = roundMoney(
+            normalizedPayments.reduce((sum, row) => sum + Number(row.amount || 0), 0)
+        );
+        const normalizedTotalAmount = roundMoney(total_amount);
+        if (paidAmount - normalizedTotalAmount > 0.01) {
+            throw new Error("Paid amount cannot exceed grand total");
+        }
+        const calculatedPaymentStatus = calculatePaymentStatus(normalizedTotalAmount, paidAmount);
  
         // UPDATE HEADER
         await client.query(
@@ -167,28 +270,40 @@ export async function PUT(
           sales_date=$2,
           currency=$3,
           warehouse_id=$4,
-          locator_id=$5,
-          branch_name=$6,
+          location_id=$5,
+          locator_id=$6,
           subtotal=$7,
           tax_amount=$8,
           total_amount=$9,
-          updated_by=$10,
+          payment_status=$10,
+          updated_by=$11,
           updated_at=NOW()
-      WHERE id=$11
+      WHERE id=$12
       `,
             [
                 customer_id,
                 sales_date,
                 currency,
-                normalizedWarehouseId,
+                warehouseContext.warehouse_id,
+                warehouseContext.location_id ?? toPositiveInt(location_id),
                 normalizedLocatorId,
-                normalizedBranchName,
                 subtotal,
                 tax_amount,
                 total_amount,
+                calculatedPaymentStatus,
                 user_name,
                 salesId
             ]
+        );
+
+        await replaceSalesPayments(
+            client,
+            schema,
+            Number(salesId),
+            normalizedPayments,
+            user_name ?? null,
+            warehouseContext.location_id,
+            warehouseContext.warehouse_id
         );
  
         // FETCH existing detail ids from DB
@@ -295,7 +410,8 @@ export async function PUT(
         return NextResponse.json({
             success: true,
             message: "Sale Updated Successfully",
-            id: Number(salesId)
+            id: Number(salesId),
+            payment_status: calculatedPaymentStatus
         });
  
     } catch (error: any) {

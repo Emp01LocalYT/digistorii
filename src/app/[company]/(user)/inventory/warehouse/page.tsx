@@ -143,7 +143,7 @@ export default function WarehouseMasterPage() {
       setForm(getInitialForm());
       setErrors({});
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify(error?.message || "Save failed", { severity: "warning" });
     } finally {
       setFormLoading(false);
     }

@@ -69,22 +69,42 @@ export default function CompanyLayout({
   const { user } = useUser();
  
   useEffect(() => {
-    try {
-      if (pathname?.endsWith("/login")) {
+    const checkAuthAndOnboarding = async () => {
+      try {
+        if (pathname?.endsWith("/login")) {
+          setCheckingAuth(false);
+          return;
+        }
+
+        if (!user) {
+          router.replace(`/${tenant}/login`);
+          return;
+        }
+
+        const onboardingRes = await fetch(
+          `/api/onboarding?company=${encodeURIComponent(tenant)}`
+        );
+        if (onboardingRes.ok) {
+          const onboardingData = await onboardingRes.json();
+          if (
+            onboardingData?.success &&
+            onboardingData?.company?.setup_stage &&
+            onboardingData.company.setup_stage !== "LIVE"
+          ) {
+            router.replace(`/setup?company=${encodeURIComponent(tenant)}`);
+            return;
+          }
+        }
+
         setCheckingAuth(false);
-        return;
+      } catch (err) {
+        console.error("Auth check failed", err);
+        setHasError(true);
+        router.replace(`/${tenant}/login`); // force logout on error
       }
- 
-      if (!user) {
-        router.replace(`/${tenant}/login`);
-      } else {
-        setCheckingAuth(false);
-      }
-    } catch (err) {
-      console.error("Auth check failed", err);
-      setHasError(true);
-      router.replace(`/${tenant}/login`); // force logout on error
-    }
+    };
+
+    checkAuthAndOnboarding();
   }, [user, pathname, tenant, router]);
  
   // Prevent UI flash before auth check

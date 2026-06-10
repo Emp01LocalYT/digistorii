@@ -1,7 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getTenantSchema } from "@/lib/tenant";
- 
+
+const toPositiveInt = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
+function getUserIdFromCookie(req: NextRequest): number | null {
+  const userCookie = req.cookies.get("user")?.value;
+  if (!userCookie) return null;
+
+  try {
+    const parsed = JSON.parse(userCookie);
+    const maybeUserId = Number(parsed?.user_id ?? parsed?.id);
+    if (!Number.isInteger(maybeUserId) || maybeUserId <= 0) return null;
+    return maybeUserId;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: NextRequest) {
   const client = await pool.connect();
  
@@ -24,8 +44,69 @@ export async function GET(req: NextRequest) {
     const productTypeColumn = productTypeColumnRes.rowCount
       ? "product_type"
       : "type";
+    const isSalesModule = moduleParam === "sales";
     const salesProductFilter =
-      moduleParam === "sales" ? `AND p.${productTypeColumn} = 'finished_good'` : "";
+      isSalesModule ? `AND p.${productTypeColumn} = 'finished_good'` : "";
+    let salesWarehouseId: number | null = null;
+
+    if (isSalesModule) {
+      const userId = getUserIdFromCookie(req);
+      if (!userId) {
+        return NextResponse.json(
+          { success: false, error: "Unauthorized" },
+          { status: 401 }
+        );
+      }
+
+      const companyRes = await client.query(
+        `SELECT id FROM public.companies WHERE subdomain_url = $1 LIMIT 1`,
+        [company]
+      );
+      const companyId = toPositiveInt(companyRes.rows[0]?.id);
+      if (!companyId) {
+        return NextResponse.json(
+          { success: false, error: "Company not found" },
+          { status: 404 }
+        );
+      }
+
+      const userWarehouseRes = await client.query(
+        `
+          SELECT warehouse_id
+          FROM public.company_user_map
+          WHERE user_id = $1
+            AND company_id = $2
+            AND is_active = TRUE
+          ORDER BY id DESC
+          LIMIT 1
+        `,
+        [userId, companyId]
+      );
+      salesWarehouseId = toPositiveInt(userWarehouseRes.rows[0]?.warehouse_id);
+
+      if (!salesWarehouseId) {
+        return NextResponse.json({ success: true, data: [] });
+      }
+    }
+
+    const salesWarehouseSourceFilter = isSalesModule
+      ? `
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM "${schema}".opening_stock_items osi
+              WHERE osi.product_id = pv.id
+                AND osi.warehouse_id = $2
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM "${schema}".grn_detail gd
+              WHERE gd.product_id = pv.id
+                AND gd.warehouse_id = $2
+            )
+          )
+        `
+      : "";
 
     let result;
     if (type === "uoms") {
@@ -139,7 +220,7 @@ ORDER BY d.id
           p.description,
           COALESCE(pc.category_name, p.category) AS category_name,
           COALESCE(pc.category_name, p.category) AS category,
-          cs.current_stock as current_stock,
+          stock.current_stock AS current_stock,
           COALESCE(pp.final_selling_price, 0) AS selling_price,
           p.${productTypeColumn} AS type,
           p.source,
@@ -155,8 +236,14 @@ ORDER BY d.id
           ON pc.id::text = p.category::text
         LEFT JOIN "${schema}".uom u
           ON u.id::text = p.uom
-        LEFT JOIN "${schema}".current_stock cs
-          ON cs.product_id = pv.id
+        LEFT JOIN LATERAL (
+          SELECT COALESCE(SUM(cs.current_stock), 0) AS current_stock
+          FROM "${schema}".current_stock cs
+          WHERE cs.product_id = pv.id
+            AND cs.tenant_id = $1
+            AND ($2::int IS NULL OR cs.warehouse_id = $2::int)
+        ) stock
+          ON TRUE
         LEFT JOIN "${schema}".product_pricing pp
           ON pp.variant_id = pv.id
           AND pp.tenant_id = $1
@@ -164,9 +251,10 @@ ORDER BY d.id
         WHERE p.status = 1
           AND pv.status IN ('draft', 'active')
           ${salesProductFilter}
-        ORDER BY cs.current_stock ASC
+          ${salesWarehouseSourceFilter}
+        ORDER BY stock.current_stock ASC
         `
-      , [company]);
+      , [company, salesWarehouseId]);
       return NextResponse.json({ success: true, data: result.rows });
     } else {
       console.log("in else 150");
@@ -178,7 +266,7 @@ ORDER BY d.id
         p.name AS product_name,
         p.description,
         p.category,
-        cs.current_stock as current_stock,
+        stock.current_stock AS current_stock,
         p.material,
         p.uom,
         p.hsn_code,
@@ -195,16 +283,23 @@ ORDER BY d.id
       FROM "${schema}".products p
        LEFT JOIN "${schema}".uom u
         ON u.id::text = p.uom
-      LEFT JOIN "${schema}".current_stock cs
-        ON cs.product_id = p.id
       INNER JOIN "${schema}".product_variants pv
         ON pv.product_id = p.id
+      LEFT JOIN LATERAL (
+        SELECT COALESCE(SUM(cs.current_stock), 0) AS current_stock
+        FROM "${schema}".current_stock cs
+        WHERE cs.product_id = pv.id
+          AND cs.tenant_id = $1
+          AND ($2::int IS NULL OR cs.warehouse_id = $2::int)
+      ) stock
+        ON TRUE
       WHERE p.status = 1
         AND pv.status IN ('draft', 'active')
         ${salesProductFilter}
+        ${salesWarehouseSourceFilter}
       ORDER BY p.id, pv.id
       `
-    );
+    , [company, salesWarehouseId]);
  
     return NextResponse.json(result.rows);
     

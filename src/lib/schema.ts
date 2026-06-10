@@ -228,6 +228,23 @@ export async function createCompanySchema(
   CONSTRAINT unique_company UNIQUE (company_id)
 );
 `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".business_settings (
+      id SERIAL PRIMARY KEY,
+      gst_number VARCHAR(20),
+      pan_number VARCHAR(20),
+      business_address TEXT,
+      city VARCHAR(120),
+      state VARCHAR(120),
+      country VARCHAR(120),
+      currency VARCHAR(20),
+      timezone VARCHAR(80),
+      invoice_prefix VARCHAR(20),
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
+  `);
  
   await ensureCurrenciesSeeded(client, schema);
 
@@ -249,6 +266,18 @@ export async function createCompanySchema(
           (type = 'days' AND days IS NOT NULL AND month IS NULL) OR
           (type = 'month' AND month IS NOT NULL AND days IS NULL)
         )
+      );
+    `);
+
+  await client.query(`
+      CREATE TABLE IF NOT EXISTS "${schema}".payment_modes (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        is_default BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT uq_payment_modes_name UNIQUE (name)
       );
     `);
 
@@ -336,7 +365,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   low_stock_threshold INT DEFAULT 5,
   backorders_allowed BOOLEAN DEFAULT FALSE,
   status VARCHAR(20) NOT NULL DEFAULT 'draft',
-  barcode VARCHAR(20),
+  barcode VARCHAR(40),
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   CONSTRAINT product_variants_status_chk
@@ -391,7 +420,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
           AND column_name = 'barcode'
       ) THEN
         ALTER TABLE "${schema}".product_variants
-          ADD COLUMN barcode VARCHAR(20);
+          ADD COLUMN barcode VARCHAR(40);
       END IF;
       IF NOT EXISTS (
         SELECT 1
@@ -418,12 +447,16 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   `);
   await client.query(`
     UPDATE "${schema}".product_variants
-    SET barcode = LPAD(id::text, 10, '0')
+    SET barcode = CONCAT('INT', LPAD(id::text, 10, '0'))
     WHERE barcode IS NULL OR barcode = '';
   `);
 await client.query(`
 CREATE INDEX IF NOT EXISTS idx_variants_product
 ON "${schema}".product_variants(product_id);
+`);
+await client.query(`
+CREATE INDEX IF NOT EXISTS idx_variants_barcode
+ON "${schema}".product_variants(barcode);
 `);
 
 await client.query(`
@@ -604,6 +637,8 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
       name VARCHAR(200) NOT NULL,
       location_id INT NOT NULL REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
       type VARCHAR(20) NOT NULL CHECK (type IN ('global', 'local')),
+      address TEXT,
+      is_default BOOLEAN DEFAULT FALSE,
       effective_from DATE,
       effective_to DATE,
       description TEXT,
@@ -619,6 +654,16 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
+  `);
+
+  await client.query(`
+    ALTER TABLE "${schema}".warehouses
+    ADD COLUMN IF NOT EXISTS address TEXT;
+  `);
+
+  await client.query(`
+    ALTER TABLE "${schema}".warehouses
+    ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
   `);
 
   /* =========================================================
@@ -764,7 +809,12 @@ await client.query(`
           REFERENCES "${schema}".customers(id) ON DELETE CASCADE,
           sales_date DATE NOT NULL,
           currency VARCHAR(100),
+          warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
+          location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
+          locator_id INT REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
           status VARCHAR(50) DEFAULT 'Entered',
+          payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid'
+            CHECK (payment_status IN ('paid', 'unpaid', 'partial')),
           subtotal NUMERIC(12,2) DEFAULT 0,
           tax_amount NUMERIC(12,2) DEFAULT 0,
           total_amount NUMERIC(12,2) DEFAULT 0,
@@ -774,18 +824,7 @@ await client.query(`
           updated_at TIMESTAMP
         );
       `);
-  await client.query(`
-    ALTER TABLE "${schema}".sales_header
-      ADD COLUMN IF NOT EXISTS warehouse_id INT;
-  `);
-  await client.query(`
-    ALTER TABLE "${schema}".sales_header
-      ADD COLUMN IF NOT EXISTS locator_id INT;
-  `);
-  await client.query(`
-    ALTER TABLE "${schema}".sales_header
-      ADD COLUMN IF NOT EXISTS branch_name VARCHAR(100);
-  `);
+
  
   await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".sales_detail (
@@ -809,6 +848,101 @@ await client.query(`
           updated_at TIMESTAMP
         );
       `);
+
+  await client.query(`
+    ALTER TABLE "${schema}".sales_header
+    ADD COLUMN IF NOT EXISTS location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT;
+  `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".product_import_mapping_templates (
+      id BIGSERIAL PRIMARY KEY,
+      template_name VARCHAR(120) NOT NULL,
+      sheet_name VARCHAR(120),
+      mapping_json JSONB NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (template_name)
+    );
+  `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".product_import_batches (
+      id BIGSERIAL PRIMARY KEY,
+      sheet_name VARCHAR(120),
+      mapping_template_id BIGINT REFERENCES "${schema}".product_import_mapping_templates(id) ON DELETE SET NULL,
+      source_file_name VARCHAR(255),
+      total_rows INT NOT NULL DEFAULT 0,
+      imported_products INT NOT NULL DEFAULT 0,
+      imported_variants INT NOT NULL DEFAULT 0,
+      status VARCHAR(20) NOT NULL DEFAULT 'completed',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".product_import_batch_items (
+      id BIGSERIAL PRIMARY KEY,
+      batch_id BIGINT NOT NULL REFERENCES "${schema}".product_import_batches(id) ON DELETE CASCADE,
+      product_id BIGINT REFERENCES "${schema}".products(id) ON DELETE CASCADE,
+      variant_id BIGINT REFERENCES "${schema}".product_variants(id) ON DELETE CASCADE,
+      row_number INT,
+      item_type VARCHAR(20) NOT NULL CHECK (item_type IN ('product', 'variant')),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await client.query(`
+    ALTER TABLE "${schema}".sales_header
+    ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid';
+  `);
+
+  await client.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE c.conname = 'sales_header_payment_status_chk'
+          AND n.nspname = '${schema}'
+      ) THEN
+        ALTER TABLE "${schema}".sales_header
+          ADD CONSTRAINT sales_header_payment_status_chk
+          CHECK (payment_status IN ('paid', 'unpaid', 'partial'));
+      END IF;
+    END $$;
+  `);
+
+  await client.query(`
+    UPDATE "${schema}".sales_header sh
+    SET location_id = w.location_id
+    FROM "${schema}".warehouses w
+    WHERE sh.warehouse_id = w.id
+      AND (sh.location_id IS NULL OR sh.location_id <> w.location_id);
+  `);
+
+  await client.query(`
+    UPDATE "${schema}".sales_header
+    SET payment_status = 'unpaid'
+    WHERE payment_status IS NULL OR payment_status NOT IN ('paid', 'unpaid', 'partial');
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".sales_payments (
+      id SERIAL PRIMARY KEY,
+      sales_id INT NOT NULL REFERENCES "${schema}".sales_header(id) ON DELETE CASCADE,
+      payment_mode_id INT NOT NULL REFERENCES "${schema}".payment_modes(id) ON DELETE RESTRICT,
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_by VARCHAR(100),
+      location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
+      warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_sales_payments_sales_id
+    ON "${schema}".sales_payments(sales_id);
+  `);
 
   await client.query(`
     DO $$
@@ -839,14 +973,20 @@ await client.query(`
  SALES / BILLING
 
  
-await client.query(`
+  await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".sales_header (
           id SERIAL PRIMARY KEY,
           sales_no VARCHAR(30) UNIQUE NOT NULL,  
           customer_id INTEGER NOT NULL
           REFERENCES "${schema}".customers(id) ON DELETE CASCADE,
           sales_date DATE NOT NULL,
+          currency VARCHAR(100),
+          warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
+          location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
+          locator_id INT REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
           status VARCHAR(50) DEFAULT 'Entered',
+          payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid'
+            CHECK (payment_status IN ('paid', 'unpaid', 'partial')),
           subtotal NUMERIC(12,2) DEFAULT 0,
           tax_amount NUMERIC(12,2) DEFAULT 0,
           total_amount NUMERIC(12,2) DEFAULT 0,

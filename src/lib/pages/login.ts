@@ -51,12 +51,68 @@ try {
   //   [user.id]
   // );
   // const settings = settingsRes.rows[0] || {};
+  const userMapResult = await pool.query(
+    `SELECT location_id, warehouse_id
+     FROM public.company_user_map
+     WHERE user_id = $1 AND company_id = $2
+       AND is_active = TRUE
+     ORDER BY id DESC
+     LIMIT 1`,
+    [user.id, companyId]
+  );
+  const mappedUser = userMapResult.rows[0] || {};
+
+  const subscriptionResult = await pool.query(
+    `SELECT
+       cs.plan_id,
+       COALESCE(
+         cs.max_warehouses,
+         (
+           SELECT pf.value_int
+           FROM public.plan_features pf
+           WHERE pf.plan_id = cs.plan_id
+             AND pf.feature_key = 'max_warehouses'
+           LIMIT 1
+         ),
+         1
+       ) AS max_warehouses,
+       COALESCE(
+         cs.max_locations,
+         (
+           SELECT pf.value_int
+           FROM public.plan_features pf
+           WHERE pf.plan_id = cs.plan_id
+             AND pf.feature_key = 'max_locations'
+           LIMIT 1
+         ),
+         cs.max_warehouses,
+         1
+       ) AS max_locations
+     FROM public.company_subscriptions cs
+     WHERE cs.company_id = $1
+     ORDER BY cs.updated_at DESC, cs.id DESC
+     LIMIT 1`,
+    [companyId]
+  );
+  const subscription = subscriptionResult.rows[0] || {};
+  const maxWarehouse = Number(subscription.max_warehouses ?? 1);
+  const maxLocation = Number(subscription.max_locations ?? maxWarehouse);
+
  console.log("Login successful for user:", email, "in company:", company);
   return {
       success: true,
       message: "Login successful!",
       user: {
         id: user.id,
+        user_id: user.id,
+        company_id: companyId,
+        location_id: mappedUser.location_id ?? null,
+        warehouse_id: mappedUser.warehouse_id ?? null,
+        plan_id: subscription.plan_id ?? null,
+        max_warehouse: maxWarehouse,
+        max_location: maxLocation,
+        max_warehouses: maxWarehouse,
+        max_locations: maxLocation,
         name: user.name,
         username: user.username,
         email: user.email,

@@ -807,7 +807,6 @@ useEffect(() => {
         }
       }
 
-      console.log("TEMP PRODUCTS", tempProducts);
       const tempProductMap = new Map<string, TempProductCatalogItem>(
         tempProducts.map((item) => [item.temp_variant_id, item])
       );
@@ -818,16 +817,22 @@ useEffect(() => {
             (item) => item.temp_variant_id === String(detail.product_id)
           );
         }
-        if (!tempItem) return detail;
+        if (!tempItem) {
+          return {
+            ...detail,
+            is_new: false,
+            product_id: Number(detail.product_id),
+          };
+        }
         return {
           ...detail,
-          isManual: true,
-          newProduct: {
-            name: tempItem.newProduct.name,
-            sku: tempItem.newProduct.sku,
-            categoryId: tempItem.newProduct.categoryId,
-            source: tempItem.newProduct.source,
-          },
+          is_new: true,
+          temp_id: tempItem.temp_variant_id,
+          product_id: undefined,
+          product_name: tempItem.newProduct.name,
+          sku: tempItem.newProduct.sku,
+          category_id: tempItem.newProduct.categoryId,
+          source: tempItem.newProduct.source,
         };
       });
       const payload = {
@@ -848,7 +853,8 @@ useEffect(() => {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        notify(data.message || data.error || "Failed to save purchase", {
+        const debugInfo = data?.debug ? ` | debug: ${JSON.stringify(data.debug)}` : "";
+        notify(`${data.message || data.error || "Failed to save purchase"}${debugInfo}`, {
           severity: "error",
         });
         return;
@@ -1030,7 +1036,6 @@ useEffect(() => {
           {isEditable && (
             <button 
             type="submit"
-            onClick={handleSubmit}
             disabled={loading}
             className="bg-[var(--color-blue-600)] text-white px-6 py-2 rounded hover:opacity-90">
               {isEdit ? "Update Purchase" : "Create Purchase"}

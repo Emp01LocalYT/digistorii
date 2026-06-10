@@ -48,10 +48,26 @@ export default function AdminLoginForm({ company }: Props) {
  
  
       const data = await res.json();
- 
+
       if (data.success) {
         console.log("success : ", data.success);
         setUser(data.user);
+        try {
+          const onboardingRes = await fetch(
+            `/api/onboarding?company=${encodeURIComponent(company)}`
+          );
+          const onboardingData = await onboardingRes.json();
+          if (
+            onboardingRes.ok &&
+            onboardingData?.success &&
+            onboardingData?.company?.setup_stage !== "LIVE"
+          ) {
+            router.push(`/setup?company=${encodeURIComponent(company)}`);
+            return;
+          }
+        } catch {
+          // Fall back to regular route if onboarding status check fails.
+        }
         router.push(`/${company}/admin`);
       } else {
         setError(data.message);

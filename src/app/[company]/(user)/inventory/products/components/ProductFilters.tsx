@@ -18,6 +18,10 @@ type ProductFiltersProps = {
   categoryOptions: Option[];
   showStatus?: boolean;
   searchPlaceholder?: string;
+  barcodeValue?: string;
+  barcodeMessage?: string;
+  onBarcodeChange?: (value: string) => void;
+  onBarcodeSubmit?: () => void;
 };
 
 export default function ProductFilters({
@@ -26,10 +30,14 @@ export default function ProductFilters({
   categoryOptions,
   showStatus = false,
   searchPlaceholder,
+  barcodeValue = "",
+  barcodeMessage = "",
+  onBarcodeChange,
+  onBarcodeSubmit,
 }: ProductFiltersProps) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5">
-      <div className={`grid gap-3 ${showStatus ? "md:grid-cols-5" : "md:grid-cols-4"}`}>
+      <div className={`grid gap-3 ${showStatus ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
         <div className="relative">
           <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-2.5 text-gray-400" />
           <input
@@ -81,6 +89,21 @@ export default function ProductFilters({
             <option value="archived">Archived</option>
           </select>
         ) : null}
+        <div>
+          <input
+            value={barcodeValue}
+            onChange={(e) => onBarcodeChange?.(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                onBarcodeSubmit?.();
+              }
+            }}
+            placeholder="Scan barcode"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          {barcodeMessage ? <p className="mt-1 text-xs text-red-500">{barcodeMessage}</p> : null}
+        </div>
       </div>
     </div>
   );

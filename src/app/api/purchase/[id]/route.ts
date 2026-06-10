@@ -62,15 +62,28 @@ async function createVariantForNewProduct(
     return cachedVariantId;
   }
 
-  const productName = String(newProduct?.name || detail?.product_name || "").trim();
+  const productName = String(detail?.product_name || newProduct?.name || "").trim();
   if (!productName) {
     throw new Error("New product name is required");
   }
   const type =
     detail?.type === "raw_material" || detail?.type === "other" ? detail.type : "finished_good";
-  const source = newProduct?.source === "vendor" ? "vendor" : "own";
-  const categoryId = String(newProduct?.categoryId || "").trim();
-  const productCode = await getNextProductCodeByType(schema, type);
+  const source =
+    detail?.source === "vendor" || newProduct?.source === "vendor" ? "vendor" : "own";
+  const categoryId = String(detail?.category_id || newProduct?.categoryId || "").trim();
+  const providedProductCode = String(detail?.product_code || newProduct?.product_code || "").trim();
+  let productCode = providedProductCode;
+  if (providedProductCode) {
+    const productCodeRes = await client.query(
+      `SELECT id FROM "${schema}".products WHERE UPPER(product_code) = UPPER($1) LIMIT 1`,
+      [providedProductCode]
+    );
+    if (productCodeRes.rows.length) {
+      throw new Error(`Product code "${providedProductCode}" already exists`);
+    }
+  } else {
+    productCode = await getNextProductCodeByType(schema, type);
+  }
 
   const productRes = await client.query(
     `
@@ -97,7 +110,7 @@ async function createVariantForNewProduct(
     throw new Error("Failed to create product for purchase item");
   }
 
-  const requestedSku = String(newProduct?.sku || "").trim();
+  const requestedSku = String(detail?.sku || newProduct?.sku || "").trim();
   let sku = requestedSku;
   if (requestedSku) {
     if (await skuExists(client, schema, requestedSku)) {
@@ -132,6 +145,23 @@ async function createVariantForNewProduct(
   );
   cache.set(tempKey, variantId);
   return variantId;
+}
+
+function isNewPurchaseItem(detail: any) {
+  if (detail?.is_new === true) return true;
+  if (typeof detail?.product_id === "string" && detail.product_id.startsWith("temp-")) return true;
+  return !!(detail?.newProduct && typeof detail.newProduct === "object");
+}
+
+function getTempKey(detail: any) {
+  return String(
+    detail?.temp_id ||
+      detail?.product_id ||
+      detail?.newProduct?.temp_id ||
+      detail?.newProduct?.sku ||
+      detail?.newProduct?.name ||
+      ""
+  ).trim();
 }
  
 export async function GET(
@@ -368,6 +398,7 @@ export async function PUT(
 ) {
  
     const client = await pool.connect();
+    let failedItem: any = null;
  
     try {
  
@@ -382,7 +413,13 @@ export async function PUT(
           header: { po_type: header?.po_type, purchase_no: header?.purchase_no, supplier_id: header?.supplier_id },
           detailCount: Array.isArray(details) ? details.length : 0,
           detailSummaries: Array.isArray(details)
-            ? details.map((d: any) => ({ product_id: d.product_id, product_code: d.product_code, hasNewProduct: !!d.newProduct }))
+            ? details.map((d: any) => ({
+                product_id: d.product_id,
+                temp_id: d.temp_id,
+                product_code: d.product_code,
+                is_new: d.is_new,
+                hasNewProduct: !!d.newProduct,
+              }))
             : [],
         });
  
@@ -528,86 +565,62 @@ export async function PUT(
         }
  
         // LOOP details
-        console.log("DETECTED NEW PRODUCTS", details.filter((item: any) => item?.newProduct && typeof item.newProduct === "object").map((item: any) => ({ product_id: item.product_id, product_code: item.product_code, newProduct: item.newProduct })));
         const createdTempVariantMap = new Map<string, number>();
-        for (const item of details) {
+        const resolvedDetails: Array<any & { resolved_variant_id: number }> = [];
 
-            const taxMasterId = item.tax_id && item.tax_id > 0 ? item.tax_id : null;
-            let variantId = item.product_id;
-            if (item?.newProduct && typeof item.newProduct === "object") {
-                const tempKey = String(item.product_id || item.newProduct?.sku || item.newProduct?.name || "");
+        for (let index = 0; index < details.length; index += 1) {
+            const item = details[index];
+            failedItem = {
+                index,
+                id: item?.id ?? null,
+                product_id: item?.product_id ?? null,
+                temp_id: item?.temp_id ?? null,
+                product_code: item?.product_code ?? null,
+                product_name: item?.product_name ?? null,
+                is_new: item?.is_new ?? false
+            };
+            let variantId: number;
+
+            if (isNewPurchaseItem(item)) {
+                const tempKey = getTempKey(item);
+                if (!tempKey) {
+                    throw new Error(`Missing temp_id for new product at row ${index + 1}`);
+                }
                 variantId = await createVariantForNewProduct(
                     client,
                     schema,
                     item,
-                    item.newProduct,
+                    item.newProduct || {},
                     tempKey,
                     createdTempVariantMap
                 );
-                console.log("CREATED PRODUCT IDS", { tempKey, product_id: item.product_id, variantId });
-            }
-            // HANDLE MANUAL PRODUCT
-            else if (item.isManual || !item.product_id) {
- 
-                // Check by product_code (BEST)
-                const checkQuery = `
-      SELECT id FROM ${schema}.products
-      WHERE LOWER(product_code) = LOWER($1)
-      LIMIT 1
-    `;
- 
-                const checkRes = await client.query(checkQuery, [item.product_code]);
- 
-                if (checkRes.rows.length > 0) {
-                    // already exists
-                    // productId = checkRes.rows[0].id;
-                    throw new Error(`Product Code '${item.product_code}' already exists`);
-                } else {
-                    // insert new product
-                    const insertProductQuery = `
-        INSERT INTO ${schema}.products
-        (product_code, name, description, uom,hsn_code,created_at)
-        VALUES ($1,$2,$3,$4,$5,NOW())
-        RETURNING id
-      `;
- 
-                    const productRes = await client.query(insertProductQuery, [
-                        item.product_code,
-                        item.product_name,
-                        item.description,
-                        item.uom,
-                        item.hsn_no
-                    ]);
- 
-                    const productId = productRes.rows[0].id;
-                    const baseSku = buildAutoSku(String(item.product_code || ""), "NA", "NA");
-                    const sku = await resolveUniqueSku(client, schema, baseSku);
-                    const variantRes = await client.query(
-                        `
-                        INSERT INTO "${schema}".product_variants
-                          (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
-                        RETURNING id
-                      `,
-                        [productId, "NA", "NA", sku, 0, 5, false]
-                    );
-                    variantId = variantRes.rows[0].id;
-                    await client.query(
-                      `
-                        UPDATE "${schema}".product_variants
-                        SET barcode = LPAD(id::text, 10, '0')
-                        WHERE id = $1
-                      `,
-                      [variantId]
-                    );
-                }
             } else {
                 variantId = await resolveVariantId(client, schema, item.product_id);
             }
 
+            resolvedDetails.push({
+                ...item,
+                resolved_variant_id: variantId
+            });
+        }
+
+        console.log(
+            "RESOLVED PURCHASE ITEM VARIANTS",
+            resolvedDetails.map((item) => ({
+                id: item.id || null,
+                temp_id: item.temp_id || null,
+                product_id: item.product_id || null,
+                resolved_variant_id: item.resolved_variant_id,
+                is_new: item.is_new === true
+            }))
+        );
+
+        for (const item of resolvedDetails) {
+            const taxMasterId = item.tax_id && item.tax_id > 0 ? item.tax_id : null;
+
             if (item.id) {
-               
- 
+                
+                
                 // UPDATE EXISTING ROW
                 await client.query(
                     `
@@ -625,7 +638,7 @@ export async function PUT(
           WHERE id=$10
           `,
                     [
-                        variantId,
+                        item.resolved_variant_id,
                         item.uom,
                         item.hsn_no,
                         item.rate,
@@ -637,9 +650,9 @@ export async function PUT(
                         item.id
                     ]
                 );
- 
+
             } else {
- 
+
                 // INSERT NEW ROW
                 await client.query(
                     `
@@ -661,7 +674,7 @@ export async function PUT(
           `,
                     [
                         purchaseId,
-                        variantId,
+                        item.resolved_variant_id,
                         item.uom,
                         item.hsn_no,
                         item.rate,
@@ -679,19 +692,39 @@ export async function PUT(
  
         return NextResponse.json({
             success: true,
-            message: "Purchase Updated Successfully"
+            message: "Purchase Updated Successfully",
+            debug: {
+                resolved_items: resolvedDetails.map((item) => ({
+                    id: item.id || null,
+                    temp_id: item.temp_id || null,
+                    product_id: item.product_id || null,
+                    resolved_variant_id: item.resolved_variant_id,
+                    is_new: item.is_new === true
+                }))
+            }
         });
  
     } catch (error: any) {
  
         await client.query("ROLLBACK");
  
-        console.error("Purchase Update Failed, rolling back:", error);
+        console.error("Purchase Update Failed, rolling back:", {
+            code: error?.code,
+            message: error?.message,
+            detail: error?.detail,
+            stack: error?.stack
+        });
  
         return NextResponse.json(
             {
                 success: false,
-                error: error.message
+                error: error.message,
+                debug: {
+                    code: error?.code || null,
+                    detail: error?.detail || null,
+                    hint: error?.hint || null,
+                    failed_item: failedItem
+                }
             },
             { status: 400 }
         );

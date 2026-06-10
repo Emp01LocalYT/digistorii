@@ -27,16 +27,29 @@ export type SalesHeader = {
   sales_no: string;
   customer_id: string;
   warehouse_id?: string | number | null;
+  warehouse_name?: string | null;
+  location_id?: string | number | null;
+  location_name?: string | null;
   locator_id?: string | number | null;
   branch_name?: string | null;
   invoice_date: string;
   sales_date: string;
   status: string;
+  payment_status: "paid" | "unpaid" | "partial" | "";
   subtotal: number;
   tax_amount: number;
   total_amount: number;
   user_name?: string;
   currency: string;
+};
+
+export type SalesPayment = {
+  id?: number;
+  payment_mode_id: number;
+  payment_mode_name?: string;
+  amount: number | "";
+  location_id?: number | null;
+  warehouse_id?: number | null;
 };
 
 export type ProductRow = {
@@ -89,6 +102,15 @@ export type Warehouse = {
   id: number;
   code?: string | null;
   name?: string | null;
+  location_id?: number | null;
+  location_name?: string | null;
+};
+
+export type PaymentMode = {
+  id: number;
+  payment_mode_name: string;
+  is_default?: boolean;
+  is_active?: boolean;
 };
 
 export type Locator = {

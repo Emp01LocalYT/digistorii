@@ -84,6 +84,32 @@ function normalizePayload(data: LocationInput) {
   };
 }
 
+async function getCompanyLocationLimit(client: any, companySlug: string): Promise<number> {
+  const result = await client.query(
+    `SELECT
+       COALESCE(
+         cs.max_locations,
+         (
+           SELECT pf.value_int
+           FROM public.plan_features pf
+           WHERE pf.plan_id = cs.plan_id
+             AND pf.feature_key = 'max_locations'
+           LIMIT 1
+         ),
+         cs.max_warehouses,
+         1
+       ) AS max_locations
+     FROM public.companies c
+     LEFT JOIN public.company_subscriptions cs
+       ON cs.company_id = c.id
+     WHERE c.subdomain_url = $1
+     ORDER BY cs.updated_at DESC NULLS LAST, cs.id DESC NULLS LAST
+     LIMIT 1`,
+    [companySlug]
+  );
+  return Number(result.rows[0]?.max_locations ?? 1);
+}
+
 export async function GET(req: NextRequest) {
   const client = await pool.connect();
   try {
@@ -115,7 +141,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const client = await pool.connect();
   try {
-    const { schema } = await getTenantSchema(req);
+    const { schema, company } = await getTenantSchema(req);
     if (!schema || !schemaValidator.test(schema)) {
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
@@ -123,6 +149,21 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const parsed = locationSchema.parse(body);
     const payload = normalizePayload(parsed);
+
+    const maxLocations = await getCompanyLocationLimit(client, company);
+    const locationCount = await client.query(
+      `SELECT COUNT(*)::int AS count FROM "${schema}".locations`
+    );
+    const currentCount = Number(locationCount.rows[0]?.count || 0);
+    if (currentCount >= maxLocations) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cannot create more than ${maxLocations} locations for your plan`,
+        },
+        { status: 400 }
+      );
+    }
 
     const result = await client.query(
       `INSERT INTO "${schema}".locations

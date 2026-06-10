@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
       currenciesRes,
       warehousesRes,
       locatorsRes,
+      paymentModesRes,
       salesNo,
     ] = await Promise.all([
       client.query(
@@ -96,6 +97,18 @@ export async function GET(req: NextRequest) {
         ORDER BY l.id DESC
         `
       ),
+      client.query(
+        `
+        SELECT
+          id::int,
+          name AS payment_mode_name,
+          is_default,
+          is_active
+        FROM "${schema}".payment_modes
+        WHERE is_active = TRUE
+        ORDER BY is_default DESC, name ASC
+        `
+      ),
       generateSalesNo(schema),
     ]);
 
@@ -108,6 +121,7 @@ export async function GET(req: NextRequest) {
         currencies: currenciesRes.rows,
         warehouses: warehousesRes.rows,
         locators: locatorsRes.rows,
+        payment_modes: paymentModesRes.rows,
         sales_no: salesNo,
       },
     });

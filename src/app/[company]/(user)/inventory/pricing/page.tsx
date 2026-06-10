@@ -673,7 +673,7 @@ export default function PricingPage() {
       return;
     }
     if (editEffectiveDate < todayYyyyMmDd()) {
-      notify("Effective Date cannot be in the past.",{ severity: "warning" });
+      notify("Effective Date cannot be in the past. edited",{ severity: "warning" });
       return;
     }
     if (!asText(editBaseCost)) {
