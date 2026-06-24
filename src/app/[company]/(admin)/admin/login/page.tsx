@@ -10,9 +10,9 @@ import { pool } from "@/lib/db";
 import AdminLoginForm from "./AdminLoginForm";
 
 interface Props {
-  params: {
+  params: Promise<{
     company: string;
-  };
+  }>;
 }
 
 export default async function LoginPage({ params }: Props) {

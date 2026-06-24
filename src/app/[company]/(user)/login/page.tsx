@@ -3,11 +3,10 @@ import { pool } from "@/lib/db";
 import LoginForm from "./LoginForm";
 
 interface Props {
-  params: {
+  params: Promise<{
     company: string;
-  };
+  }>;
 }
-
 export default async function LoginPage({ params }: Props) {
   const { company } = await params;
 
