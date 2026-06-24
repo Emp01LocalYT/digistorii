@@ -21,8 +21,7 @@ const warehouseSchema = z.object({
   contact_person_name: z.string().optional().nullable(),
   contact_person_mobile: z.string().optional().nullable(),
   contact_person_email: z.string().optional().nullable(),
-  pan: z.string().optional().nullable(),
-  gstin: z.string().optional().nullable(),
+
 });
 
 type WarehouseInput = z.infer<typeof warehouseSchema>;
@@ -68,8 +67,6 @@ function normalizePayload(data: WarehouseInput) {
     contact_person_name: asNull(data.contact_person_name),
     contact_person_mobile: asNull(data.contact_person_mobile),
     contact_person_email: contactEmail,
-    pan: asNull(data.pan),
-    gstin: asNull(data.gstin),
   };
 }
 
@@ -119,7 +116,7 @@ export async function GET(req: NextRequest) {
         w.id, w.code, w.name, w.location_id, w.type, w.effective_from, w.effective_to,
         w.description, w.landline, w.mobile_no, w.fax, w.email,
         w.contact_person_name, w.contact_person_mobile, w.contact_person_email,
-        w.pan, w.gstin, w.created_at, w.updated_at,
+        w.created_at, w.updated_at,
         l.name AS location_name
        FROM "${schema}".warehouses w
        LEFT JOIN "${schema}".locations l ON w.location_id = l.id
@@ -172,7 +169,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Cannot create more than ${maxWarehouses} warehouses for your plan`,
+          error: `Cannot create more than ${maxWarehouses} warehouses for subscription plan`,
         },
         { status: 400 }
       );
@@ -184,18 +181,18 @@ export async function POST(req: NextRequest) {
         code, name, location_id, type, effective_from, effective_to, description,
         landline, mobile_no, fax, email,
         contact_person_name, contact_person_mobile, contact_person_email,
-        pan, gstin, created_at, updated_at
+         created_at, updated_at
        )
        VALUES (
         $1,$2,$3,$4,$5,$6,$7,
         $8,$9,$10,$11,
         $12,$13,$14,
-        $15,$16,NOW(),NOW()
+       NOW(),NOW()
        )
        RETURNING id, code, name, location_id, type, effective_from, effective_to,
         description, landline, mobile_no, fax, email,
         contact_person_name, contact_person_mobile, contact_person_email,
-        pan, gstin, created_at, updated_at`,
+       created_at, updated_at`,
       [
         payload.code,
         payload.name,
@@ -211,8 +208,6 @@ export async function POST(req: NextRequest) {
         payload.contact_person_name,
         payload.contact_person_mobile,
         payload.contact_person_email,
-        payload.pan,
-        payload.gstin,
       ]
     );
 

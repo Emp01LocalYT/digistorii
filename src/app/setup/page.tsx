@@ -1,8 +1,9 @@
 import Link from "next/link";
 import OnboardingWizard from "@/components/onboarding/OnboardingWizard";
+import { normalizeBillingInterval } from "@/lib/onboarding";
 
 type SetupPageProps = {
-  searchParams: Promise<{ company?: string }>;
+  searchParams: Promise<{ company?: string; plan_id?: string; billing_cycle?: string }>;
 };
 
 export default async function SetupPage({ searchParams }: SetupPageProps) {
@@ -26,7 +27,11 @@ export default async function SetupPage({ searchParams }: SetupPageProps) {
             </Link>
           </div>
         ) : (
-          <OnboardingWizard company={company} />
+          <OnboardingWizard
+            company={company}
+            initialPlanId={Number(params?.plan_id || 0) || null}
+            initialBillingInterval={normalizeBillingInterval(params?.billing_cycle)}
+          />
         )}
       </div>
     </div>

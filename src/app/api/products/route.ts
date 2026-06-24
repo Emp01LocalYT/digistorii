@@ -137,7 +137,24 @@ export async function GET(req: NextRequest) {
         `,
         [barcode]
       );
-      return NextResponse.json({ found: (result.rowCount || 0) > 0, product: result.rows[0] || null });
+      const matched = result.rows[0] || null;
+      return NextResponse.json({
+        found: (result.rowCount || 0) > 0,
+        lookup_type: "barcode",
+        barcode,
+        product: matched,
+        variant: matched
+          ? {
+              id: matched.variant_id,
+              sku: matched.sku,
+              color: matched.color,
+              size: matched.size,
+              fitting: matched.fitting,
+              gender: matched.gender,
+              barcode: matched.barcode,
+            }
+          : null,
+      });
     }
 
     const values: Array<string | number> = [];
@@ -272,7 +289,7 @@ export async function POST(req: NextRequest) {
 
     await client.query("BEGIN");
 
-    const productCode = await getNextProductCodeByType(schema, type);
+    const productCode = await getNextProductCodeByType(schema, type, client);
     const productResult = await client.query(
       `
         INSERT INTO "${schema}".products

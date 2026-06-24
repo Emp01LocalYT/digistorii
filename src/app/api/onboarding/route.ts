@@ -3,16 +3,26 @@ import { randomBytes } from "crypto";
 import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/hash";
 import { ensureDB } from "@/lib/ensure-db";
+import { ensureLocationTableShape } from "@/lib/locationSchema";
 import {
-  getPlanAmountInINR,
   normalizeBillingInterval,
-  normalizePaidPlanCode,
-  PLAN_PRICING,
   PLAN_CONFIG,
   SetupStage,
   getNextStepNumber,
   isValidSetupStage,
 } from "@/lib/onboarding";
+import {
+  extractPanFromGstin,
+  getGstStateCodeForState,
+  isValidGstin,
+  isValidPan,
+  normalizeGstin,
+  normalizePan,
+} from "@/lib/onboardingBusiness";
+import {
+  ensureCompanyResponsibilities,
+  getResponsibilitiesForCompany,
+} from "@/lib/userResponsibilities";
 
 type CompanyContext = {
   id: number;
@@ -20,6 +30,9 @@ type CompanyContext = {
   subdomain_url: string;
   schema_name: string;
   setup_stage: SetupStage;
+  gst_number: string | null;
+  pan_number: string | null;
+  currency: string | null;
 };
 
 function toSetupStage(value: string | null | undefined): SetupStage {
@@ -29,7 +42,7 @@ function toSetupStage(value: string | null | undefined): SetupStage {
 
 async function getCompanyContext(client: any, company: string): Promise<CompanyContext> {
   const result = await client.query(
-    `SELECT id, company_name, subdomain_url, schema_name, setup_stage
+    `SELECT id, company_name, subdomain_url, schema_name, setup_stage, gst_number, pan_number, currency
      FROM public.companies
      WHERE subdomain_url = $1
      LIMIT 1`,
@@ -47,6 +60,9 @@ async function getCompanyContext(client: any, company: string): Promise<CompanyC
     subdomain_url: row.subdomain_url,
     schema_name: row.schema_name,
     setup_stage: toSetupStage(row.setup_stage),
+    gst_number: row.gst_number || null,
+    pan_number: row.pan_number || null,
+    currency: row.currency || null,
   };
 }
 
@@ -84,6 +100,7 @@ async function ensureTenantOnboardingTables(client: any, schema: string) {
     ALTER TABLE "${schema}".locations
     ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
   `);
+  await ensureLocationTableShape(client, schema);
   await client.query(`
     ALTER TABLE "${schema}".warehouses
     ADD COLUMN IF NOT EXISTS address TEXT;
@@ -92,6 +109,83 @@ async function ensureTenantOnboardingTables(client: any, schema: string) {
     ALTER TABLE "${schema}".warehouses
     ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
   `);
+}
+
+async function ensureCompanyBusinessColumns(client: any) {
+  await client.query(`
+    ALTER TABLE public.companies
+    ADD COLUMN IF NOT EXISTS gst_number VARCHAR(20);
+  `);
+  await client.query(`
+    ALTER TABLE public.companies
+    ADD COLUMN IF NOT EXISTS pan_number VARCHAR(20);
+  `);
+  await client.query(`
+    ALTER TABLE public.companies
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(10);
+  `);
+  await client.query(`
+    ALTER TABLE public.users
+    ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE;
+  `);
+}
+
+async function getOwnerForCompany(client: any, companyId: number) {
+  const owner = await client.query(
+    `SELECT id, phone, phone_verified
+     FROM public.users
+     WHERE company_id = $1
+     ORDER BY id ASC
+     LIMIT 1`,
+    [companyId]
+  );
+  return owner.rows[0] || null;
+}
+
+async function getPlanDetails(client: any, planId: number, billingInterval: string) {
+  const planResult = await client.query(
+    `SELECT id, name, price_monthly, price_yearly
+     FROM public.plans
+     WHERE id = $1 AND is_active = TRUE
+     LIMIT 1`,
+    [planId]
+  );
+  if (!planResult.rowCount) {
+    throw new Error("Selected plan is not available");
+  }
+  const planRow = planResult.rows[0];
+  const featuresResult = await client.query(
+    `SELECT feature_key, value_int, value_bool
+     FROM public.plan_features
+     WHERE plan_id = $1`,
+    [planId]
+  );
+  const featureMap = new Map<string, any>(
+    featuresResult.rows.map((row: any) => [String(row.feature_key), row])
+  );
+  const planCode = String(planRow.name || "").toUpperCase();
+  const fallback = (PLAN_CONFIG as any)[planCode] || PLAN_CONFIG.BASIC;
+  const getInt = (key: string, fallbackValue: number) => {
+    const value = featureMap.get(key)?.value_int;
+    return value == null ? fallbackValue : Number(value);
+  };
+  const getBool = (key: string, fallbackValue: boolean) => {
+    const value = featureMap.get(key)?.value_bool;
+    return value == null ? fallbackValue : Boolean(value);
+  };
+
+  return {
+    id: Number(planRow.id),
+    code: planCode,
+    amount:
+      normalizeBillingInterval(billingInterval) === "yearly"
+        ? Number(planRow.price_yearly || 0)
+        : Number(planRow.price_monthly || 0),
+    ecommerce_access: getBool("ecommerce_access", Boolean(fallback.ecommerce_access)),
+    max_users: getInt("max_users", Number(fallback.max_users || 5)),
+    max_warehouses: getInt("max_warehouses", Number(fallback.max_warehouses || 1)),
+    max_locations: getInt("max_locations", Number(fallback.max_locations || 1)),
+  };
 }
 
 async function getPlanForCompany(client: any, companyId: number) {
@@ -148,8 +242,10 @@ export async function GET(req: NextRequest) {
   const client = await pool.connect();
   try {
     const company = parseCompany(req);
+    await ensureCompanyBusinessColumns(client);
     const context = await getCompanyContext(client, company);
     await ensureTenantOnboardingTables(client, context.schema_name);
+    await ensureCompanyResponsibilities(client, context.id);
 
     const subscription = await getPlanForCompany(client, context.id);
     const businessSettings = await client.query(
@@ -158,6 +254,26 @@ export async function GET(req: NextRequest) {
        ORDER BY id ASC
        LIMIT 1`
     );
+    const businessRow = businessSettings.rows[0] || null;
+    const gstNumber = context.gst_number || businessRow?.gst_number || null;
+    const panNumber = context.pan_number || businessRow?.pan_number || null;
+    const currency = context.currency || businessRow?.currency || null;
+
+    if (
+      (gstNumber && gstNumber !== context.gst_number) ||
+      (panNumber && panNumber !== context.pan_number) ||
+      (currency && currency !== context.currency)
+    ) {
+      await client.query(
+        `UPDATE public.companies
+         SET gst_number = COALESCE(gst_number, $2),
+             pan_number = COALESCE(pan_number, $3),
+             currency = COALESCE(currency, $4),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [context.id, gstNumber, panNumber, currency]
+      );
+    }
     const warehouseCountResult = await client.query(
       `SELECT COUNT(*)::int AS count FROM "${context.schema_name}".warehouses`
     );
@@ -173,6 +289,7 @@ export async function GET(req: NextRequest) {
        WHERE company_id = $1 AND is_active = TRUE`,
       [context.id]
     );
+    const owner = await getOwnerForCompany(client, context.id);
 
     return NextResponse.json({
       success: true,
@@ -183,10 +300,14 @@ export async function GET(req: NextRequest) {
         schema: context.schema_name,
         setup_stage: context.setup_stage,
         next_step: getNextStepNumber(context.setup_stage),
+        owner_phone: owner?.phone || null,
+        phone_verified: Boolean(owner?.phone_verified),
       },
       subscription: subscription
         ? {
+            plan_id: Number(subscription.plan_id),
             plan_code: subscription.plan_code,
+            plan_name: subscription.plan_code,
             ecommerce_access: Boolean(subscription.ecommerce_access),
             max_users: Number(subscription.max_users ?? 5),
             max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),
@@ -196,7 +317,12 @@ export async function GET(req: NextRequest) {
             amount: Number(subscription.amount ?? 0),
           }
         : null,
-      business_settings: businessSettings.rows[0] || null,
+      business_settings: {
+        ...(businessRow || {}),
+        gst_number: gstNumber,
+        pan_number: panNumber,
+        currency,
+      },
       counts: {
         locations: Number(locationCountResult.rows[0]?.count || 0),
         warehouses: Number(warehouseCountResult.rows[0]?.count || 0),
@@ -228,27 +354,32 @@ export async function POST(req: NextRequest) {
       throw new Error("Company is required");
     }
 
+    await ensureCompanyBusinessColumns(client);
     const context = await getCompanyContext(client, company);
     await ensureTenantOnboardingTables(client, context.schema_name);
+    await ensureCompanyResponsibilities(client, context.id);
 
     await client.query("BEGIN");
     transactionStarted = true;
 
-    if (step === "PLAN_SELECTED") {
-      const requestedPlan = normalizePaidPlanCode(data?.plan);
-      if (!requestedPlan) {
-        throw new Error("Invalid plan selected");
+    if (step === "PHONE_VERIFIED") {
+      // Mark phone as verified and advance stage
+      const owner = await getOwnerForCompany(client, context.id);
+      if (!owner?.phone_verified) {
+        throw new Error("Phone number must be verified via OTP before proceeding");
       }
-      const plan = PLAN_CONFIG[requestedPlan];
-      if (!plan) {
-        throw new Error("Invalid plan selected");
-      }
+      await client.query(
+        `UPDATE public.companies
+         SET setup_stage = 'PHONE_VERIFIED', updated_at = NOW()
+         WHERE id = $1`,
+        [context.id]
+      );
+    } else if (step === "PLAN_SELECTED") {
+      const requestedPlanId = Number(data?.plan_id || 0);
       const billingInterval = normalizeBillingInterval(data?.billing_interval);
+      const plan = await getPlanDetails(client, requestedPlanId, billingInterval);
       const paymentStatusInput = String(data?.payment_status || "").trim().toUpperCase();
       const paymentStatus = paymentStatusInput === "SUCCESS" ? "paid" : "created";
-      const planAmount = getPlanAmountInINR(requestedPlan, billingInterval);
-      const priceMonthly = PLAN_PRICING[requestedPlan].monthly;
-      const priceYearly = PLAN_PRICING[requestedPlan].yearly;
       const razorpayOrderId = String(data?.razorpay_order_id || "").trim() || null;
       const razorpayPaymentId = String(data?.payment_id || "").trim() || null;
       const razorpaySignature = String(data?.razorpay_signature || "").trim() || null;
@@ -259,20 +390,6 @@ export async function POST(req: NextRequest) {
       } else {
         periodEnd.setMonth(periodEnd.getMonth() + 1);
       }
-
-      const planRow = await client.query(
-        `INSERT INTO public.plans (name, price_monthly, price_yearly, is_active)
-         VALUES ($1, $2, $3, TRUE)
-         ON CONFLICT (name) DO UPDATE
-         SET
-           price_monthly = EXCLUDED.price_monthly,
-           price_yearly = EXCLUDED.price_yearly,
-           is_active = TRUE
-         RETURNING id, name`,
-        [plan.code, priceMonthly, priceYearly]
-      );
-      const planId = Number(planRow.rows[0].id);
-      const planName = String(planRow.rows[0].name || plan.code).toUpperCase();
 
       const subscriptionUpsert = await client.query(
         `INSERT INTO public.company_subscriptions
@@ -290,7 +407,7 @@ export async function POST(req: NextRequest) {
            razorpay_order_id,
            subscription_start,
            subscription_end,
-           status,
+          status,
            current_period_start,
            current_period_end,
            updated_at
@@ -317,14 +434,14 @@ export async function POST(req: NextRequest) {
          RETURNING id`,
         [
           context.id,
-          planId,
+          plan.id,
           plan.code,
           plan.ecommerce_access,
           plan.max_users,
           plan.max_warehouses,
           plan.max_locations,
           billingInterval,
-          planAmount,
+          plan.amount,
           paymentStatus,
           razorpayOrderId,
           periodStart,
@@ -376,20 +493,57 @@ export async function POST(req: NextRequest) {
              subscription_plan = $2,
              updated_at = NOW()
          WHERE id = $1`,
-        [context.id, planName]
+        [context.id, plan.code]
       );
     } else if (step === "BUSINESS_SETUP") {
+      const stateCode = getGstStateCodeForState(String(data?.state || "").trim());
+      const gstNumber = normalizeGstin(String(data?.gst_number || "").trim(), stateCode);
+      const panInput = normalizePan(String(data?.pan_number || "").trim());
+      const panNumber = gstNumber ? panInput || extractPanFromGstin(gstNumber) : "";
+      const currency = String(data?.currency || "").trim().toUpperCase() || null;
+
+      // if (gstNumber && !isValidGstin(gstNumber)) {
+      //   throw new Error("GST number must match the format XXAAAAA9999AXXZ");
+      // }
+      // if (gstNumber && stateCode && !gstNumber.startsWith(stateCode)) {
+      //   throw new Error("GST number state code must match the selected state");
+      // }
+      // if (panNumber && !isValidPan(panNumber)) {
+      //   throw new Error("PAN number must match the format AAAAA9999A");
+      // }
+      if (currency) {
+        const currencyExists = await client.query(
+          `SELECT 1
+           FROM "${context.schema_name}".currencies
+           WHERE upper(currency_code) = $1
+           LIMIT 1`,
+          [currency]
+        );
+        if (!currencyExists.rowCount) {
+          throw new Error("Selected currency is invalid");
+        }
+      }
+
       const payload = {
-        gst_number: String(data?.gst_number || "").trim() || null,
-        pan_number: String(data?.pan_number || "").trim() || null,
+        gst_number: gstNumber || null,
+        pan_number: panNumber || null,
         business_address: String(data?.business_address || "").trim() || null,
         city: String(data?.city || "").trim() || null,
         state: String(data?.state || "").trim() || null,
         country: String(data?.country || "").trim() || null,
-        currency: String(data?.currency || "").trim() || null,
         timezone: String(data?.timezone || "").trim() || null,
         invoice_prefix: String(data?.invoice_prefix || "").trim() || null,
       };
+
+      await client.query(
+        `UPDATE public.companies
+         SET gst_number = $2,
+             pan_number = $3,
+             currency = $4,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [context.id, payload.gst_number, payload.pan_number, currency]
+      );
 
       const existingBusiness = await client.query(
         `SELECT id FROM "${context.schema_name}".business_settings ORDER BY id ASC LIMIT 1`
@@ -397,25 +551,19 @@ export async function POST(req: NextRequest) {
       if (existingBusiness.rowCount) {
         await client.query(
           `UPDATE "${context.schema_name}".business_settings
-           SET gst_number = $1,
-               pan_number = $2,
-               business_address = $3,
-               city = $4,
-               state = $5,
-               country = $6,
-               currency = $7,
-               timezone = $8,
-               invoice_prefix = $9,
+           SET business_address = $1,
+               city = $2,
+               state = $3,
+               country = $4,
+               timezone = $5,
+               invoice_prefix = $6,
                updated_at = NOW()
-           WHERE id = $10`,
+           WHERE id = $7`,
           [
-            payload.gst_number,
-            payload.pan_number,
             payload.business_address,
             payload.city,
             payload.state,
             payload.country,
-            payload.currency,
             payload.timezone,
             payload.invoice_prefix,
             existingBusiness.rows[0].id,
@@ -424,16 +572,13 @@ export async function POST(req: NextRequest) {
       } else {
         await client.query(
           `INSERT INTO "${context.schema_name}".business_settings
-           (gst_number, pan_number, business_address, city, state, country, currency, timezone, invoice_prefix, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())`,
+           (business_address, city, state, country, timezone, invoice_prefix, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,NOW(),NOW())`,
           [
-            payload.gst_number,
-            payload.pan_number,
             payload.business_address,
             payload.city,
             payload.state,
             payload.country,
-            payload.currency,
             payload.timezone,
             payload.invoice_prefix,
           ]
@@ -481,45 +626,52 @@ export async function POST(req: NextRequest) {
       const locationInsert = await client.query(
         `INSERT INTO "${context.schema_name}".locations
          (
-           name, type, inactive_date, same_as_ship_to, description,
-           number, building, street, locality, country, state, city, pincode,
-           landline, mobile, fax, email, contact_person, ship_to_location,
-           ship_to_site, receiving_site, office_site, bill_to_site, internal_site,
+           name, type, inactive_date, same_as_registered, same_as_bill_to, description,
+           registered_address_line_1, registered_address_line_2, registered_country, registered_state, registered_city, registered_pincode,
+           bill_address_line_1, bill_address_line_2, bill_country, bill_state, bill_city, bill_pincode,
+           ship_address_line_1, ship_address_line_2, ship_country, ship_state, ship_city, ship_pincode,
+           landline, mobile, fax, email, contact_person,
            is_default, created_at, updated_at
          )
          VALUES (
-           $1, $2, $3, $4, $5,
-           $6, $7, $8, $9, $10, $11, $12, $13,
-           $14, $15, $16, $17, $18, $19,
-           $20, $21, $22, $23, $24,
-           $25, NOW(), NOW()
+           $1, $2, $3, $4, $5, $6,
+           $7, $8, $9, $10, $11, $12,
+           $13, $14, $15, $16, $17, $18,
+           $19, $20, $21, $22, $23, $24,
+           $25, $26, $27, $28, $29,
+           $30, NOW(), NOW()
          )
          RETURNING id`,
         [
           locationName,
           String(data?.type || "global").trim() || "global",
           String(data?.inactive_date || "").trim() || null,
-          Boolean(data?.same_as_ship_to),
+          Boolean(data?.same_as_registered),
+          Boolean(data?.same_as_bill_to),
           String(data?.description || "").trim() || null,
-          String(data?.number || "").trim() || null,
-          String(data?.building || "").trim() || null,
-          String(data?.street || "").trim() || null,
-          String(data?.locality || "").trim() || null,
-          String(data?.country || "").trim() || null,
-          String(data?.state || "").trim() || null,
-          String(data?.city || "").trim() || null,
-          String(data?.pincode || "").trim() || null,
+          String(data?.registered_address_line_1 || "").trim() || null,
+          String(data?.registered_address_line_2 || "").trim() || null,
+          String(data?.registered_country || "").trim() || null,
+          String(data?.registered_state || "").trim() || null,
+          String(data?.registered_city || "").trim() || null,
+          String(data?.registered_pincode || "").trim() || null,
+          String(data?.bill_address_line_1 || "").trim() || null,
+          String(data?.bill_address_line_2 || "").trim() || null,
+          String(data?.bill_country || "").trim() || null,
+          String(data?.bill_state || "").trim() || null,
+          String(data?.bill_city || "").trim() || null,
+          String(data?.bill_pincode || "").trim() || null,
+          String(data?.ship_address_line_1 || "").trim() || null,
+          String(data?.ship_address_line_2 || "").trim() || null,
+          String(data?.ship_country || "").trim() || null,
+          String(data?.ship_state || "").trim() || null,
+          String(data?.ship_city || "").trim() || null,
+          String(data?.ship_pincode || "").trim() || null,
           String(data?.landline || "").trim() || null,
           String(data?.mobile || "").trim() || null,
           String(data?.fax || "").trim() || null,
           String(data?.email || "").trim() || null,
           String(data?.contact_person || "").trim() || null,
-          String(data?.ship_to_location || "").trim() || null,
-          Boolean(data?.ship_to_site),
-          Boolean(data?.receiving_site),
-          Boolean(data?.office_site),
-          Boolean(data?.bill_to_site),
-          Boolean(data?.internal_site),
           isDefault,
         ]
       );
@@ -605,13 +757,13 @@ export async function POST(req: NextRequest) {
          (
            code, name, location_id, type, address, is_default,
            effective_from, effective_to, description, landline, mobile_no, fax, email,
-           contact_person_name, contact_person_mobile, contact_person_email, pan, gstin,
+           contact_person_name, contact_person_mobile, contact_person_email,
            created_at, updated_at
          )
          VALUES (
            $1, $2, $3, $4, $5, $6,
            $7, $8, $9, $10, $11, $12, $13,
-           $14, $15, $16, $17, $18,
+           $14, $15, $16,
            NOW(), NOW()
          )`,
         [
@@ -631,8 +783,7 @@ export async function POST(req: NextRequest) {
           String(data?.contact_person_name || "").trim() || null,
           String(data?.contact_person_mobile || "").trim() || null,
           String(data?.contact_person_email || "").trim() || null,
-          String(data?.pan || "").trim() || null,
-          String(data?.gstin || "").trim() || null,
+
         ]
       );
 
@@ -651,47 +802,19 @@ export async function POST(req: NextRequest) {
          WHERE id = $1`,
         [context.id]
       );
-    } else if (step === "PAYMENT_SETUP") {
-      const customModes: string[] = Array.isArray(data?.custom_modes) ? data.custom_modes : [];
-      const defaultModes = ["Cash", "UPI", "Card"];
-      const merged = [...defaultModes, ...customModes]
-        .map((name) => String(name || "").trim())
-        .filter(Boolean);
-      const uniqueModes = Array.from(new Set(merged.map((m) => m.toLowerCase()))).map(
-        (lowerName) => merged.find((m) => m.toLowerCase() === lowerName) as string
-      );
-
-      for (const mode of uniqueModes) {
-        const isDefault = defaultModes.some((d) => d.toLowerCase() === mode.toLowerCase());
-        await client.query(
-          `INSERT INTO "${context.schema_name}".payment_modes
-           (name, is_default, is_active, created_at, updated_at)
-           VALUES ($1, $2, TRUE, NOW(), NOW())
-           ON CONFLICT (name) DO UPDATE
-           SET is_default = EXCLUDED.is_default, is_active = TRUE, updated_at = NOW()`,
-          [mode, isDefault]
-        );
-      }
-
-      await client.query(
-        `UPDATE public.companies
-         SET setup_stage = 'PAYMENT_SETUP', updated_at = NOW()
-         WHERE id = $1`,
-        [context.id]
-      );
     } else if (step === "STAFF_SETUP") {
       const users: Array<{
         name: string;
         email: string;
         phone: string;
-        role: string;
+        responsibility_id?: string | number;
         location_id?: string | number;
         warehouse_id?: string | number;
       }> = Array.isArray(data?.users)
         ? data.users
         : [];
 
-      const validRoles = new Set(["ADMIN", "MANAGER", "CASHIER", "WAREHOUSE_STAFF"]);
+      const responsibilities = await getResponsibilitiesForCompany(client, context.id);
       const subscription = await getPlanForCompany(client, context.id);
       const maxUsers = Number(subscription?.max_users ?? PLAN_CONFIG.BASIC.max_users);
       const mappedUsers = await client.query(
@@ -710,14 +833,16 @@ export async function POST(req: NextRequest) {
         const name = String(user?.name || "").trim();
         const email = String(user?.email || "").trim().toLowerCase();
         const phone = String(user?.phone || "").trim();
-        const role = String(user?.role || "").trim().toUpperCase();
+        const responsibilityId = Number(user?.responsibility_id || 0);
         const locationId = Number(user?.location_id || 0);
         const warehouseId = Number(user?.warehouse_id || 0);
         if (
           !name ||
           !email ||
           !phone ||
-          !validRoles.has(role) ||
+          !Number.isInteger(responsibilityId) ||
+          responsibilityId <= 0 ||
+          !responsibilities.some((entry) => entry.id === responsibilityId) ||
           !Number.isInteger(locationId) ||
           locationId <= 0 ||
           !Number.isInteger(warehouseId) ||
@@ -769,23 +894,23 @@ export async function POST(req: NextRequest) {
 
         const newUser = await client.query(
           `INSERT INTO public.users
-           (company_id, name, email, phone, password_hash, role, is_active)
+           (company_id, name, email, phone, password_hash, responsibility_id, is_active)
            VALUES ($1, $2, $3, $4, $5, $6, TRUE)
            RETURNING id`,
-          [context.id, name, email, phone, passwordHash, role]
+          [context.id, name, email, phone, passwordHash, responsibilityId]
         );
         const userId = Number(newUser.rows[0].id);
 
         await client.query(
           `INSERT INTO public.company_user_map
-           (user_id, company_id, username, role, location_id, warehouse_id, is_active)
+           (user_id, company_id, username, responsibility_id, location_id, warehouse_id, is_active)
            VALUES ($1, $2, $3, $4, $5, $6, TRUE)
            ON CONFLICT (user_id, company_id) DO UPDATE
-           SET role = EXCLUDED.role,
+           SET responsibility_id = EXCLUDED.responsibility_id,
                location_id = EXCLUDED.location_id,
                warehouse_id = EXCLUDED.warehouse_id,
                is_active = TRUE`,
-          [userId, context.id, email.split("@")[0], role, locationId, warehouseId]
+          [userId, context.id, email.split("@")[0], responsibilityId, locationId, warehouseId]
         );
       }
 
@@ -796,6 +921,10 @@ export async function POST(req: NextRequest) {
         [context.id]
       );
     } else if (step === "LIVE") {
+      const subscription = await getPlanForCompany(client, context.id);
+      if (!subscription || String(subscription.payment_status || "").toLowerCase() !== "paid") {
+        throw new Error("Payment must be completed before launch");
+      }
       await client.query(
         `UPDATE public.companies
          SET setup_stage = 'LIVE', updated_at = NOW()
@@ -818,7 +947,9 @@ export async function POST(req: NextRequest) {
       next_step: getNextStepNumber(updated.setup_stage),
       subscription: subscription
         ? {
+            plan_id: Number(subscription.plan_id),
             plan_code: subscription.plan_code,
+            plan_name: subscription.plan_code,
             ecommerce_access: Boolean(subscription.ecommerce_access),
             max_users: Number(subscription.max_users ?? 5),
             max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),

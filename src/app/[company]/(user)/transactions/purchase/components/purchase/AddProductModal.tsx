@@ -21,6 +21,7 @@ type AddProductModalProps = {
     payload: { product: any; variants: any[] },
     meta?: { action: "save" | "save_add_new" }
   ) => void;
+  buttonLabel?: string;
 };
 
 export default function AddProductModal({
@@ -29,6 +30,7 @@ export default function AddProductModal({
   saveMode = "api",
   onSaved,
   onLocalSave,
+  buttonLabel,
 }: AddProductModalProps) {
   if (!open) return null;
 
@@ -47,6 +49,7 @@ export default function AddProductModal({
             saveMode={saveMode}
             onSaved={onSaved}
             onLocalSave={onLocalSave}
+            buttonLabel={buttonLabel}
           />
         </div>
       </div>

@@ -62,7 +62,7 @@ type User = {
   phone: string;
   password: string;
   status: boolean;
-  role: "ADMIN" | "MANAGER" | "CASHIER" | "WAREHOUSE_STAFF";
+  responsibility_id: string;
   location_id: string;
   warehouse_id: string;
 };
@@ -77,10 +77,21 @@ type LocationOption = {
   id: number;
   name: string;
 };
+
+type ResponsibilityOption = {
+  id: number;
+  responsibility_name: string;
+};
  
 interface Props {
   company?: string | string[];
   userId?: string;
+}
+
+function getDefaultResponsibilityId(options: ResponsibilityOption[]) {
+  const preferred =
+    options.find((option) => option.responsibility_name === "Sales Person") || options[0];
+  return preferred ? String(preferred.id) : "";
 }
  
 export default function CreateUserForm({ company, userId }: Props) {
@@ -95,6 +106,7 @@ export default function CreateUserForm({ company, userId }: Props) {
   const [success, setSuccess] = useState("");
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [responsibilities, setResponsibilities] = useState<ResponsibilityOption[]>([]);
   // const userId = params.id;
   const hasFetched = useRef(false);
   const [users, setUsers] = useState([
@@ -106,7 +118,7 @@ export default function CreateUserForm({ company, userId }: Props) {
       phone: "",
       password: "",
       status: true,
-      role: "CASHIER",
+      responsibility_id: "",
       location_id: "",
       warehouse_id: "",
     },
@@ -118,6 +130,7 @@ export default function CreateUserForm({ company, userId }: Props) {
       warehouses.find((warehouse) => String(warehouse.location_id) === defaultLocationId) ||
       warehouses[0];
     const defaultWarehouseId = defaultWarehouse ? String(defaultWarehouse.id) : "";
+    const defaultResponsibilityId = getDefaultResponsibilityId(responsibilities);
     setUsers([
       ...users,
       {
@@ -128,7 +141,7 @@ export default function CreateUserForm({ company, userId }: Props) {
         phone: "",
         password: "",
         status: true,
-        role: "CASHIER",
+        responsibility_id: defaultResponsibilityId,
         location_id: defaultLocationId,
         warehouse_id: defaultWarehouseId,
       },
@@ -165,7 +178,7 @@ export default function CreateUserForm({ company, userId }: Props) {
               phone: data.user.phone,
               password: "",
               status: !!data.user.is_active,
-              role: data.user.role || "CASHIER",
+              responsibility_id: data.user.responsibility_id ? String(data.user.responsibility_id) : "",
               location_id: data.user.location_id ? String(data.user.location_id) : "",
               warehouse_id: data.user.warehouse_id ? String(data.user.warehouse_id) : "",
             },
@@ -186,16 +199,20 @@ export default function CreateUserForm({ company, userId }: Props) {
     if (!tenant) return;
     const loadMasterOptions = async () => {
       try {
-        const [locationRes, warehouseRes] = await Promise.all([
+        const [locationRes, warehouseRes, responsibilityRes] = await Promise.all([
           fetch("/api/locations", {
             headers: { "x-tenant": tenant },
           }),
           fetch("/api/warehouses", {
             headers: { "x-tenant": tenant },
           }),
+          fetch("/api/user-responsibilities", {
+            headers: { "x-tenant": tenant },
+          }),
         ]);
         const locationData = await locationRes.json();
         const warehouseData = await warehouseRes.json();
+        const responsibilityData = await responsibilityRes.json();
 
         if (locationRes.ok && locationData?.success) {
           setLocations(locationData.data || []);
@@ -203,8 +220,11 @@ export default function CreateUserForm({ company, userId }: Props) {
         if (warehouseRes.ok && warehouseData?.success) {
           setWarehouses(warehouseData.data || []);
         }
+        if (responsibilityData?.success) {
+          setResponsibilities(responsibilityData.data || []);
+        }
       } catch (err) {
-        console.error("Failed to load location/warehouse options", err);
+        console.error("Failed to load location/warehouse/responsibility options", err);
       }
     };
     loadMasterOptions();
@@ -213,7 +233,8 @@ export default function CreateUserForm({ company, userId }: Props) {
   useEffect(() => {
     const defaultLocationId = locations[0] ? String(locations[0].id) : "";
     const defaultWarehouseId = warehouses[0] ? String(warehouses[0].id) : "";
-    if (!defaultLocationId && !defaultWarehouseId) return;
+    const defaultResponsibilityId = getDefaultResponsibilityId(responsibilities);
+    if (!defaultLocationId && !defaultWarehouseId && !defaultResponsibilityId) return;
 
     setUsers((prev) =>
       prev.map((user) => {
@@ -235,12 +256,13 @@ export default function CreateUserForm({ company, userId }: Props) {
 
         return {
           ...user,
+          responsibility_id: user.responsibility_id || defaultResponsibilityId,
           location_id: currentLocation,
           warehouse_id: nextWarehouseId,
         };
       })
     );
-  }, [locations, warehouses]);
+  }, [locations, warehouses, responsibilities]);
  
   /* ---------------- Handle Change ---------------- */
   const handleChange = (
@@ -321,8 +343,8 @@ export default function CreateUserForm({ company, userId }: Props) {
         err.phone = "Duplicate phone";
       }
 
-      if (!user.role) {
-        err.role = "Role is required";
+      if (!user.responsibility_id) {
+        err.responsibility_id = "Responsibility is required";
       }
       if (!user.location_id) {
         err.location_id = "Location is required";
@@ -414,7 +436,7 @@ export default function CreateUserForm({ company, userId }: Props) {
             phone: "",
             password: "",
             status: true,
-            role: "CASHIER",
+            responsibility_id: getDefaultResponsibilityId(responsibilities),
             location_id: locations[0] ? String(locations[0].id) : "",
             warehouse_id:
               warehouses.find(
@@ -515,21 +537,23 @@ export default function CreateUserForm({ company, userId }: Props) {
 
             <div className="w-full">
               <label className="text-sm font-semibold mb-1 block">
-                Role <span className="text-red-500">*</span>
+                Responsibility <span className="text-red-500">*</span>
               </label>
               <select
-                value={user.role}
-                onChange={(e) => handleChange(index, "role", e.target.value)}
+                value={user.responsibility_id}
+                onChange={(e) => handleChange(index, "responsibility_id", e.target.value)}
                 className="floating-input"
                 required
               >
-                <option value="ADMIN">ADMIN</option>
-                <option value="MANAGER">MANAGER</option>
-                <option value="CASHIER">CASHIER</option>
-                <option value="WAREHOUSE_STAFF">WAREHOUSE_STAFF</option>
+                <option value="">Select Responsibility</option>
+                {responsibilities.map((responsibility) => (
+                  <option key={responsibility.id} value={String(responsibility.id)}>
+                    {responsibility.responsibility_name}
+                  </option>
+                ))}
               </select>
-              {errors[index]?.role && (
-                <p className="text-sm text-red-500 mt-1">{errors[index]?.role}</p>
+              {errors[index]?.responsibility_id && (
+                <p className="text-sm text-red-500 mt-1">{errors[index]?.responsibility_id}</p>
               )}
             </div>
 

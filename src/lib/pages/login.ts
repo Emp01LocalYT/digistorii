@@ -1,6 +1,7 @@
 //C:\Users\yanna\digistorii\src\lib\pages\login.ts
 import { pool } from "../db";
 import { verifyPassword } from "../hash";
+import { ensureCompanyResponsibilities } from "../userResponsibilities";
  
 export async function loginUser(company: string, email: string, password: string) {
   if (!company) throw new Error("Company required");
@@ -16,6 +17,12 @@ try {
   console.log("Company found:", company, "with schema:", schema);
   const companyId = companyData.rows[0].id;
   console.log("CompanyId : ",companyId);
+  const client = await pool.connect();
+  try {
+    await ensureCompanyResponsibilities(client, companyId);
+  } finally {
+    client.release();
+  }
  
   // Query user in company schema only
   const userResult = await pool.query(
@@ -52,15 +59,49 @@ try {
   // );
   // const settings = settingsRes.rows[0] || {};
   const userMapResult = await pool.query(
-    `SELECT location_id, warehouse_id
-     FROM public.company_user_map
-     WHERE user_id = $1 AND company_id = $2
-       AND is_active = TRUE
-     ORDER BY id DESC
+    `SELECT
+       cum.location_id,
+       cum.warehouse_id,
+       COALESCE(cum.responsibility_id, u.responsibility_id) AS responsibility_id,
+       r.responsibility_name,
+       r.dashboard_access,
+       r.purchase_access,
+       r.inventory_access,
+       r.sales_access,
+       r.sales_billing_access,
+       r.reports_access,
+       r.settings_access
+     FROM public.company_user_map cum
+     LEFT JOIN public.users u
+       ON u.id = cum.user_id
+     LEFT JOIN public.user_responsibilities r
+       ON r.id = COALESCE(cum.responsibility_id, u.responsibility_id)
+     WHERE cum.user_id = $1 AND cum.company_id = $2
+       AND cum.is_active = TRUE
+     ORDER BY cum.id DESC
      LIMIT 1`,
     [user.id, companyId]
   );
-  const mappedUser = userMapResult.rows[0] || {};
+  let mappedUser = userMapResult.rows[0] || {};
+  if (!userMapResult.rowCount && user.responsibility_id) {
+    const responsibilityResult = await pool.query(
+      `SELECT
+         id AS responsibility_id,
+         responsibility_name,
+         dashboard_access,
+         purchase_access,
+         inventory_access,
+         sales_access,
+         sales_billing_access,
+         reports_access,
+         settings_access
+       FROM public.user_responsibilities
+       WHERE id = $1 AND company_id = $2
+       LIMIT 1`,
+      [user.responsibility_id, companyId]
+    );
+    mappedUser = responsibilityResult.rows[0] || {};
+  }
 
   const subscriptionResult = await pool.query(
     `SELECT
@@ -117,7 +158,17 @@ try {
         username: user.username,
         email: user.email,
         phone: user.phone,
-        role:user.role,
+        responsibility_id: mappedUser.responsibility_id ?? user.responsibility_id ?? null,
+        responsibility_name: mappedUser.responsibility_name ?? null,
+        permissions: {
+          dashboard_access: Boolean(mappedUser.dashboard_access),
+          purchase_access: Boolean(mappedUser.purchase_access),
+          inventory_access: Boolean(mappedUser.inventory_access),
+          sales_access: Boolean(mappedUser.sales_access),
+          sales_billing_access: Boolean(mappedUser.sales_billing_access),
+          reports_access: Boolean(mappedUser.reports_access),
+          settings_access: Boolean(mappedUser.settings_access),
+        },
         // default_warehouse_id: settings.default_warehouse_id ?? null,
         // default_locator_id: settings.default_locator_id ?? null,
         // branch_name: settings.branch_name ?? null

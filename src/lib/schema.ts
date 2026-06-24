@@ -1,6 +1,7 @@
 import { PoolClient } from "pg";
 import { createMasterTables } from "./lib";
 import { ensureCurrenciesSeeded } from "./currencySeed";
+import { ensureLocationTableShape } from "./locationSchema";
  
 /**
  * Creates isolated schema + base tables for a new company
@@ -601,31 +602,38 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
       name VARCHAR(200) NOT NULL,
       type VARCHAR(20) NOT NULL CHECK (type IN ('global', 'local')),
       inactive_date DATE,
-      same_as_ship_to BOOLEAN DEFAULT FALSE,
+      same_as_registered BOOLEAN DEFAULT FALSE,
+      same_as_bill_to BOOLEAN DEFAULT FALSE,
       description TEXT,
-      number VARCHAR(50),
-      building VARCHAR(120),
-      street VARCHAR(120),
-      locality VARCHAR(120),
-      country VARCHAR(120),
-      state VARCHAR(120),
-      city VARCHAR(120),
-      pincode VARCHAR(20),
+      registered_address_line_1 TEXT,
+      registered_address_line_2 TEXT,
+      registered_country VARCHAR(120),
+      registered_state VARCHAR(120),
+      registered_city VARCHAR(120),
+      registered_pincode VARCHAR(20),
+      bill_address_line_1 TEXT,
+      bill_address_line_2 TEXT,
+      bill_country VARCHAR(120),
+      bill_state VARCHAR(120),
+      bill_city VARCHAR(120),
+      bill_pincode VARCHAR(20),
+      ship_address_line_1 TEXT,
+      ship_address_line_2 TEXT,
+      ship_country VARCHAR(120),
+      ship_state VARCHAR(120),
+      ship_city VARCHAR(120),
+      ship_pincode VARCHAR(20),
       landline VARCHAR(30),
       mobile VARCHAR(30),
       fax VARCHAR(30),
       email VARCHAR(150),
       contact_person VARCHAR(150),
-      ship_to_location VARCHAR(150),
-      ship_to_site BOOLEAN DEFAULT FALSE,
-      receiving_site BOOLEAN DEFAULT FALSE,
-      office_site BOOLEAN DEFAULT FALSE,
-      bill_to_site BOOLEAN DEFAULT FALSE,
-      internal_site BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  await ensureLocationTableShape(client, schema);
 
   /* =========================================================
      WAREHOUSE MASTER
@@ -637,7 +645,6 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
       name VARCHAR(200) NOT NULL,
       location_id INT NOT NULL REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
       type VARCHAR(20) NOT NULL CHECK (type IN ('global', 'local')),
-      address TEXT,
       is_default BOOLEAN DEFAULT FALSE,
       effective_from DATE,
       effective_to DATE,
@@ -656,15 +663,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
     );
   `);
 
-  await client.query(`
-    ALTER TABLE "${schema}".warehouses
-    ADD COLUMN IF NOT EXISTS address TEXT;
-  `);
 
-  await client.query(`
-    ALTER TABLE "${schema}".warehouses
-    ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
-  `);
 
   /* =========================================================
      LOCATOR MASTER
@@ -809,8 +808,8 @@ await client.query(`
           REFERENCES "${schema}".customers(id) ON DELETE CASCADE,
           sales_date DATE NOT NULL,
           currency VARCHAR(100),
+             location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
           warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
-          location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT,
           locator_id INT REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
           status VARCHAR(50) DEFAULT 'Entered',
           payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid'
@@ -826,6 +825,14 @@ await client.query(`
       `);
 
  
+  await client.query(`
+    UPDATE "${schema}".sales_header sh
+    SET location_id = w.location_id
+    FROM "${schema}".warehouses w
+    WHERE sh.warehouse_id = w.id
+      AND (sh.location_id IS NULL OR sh.location_id <> w.location_id);
+  `);
+
   await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".sales_detail (
           id SERIAL PRIMARY KEY,
@@ -849,10 +856,7 @@ await client.query(`
         );
       `);
 
-  await client.query(`
-    ALTER TABLE "${schema}".sales_header
-    ADD COLUMN IF NOT EXISTS location_id INT REFERENCES "${schema}".locations(id) ON DELETE RESTRICT;
-  `);
+
   await client.query(`
     CREATE TABLE IF NOT EXISTS "${schema}".product_import_mapping_templates (
       id BIGSERIAL PRIMARY KEY,
@@ -890,11 +894,6 @@ await client.query(`
   `);
 
   await client.query(`
-    ALTER TABLE "${schema}".sales_header
-    ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) NOT NULL DEFAULT 'unpaid';
-  `);
-
-  await client.query(`
     DO $$
     BEGIN
       IF NOT EXISTS (
@@ -912,19 +911,6 @@ await client.query(`
     END $$;
   `);
 
-  await client.query(`
-    UPDATE "${schema}".sales_header sh
-    SET location_id = w.location_id
-    FROM "${schema}".warehouses w
-    WHERE sh.warehouse_id = w.id
-      AND (sh.location_id IS NULL OR sh.location_id <> w.location_id);
-  `);
-
-  await client.query(`
-    UPDATE "${schema}".sales_header
-    SET payment_status = 'unpaid'
-    WHERE payment_status IS NULL OR payment_status NOT IN ('paid', 'unpaid', 'partial');
-  `);
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS "${schema}".sales_payments (

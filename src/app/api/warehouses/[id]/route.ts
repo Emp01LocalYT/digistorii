@@ -20,9 +20,7 @@ const warehouseSchema = z.object({
   email: z.string().optional().nullable(),
   contact_person_name: z.string().optional().nullable(),
   contact_person_mobile: z.string().optional().nullable(),
-  contact_person_email: z.string().optional().nullable(),
-  pan: z.string().optional().nullable(),
-  gstin: z.string().optional().nullable(),
+  contact_person_email: z.string().optional().nullable()
 });
 
 type WarehouseInput = z.infer<typeof warehouseSchema>;
@@ -73,8 +71,6 @@ function normalizePayload(data: WarehouseInput) {
     contact_person_name: asNull(data.contact_person_name),
     contact_person_mobile: asNull(data.contact_person_mobile),
     contact_person_email: contactEmail,
-    pan: asNull(data.pan),
-    gstin: asNull(data.gstin),
   };
 }
 
@@ -105,12 +101,14 @@ export async function GET(
 
     const result = await client.query(
       `SELECT
-        id, code, name, location_id, type, effective_from, effective_to,
-        description, landline, mobile_no, fax, email,
-        contact_person_name, contact_person_mobile, contact_person_email,
-        pan, gstin, created_at, updated_at
-       FROM "${schema}".warehouses
-       WHERE id = $1`,
+        w.id, w.code, w.name, w.location_id, w.type, w.effective_from, w.effective_to,
+        w.description, w.landline, w.mobile_no, w.fax, w.email,
+        w.contact_person_name, w.contact_person_mobile, w.contact_person_email,
+       w.created_at, w.updated_at,
+        l.name AS location_name
+       FROM "${schema}".warehouses w
+       LEFT JOIN "${schema}".locations l ON l.id = w.location_id
+       WHERE w.id = $1`,
       [recordId]
     );
     if (!result.rowCount) {
@@ -182,14 +180,12 @@ export async function PUT(
         contact_person_name = $12,
         contact_person_mobile = $13,
         contact_person_email = $14,
-        pan = $15,
-        gstin = $16,
         updated_at = NOW()
-       WHERE id = $17
+       WHERE id = $15
        RETURNING id, code, name, location_id, type, effective_from, effective_to,
         description, landline, mobile_no, fax, email,
         contact_person_name, contact_person_mobile, contact_person_email,
-        pan, gstin, created_at, updated_at`,
+         created_at, updated_at`,
       [
         payload.code,
         payload.name,
@@ -205,8 +201,6 @@ export async function PUT(
         payload.contact_person_name,
         payload.contact_person_mobile,
         payload.contact_person_email,
-        payload.pan,
-        payload.gstin,
         recordId,
       ]
     );

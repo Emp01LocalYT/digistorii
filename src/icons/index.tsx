@@ -27,6 +27,7 @@ import CheckLineIcon from "./check-line.svg";
 import CloseLineIcon from "./close-line.svg";
 import ChevronDownIcon from "./chevron-down.svg";
 import ChevronUpIcon from "./chevron-up.svg";
+import Cash from "./cash.svg";
 import PaperPlaneIcon from "./paper-plane.svg";
 import LockIcon from "./lock.svg";
 import EnvelopeIcon from "./envelope.svg";
@@ -54,6 +55,7 @@ import BellIcon from "./bell.svg";
 import IconSettings from "./settings.svg";
 
 export {
+  Cash,
   IconSettings,
   DownloadIcon,
   BellIcon,

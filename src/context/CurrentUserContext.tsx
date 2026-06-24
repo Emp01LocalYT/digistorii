@@ -2,6 +2,7 @@
 "use client";
  
 import { createContext, useContext, useState } from "react";
+import { ResponsibilityPermissions } from "@/lib/accessControl";
  
 type User = {
   id: number;
@@ -11,7 +12,9 @@ type User = {
   name: string;
   email: string;
   phone: string;
-  role: string;
+  responsibility_id?: number | null;
+  responsibility_name?: string | null;
+  permissions?: ResponsibilityPermissions;
   location_id?: number | null;
   warehouse_id?: number | null;
   plan_id?: number | null;

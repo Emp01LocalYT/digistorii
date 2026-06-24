@@ -1,4 +1,7 @@
+import { PoolClient } from "pg";
 import { pool } from "@/lib/db";
+
+type QueryRunner = Pick<PoolClient, "query">;
  
 export async function generatePurchaseNo(schema: string) {
   if (!schema) {
@@ -126,7 +129,11 @@ export async function generateGRNNo(schema: string) {
   }
 }
 
-export async function getNextProductCodeByType(schema: string, type: string): Promise<string> {
+export async function getNextProductCodeByType(
+  schema: string,
+  type: string,
+  runner: QueryRunner = pool
+): Promise<string> {
   if (!schema) {
     throw new Error("Schema name is empty");
   }
@@ -135,7 +142,7 @@ export async function getNextProductCodeByType(schema: string, type: string): Pr
   const prefix = normalized === "raw_material" ? "RW" : normalized === "other" ? "OT" : "PR";
 
   try {
-    const result = await pool.query(
+    const result = await runner.query(
       `
         SELECT COALESCE(
           MAX(CAST(SUBSTRING(product_code FROM 4) AS INTEGER)),

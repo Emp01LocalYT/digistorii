@@ -3,9 +3,7 @@ import Razorpay from "razorpay";
 import { pool } from "@/lib/db";
 import { ensureDB } from "@/lib/ensure-db";
 import {
-  getPlanAmountInINR,
   normalizeBillingInterval,
-  normalizePaidPlanCode,
 } from "@/lib/onboarding";
 
 function toPositiveNumber(value: unknown): number | null {
@@ -29,10 +27,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const companyId = Number(body?.company_id || 0);
+    const planId = Number(body?.plan_id || 0);
     const planNameInput = String(body?.plan_name || "").trim();
     const billingInterval = normalizeBillingInterval(body?.billing_interval);
 
-    if (!companyId || !planNameInput) {
+    if (!companyId || (!planId && !planNameInput)) {
       return NextResponse.json(
         {
           success: false,
@@ -43,13 +42,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const normalizedPlanCode = normalizePaidPlanCode(planNameInput);
-    const normalizedPlanName = normalizedPlanCode || planNameInput.toUpperCase();
-    const amountInINR = normalizedPlanCode
-      ? getPlanAmountInINR(normalizedPlanCode, billingInterval)
-      : toPositiveNumber(body?.amount);
+    const planParams: unknown[] = [];
+    let planWhere = "";
+    if (Number.isInteger(planId) && planId > 0) {
+      planParams.push(planId);
+      planWhere = "id = $1";
+    } else {
+      planParams.push(planNameInput.toUpperCase());
+      planWhere = "UPPER(name) = $1";
+    }
+    const planResult = await client.query(
+      `SELECT id, name, price_monthly, price_yearly
+       FROM public.plans
+       WHERE ${planWhere} AND is_active = TRUE
+       LIMIT 1`,
+      planParams
+    );
+    if (!planResult.rowCount) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "INVALID_REQUEST",
+          message: "Selected plan is not available",
+        },
+        { status: 400 }
+      );
+    }
+    const planRow = planResult.rows[0];
+    const normalizedPlanName = String(planRow.name || "").toUpperCase();
+    const amountInINR =
+      billingInterval === "yearly"
+        ? Number(planRow.price_yearly || 0)
+        : Number(planRow.price_monthly || 0);
 
-    if (!amountInINR) {
+    if (!toPositiveNumber(amountInINR)) {
       return NextResponse.json(
         {
           success: false,

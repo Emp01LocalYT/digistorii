@@ -423,6 +423,8 @@ export default function PurchasePage() {
     const newRows = tempCatalogItems.map((item) =>
       calculateLineItem({
         product_id: item.temp_variant_id,
+        temp_id: item.temp_variant_id,
+        is_new: true,
         product_code: item.product_code,
         product_name: item.name,
         description: item.description || "",
@@ -759,18 +761,15 @@ useEffect(() => {
 
         if (Number(d.rate || 0) <= 0) newErrors[`rate_${index}`] = "Unit price must be > 0";
         if (Number(d.qty || 0) <= 0) newErrors[`qty_${index}`] = "Qty must be > 0";
-        const isTempProduct = String(d.product_id).startsWith("temp-");
+        const isTempProduct = d.is_new === true || String(d.product_id).startsWith("temp-") || Boolean(d.temp_id);
         if (isTempProduct) {
-        const tempItem = tempProducts.find(
-          (t) => t.temp_variant_id === String(d.product_id)
-        );
-        if (!tempItem?.newProduct?.name) {
-          newErrors[`product_name_${index}`] = "Product name required";
+          const tempItem = tempProducts.find(
+            (t) => t.temp_variant_id === String(d.product_id) || t.temp_variant_id === d.temp_id
+          );
+          if (!tempItem?.newProduct?.name) {
+            newErrors[`product_name_${index}`] = "Product name required";
+          }
         }
-        if (!tempItem?.newProduct?.sku) {
-          newErrors[`sku_${index}`] = "SKU required for temp product";
-        }
-      }
       });
     }
 
@@ -778,7 +777,7 @@ useEffect(() => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = async (e: any) => {
+  const handleCreatePurchase = async (e: any) => {
     e.preventDefault();
     setErrorMessage("");
     if (!validate()) return;
@@ -810,37 +809,84 @@ useEffect(() => {
       const tempProductMap = new Map<string, TempProductCatalogItem>(
         tempProducts.map((item) => [item.temp_variant_id, item])
       );
-      const payloadDetails = details.map((detail) => {
-        let tempItem = tempProductMap.get(String(detail.product_id));
-        if (!tempItem && String(detail.product_id).startsWith("temp-")) {
-          tempItem = tempProducts.find(
-            (item) => item.temp_variant_id === String(detail.product_id)
-          );
+      const createdProductRefs: Array<{ temp_id: string; product_id: number; variant_id: number }> = [];
+
+      for (const detail of details) {
+        const tempKey = String(detail.temp_id || detail.product_id || "");
+        const tempItem = tempProductMap.get(tempKey);
+        if (!tempItem) continue;
+
+        const productPayload = {
+          product: {
+            name: tempItem.newProduct.name,
+            type: tempItem.type,
+            category: tempItem.newProduct.categoryId,
+            source: tempItem.newProduct.source,
+            description: tempItem.description || "",
+            uom: tempItem.uom || "",
+            uom_code: tempItem.uom_code || "",
+            uom_name: tempItem.uom_name || "",
+            hsn_code: tempItem.hsn_code || "",
+            product_code: tempItem.product_code,
+          },
+          variants: [
+            {
+              sku: tempItem.newProduct.sku || "",
+              color: tempItem.color || "NA",
+              size: "NA",
+              qty: 0,
+              barcode: "",
+            },
+          ],
+        };
+
+        const productRes = await fetch("/api/products", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-tenant": company,
+          },
+          body: JSON.stringify(productPayload),
+        });
+        const productData = await productRes.json();
+        if (!productRes.ok || !productData?.variants?.length) {
+          throw new Error(productData?.message || "Failed to save new product");
         }
-        if (!tempItem) {
+
+        const createdVariant = productData.variants[0];
+        createdProductRefs.push({
+          temp_id: String(tempItem.temp_variant_id),
+          product_id: Number(productData?.product?.id || createdVariant?.product_id || 0),
+          variant_id: Number(createdVariant?.variant_id || 0),
+        });
+      }
+
+      const persistedProductMap = new Map(createdProductRefs.map((item) => [item.temp_id, item]));
+      const payloadDetails = details.map((detail) => {
+        const tempKey = String(detail.temp_id || detail.product_id || "");
+        const createdRef = persistedProductMap.get(tempKey);
+        if (!createdRef) {
           return {
             ...detail,
             is_new: false,
             product_id: Number(detail.product_id),
           };
         }
+
         return {
           ...detail,
-          is_new: true,
-          temp_id: tempItem.temp_variant_id,
-          product_id: undefined,
-          product_name: tempItem.newProduct.name,
-          sku: tempItem.newProduct.sku,
-          category_id: tempItem.newProduct.categoryId,
-          source: tempItem.newProduct.source,
+          is_new: false,
+          temp_id: createdRef.temp_id,
+          product_id: createdRef.variant_id,
+          product_name: detail.product_name,
         };
       });
+
       const payload = {
         header: { ...computedHeader, attachment_url: attachmentUrl, user_name: user?.name },
         details: payloadDetails,
+        createdProducts: createdProductRefs,
       };
-      console.log("PO ITEMS", details);
-      console.log("PO PAYLOAD", payload);
       const url = isEdit ? `/api/purchase/${purchaseId}` : "/api/purchase";
       const method = isEdit ? "PUT" : "POST";
       const res = await fetch(url, {
@@ -859,6 +905,18 @@ useEffect(() => {
         });
         return;
       }
+
+      if (!isEdit) {
+        setHeader(initialHeader);
+        setItems([]);
+        setTempProducts([]);
+        setSelectedProducts([]);
+        setErrors({});
+        setAttachmentFile(null);
+        setBarcodeValue("");
+        setBarcodeMessage("");
+      }
+      setShowAddProductModal(false);
       router.push(`/${company}/transactions/purchase`);
     } catch (err: any) {
       console.error("Save Purchase Error:", err);
@@ -957,7 +1015,7 @@ useEffect(() => {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className={`space-y-6 ${!isEditable ? "opacity-70" : ""}`}>
+      <form onSubmit={handleCreatePurchase} className={`space-y-6 ${!isEditable ? "opacity-70" : ""}`}>
        <PurchaseHeaderForm
   header={computedHeader}
   setHeader={setHeader}
@@ -1086,6 +1144,7 @@ useEffect(() => {
         onClose={() => setShowAddProductModal(false)}
         saveMode="local"
         onLocalSave={handleLocalProductSaved}
+        buttonLabel="Add to Purchase Order"
       />
     </div>
   );

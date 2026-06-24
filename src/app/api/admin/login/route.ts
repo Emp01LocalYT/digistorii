@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { verifyPassword } from "@/lib/hash";
+import { ensureCompanyResponsibilities } from "@/lib/userResponsibilities";
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,9 +20,37 @@ export async function POST(req: NextRequest) {
 
     const companyId = companyResult.rows[0].id;
     console.log("Admin Login Backend Tenant Id : ", companyId);
-    // check admin user
+    const client = await pool.connect();
+    try {
+      await ensureCompanyResponsibilities(client, Number(companyId));
+    } finally {
+      client.release();
+    }
+
     const userResult = await pool.query(
-      `SELECT * FROM public.users WHERE email = $1 AND company_id = $2 AND role='ADMIN' AND is_active=true`,
+      `SELECT
+         u.*,
+         COALESCE(cum.responsibility_id, u.responsibility_id) AS resolved_responsibility_id,
+         r.responsibility_name,
+         r.dashboard_access,
+         r.purchase_access,
+         r.inventory_access,
+         r.sales_access,
+         r.sales_billing_access,
+         r.reports_access,
+         r.settings_access
+       FROM public.users u
+       LEFT JOIN public.company_user_map cum
+         ON cum.user_id = u.id
+        AND cum.company_id = u.company_id
+       LEFT JOIN public.user_responsibilities r
+         ON r.id = COALESCE(cum.responsibility_id, u.responsibility_id)
+       WHERE u.email = $1
+         AND u.company_id = $2
+         AND u.is_active = true
+         AND COALESCE(r.settings_access, FALSE) = TRUE
+       ORDER BY cum.id DESC
+       LIMIT 1`,
       [email, companyId]
     );
 
@@ -45,12 +74,41 @@ export async function POST(req: NextRequest) {
     // set cookies
     const res = NextResponse.json({
       success: true, user: {
-        id: user.id, name: user.name, email: user.email, phone: user.phone,
-        role: user.role
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        responsibility_id: user.resolved_responsibility_id ?? user.responsibility_id ?? null,
+        responsibility_name: user.responsibility_name ?? null,
+        permissions: {
+          dashboard_access: Boolean(user.dashboard_access),
+          purchase_access: Boolean(user.purchase_access),
+          inventory_access: Boolean(user.inventory_access),
+          sales_access: Boolean(user.sales_access),
+          sales_billing_access: Boolean(user.sales_billing_access),
+          reports_access: Boolean(user.reports_access),
+          settings_access: Boolean(user.settings_access),
+        },
       }
     });
 
-    res.cookies.set("admin_user", JSON.stringify({ id: user.id, name: user.name }), {
+    res.cookies.set("admin_user", JSON.stringify({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      responsibility_id: user.resolved_responsibility_id ?? user.responsibility_id ?? null,
+      responsibility_name: user.responsibility_name ?? null,
+      permissions: {
+        dashboard_access: Boolean(user.dashboard_access),
+        purchase_access: Boolean(user.purchase_access),
+        inventory_access: Boolean(user.inventory_access),
+        sales_access: Boolean(user.sales_access),
+        sales_billing_access: Boolean(user.sales_billing_access),
+        reports_access: Boolean(user.reports_access),
+        settings_access: Boolean(user.settings_access),
+      },
+    }), {
       httpOnly: true,
       path: "/",
       maxAge: 60 * 60 * 24,

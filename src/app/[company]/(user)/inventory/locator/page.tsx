@@ -480,7 +480,7 @@ export default function LocatorMasterPage() {
               >
                 {TYPE_OPTIONS.map((t) => (
                   <option key={t} value={t}>
-                    {t.replace(/_/g, " ")}
+                    {t.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}
                   </option>
                 ))}
               </select>

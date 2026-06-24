@@ -16,65 +16,77 @@ import { Country, State, City } from "country-state-city";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
-type LocationTab = "address" | "contact" | "shipping";
+type LocationTab = "registered" | "bill" | "ship" | "contact";
 type Location = {
   id?: number;
   name: string;
   type: "global" | "local";
   inactive_date: string;
-  same_as_ship_to: boolean;
+  same_as_registered: boolean;
+  same_as_bill_to: boolean;
   description: string;
-  number: string;
-  building: string;
-  street: string;
-  locality: string;
-  country: string;
-  state: string;
-  city: string;
-  pincode: string;
+  registered_address_line_1: string;
+  registered_address_line_2: string;
+  registered_country: string;
+  registered_state: string;
+  registered_city: string;
+  registered_pincode: string;
+  bill_address_line_1: string;
+  bill_address_line_2: string;
+  bill_country: string;
+  bill_state: string;
+  bill_city: string;
+  bill_pincode: string;
+  ship_address_line_1: string;
+  ship_address_line_2: string;
+  ship_country: string;
+  ship_state: string;
+  ship_city: string;
+  ship_pincode: string;
   landline: string;
   mobile: string;
   fax: string;
   email: string;
   contact_person: string;
-  ship_to_location: string;
-  ship_to_site: boolean;
-  receiving_site: boolean;
-  office_site: boolean;
-  bill_to_site: boolean;
-  internal_site: boolean;
 };
 const tabs: { key: LocationTab; label: string }[] = [
-  {key: "address" , label:"Address"},
-  {key: "contact" ,label:"Contact Details"},
-  {key: "shipping" ,label:"Shipping"},
-]
+  { key: "registered", label: "Registered Address" },
+  { key: "bill", label: "Bill To Address" },
+  { key: "ship", label: "Ship To Address" },
+  { key: "contact", label: "Contact Details" },
+];
+
 function getInitialForm(): Location {
   return {
     name: "",
     type: "global",
     inactive_date: "",
-    same_as_ship_to: false,
+    same_as_registered: false,
+    same_as_bill_to: false,
     description: "",
-    number: "",
-    building: "",
-    street: "",
-    locality: "",
-    country: "",
-    state: "",
-    city: "",
-    pincode: "",
+    registered_address_line_1: "",
+    registered_address_line_2: "",
+    registered_country: "",
+    registered_state: "",
+    registered_city: "",
+    registered_pincode: "",
+    bill_address_line_1: "",
+    bill_address_line_2: "",
+    bill_country: "",
+    bill_state: "",
+    bill_city: "",
+    bill_pincode: "",
+    ship_address_line_1: "",
+    ship_address_line_2: "",
+    ship_country: "",
+    ship_state: "",
+    ship_city: "",
+    ship_pincode: "",
     landline: "",
     mobile: "",
     fax: "",
     email: "",
     contact_person: "",
-    ship_to_location: "",
-    ship_to_site: false,
-    receiving_site: false,
-    office_site: false,
-    bill_to_site: false,
-    internal_site: false,
   };
 }
 
@@ -89,19 +101,33 @@ export default function LocationMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<LocationTab>("address");
+    const [activeTab, setActiveTab] = useState<LocationTab>("registered");
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
 
   const checkboxClass = "h-4 w-4 text-indigo-600 border-gray-300 rounded";
     const countryOptions = useMemo(()=> Country.getAllCountries(),[]);
-  const selectedCountry = countryOptions.find((c) => c.name === form.country);
-  const stateOptions = selectedCountry ? State.getStatesOfCountry(selectedCountry.isoCode) : [];
-  const selectedState = stateOptions.find((s) => s.name === form.state);
-  const cityOptions =
-    selectedCountry && selectedState
-      ? City.getCitiesOfState(selectedCountry.isoCode, selectedState.isoCode)
+  const selectedRegisteredCountry = countryOptions.find((c) => c.name === form.registered_country);
+  const registeredStateOptions = selectedRegisteredCountry ? State.getStatesOfCountry(selectedRegisteredCountry.isoCode) : [];
+  const selectedRegisteredState = registeredStateOptions.find((s) => s.name === form.registered_state);
+  const registeredCityOptions =
+    selectedRegisteredCountry && selectedRegisteredState
+      ? City.getCitiesOfState(selectedRegisteredCountry.isoCode, selectedRegisteredState.isoCode)
+      : [];
+  const selectedBillCountry = countryOptions.find((c) => c.name === form.bill_country);
+  const billStateOptions = selectedBillCountry ? State.getStatesOfCountry(selectedBillCountry.isoCode) : [];
+  const selectedBillState = billStateOptions.find((s) => s.name === form.bill_state);
+  const billCityOptions =
+    selectedBillCountry && selectedBillState
+      ? City.getCitiesOfState(selectedBillCountry.isoCode, selectedBillState.isoCode)
+      : [];
+  const selectedShipCountry = countryOptions.find((c) => c.name === form.ship_country);
+  const shipStateOptions = selectedShipCountry ? State.getStatesOfCountry(selectedShipCountry.isoCode) : [];
+  const selectedShipState = shipStateOptions.find((s) => s.name === form.ship_state);
+  const shipCityOptions =
+    selectedShipCountry && selectedShipState
+      ? City.getCitiesOfState(selectedShipCountry.isoCode, selectedShipState.isoCode)
       : [];
   async function loadData() {
     if (!company) return;
@@ -118,6 +144,39 @@ export default function LocationMasterPage() {
   useEffect(() => {
     loadData();
   }, [company]);
+
+  function copyRegisteredToBillForm(next: Location): Location {
+    return {
+      ...next,
+      bill_address_line_1: next.registered_address_line_1,
+      bill_address_line_2: next.registered_address_line_2,
+      bill_country: next.registered_country,
+      bill_state: next.registered_state,
+      bill_city: next.registered_city,
+      bill_pincode: next.registered_pincode,
+    };
+  }
+
+  function copyBillToShipForm(next: Location): Location {
+    return {
+      ...next,
+      ship_address_line_1: next.bill_address_line_1,
+      ship_address_line_2: next.bill_address_line_2,
+      ship_country: next.bill_country,
+      ship_state: next.bill_state,
+      ship_city: next.bill_city,
+      ship_pincode: next.bill_pincode,
+    };
+  }
+
+  function syncAddressFlags(next: Location): Location {
+    const withBill = next.same_as_registered ? copyRegisteredToBillForm(next) : next;
+    return withBill.same_as_bill_to ? copyBillToShipForm(withBill) : withBill;
+  }
+
+  function updateForm(recipe: (prev: Location) => Location) {
+    setForm((prev) => syncAddressFlags(recipe(prev)));
+  }
 
   function validate(): boolean {
     const next: Record<string, string> = {};
@@ -151,12 +210,13 @@ export default function LocationMasterPage() {
       if (mode === "add" && !form.id) {
         setForm(getInitialForm());
         setErrors({});
+        setActiveTab("registered");
         return;
       }
       setShowForm(false);
       setForm(getInitialForm());
       setErrors({});
-      setActiveTab("address");
+      setActiveTab("registered");
     } catch (error: any) {
       notify(error?.message || "Save  failed", { severity: "warning" });
     } finally {
@@ -181,7 +241,11 @@ export default function LocationMasterPage() {
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return items.filter((row) => `${row.name} ${row.type} ${row.city || ""}`.toLowerCase().includes(q));
+    return items.filter((row) =>
+      `${row.name} ${row.type} ${row.registered_city || ""} ${row.bill_city || ""} ${row.ship_city || ""}`
+        .toLowerCase()
+        .includes(q)
+    );
   }, [items, search]);
 
   const sortedData = useMemo(() => filtered, [filtered]);
@@ -225,7 +289,7 @@ export default function LocationMasterPage() {
             onClick={() => {
               setForm(getInitialForm());
               setErrors({});
-              setActiveTab("address");
+              setActiveTab("registered");
               setShowForm(true);
             }}
             className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"
@@ -274,14 +338,15 @@ export default function LocationMasterPage() {
                       <tr key={row.id} className="ui-table-row">
                         <td className="ui-table-td">{row.name}</td>
                         <td className="ui-table-td">{row.type}</td>
-                        <td className="ui-table-td">{row.city || "-"}</td>
+                        <td className="ui-table-td">{row.registered_city || row.bill_city || row.ship_city || "-"}</td>
                         <td className="ui-table-td">{row.inactive_date || "-"}</td>
                         <td className="ui-table-td-center">
                           <div className="ui-table-actions">
                             <button
                               onClick={() => {
-                                setForm({ ...getInitialForm(), ...row });
+                                setForm(syncAddressFlags({ ...getInitialForm(), ...row }));
                                 setErrors({});
+                                setActiveTab("registered");
                                 setShowForm(true);
                               }}
                               className="text-indigo-600"
@@ -410,7 +475,7 @@ export default function LocationMasterPage() {
           }}
           className="bg-white p-6 rounded-xl shadow space-y-6"
         >
-          <h2 className="text-lg font-semibold">{form.id ? "Update Location" : "Create Location"}</h2>
+          <h2 className="text-lg font-semibold">{form.id ? "Update Store Location" : "Create  Store Location"}</h2>
 
           <div className="space-y-4">
             <h3 className="text-md font-semibold text-gray-700">Basic Info</h3>
@@ -466,48 +531,37 @@ export default function LocationMasterPage() {
               onClick={() => setActiveTab(tab.key)} 
               className={`px-4 py-2 rounded-lg text-sm font-medium border ${activeTab === tab.key ? "bg-[var(--color-blue-500)] text-white border-[var(--color-blue-600)]" : "bg-white text-gray-700 border-gray-200"}`}>{tab.label}</button>)}
               </div>
-{activeTab === "address" && (
+{activeTab === "registered" && (
             <div className="grid md:grid-cols-4 gap-6 mt-6">
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Number</label>
+              <div className="md:col-span-2">
+                <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
                 <input
-                  value={form.number}
-                  onChange={(e) => setForm({ ...form, number: e.target.value })}
-                  className={inputClass("number")}
+                  value={form.registered_address_line_1}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, registered_address_line_1: e.target.value }))}
+                  className={inputClass("registered_address_line_1")}
                 />
               </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Building</label>
+              <div className="md:col-span-2">
+                <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
                 <input
-                  value={form.building}
-                  onChange={(e) => setForm({ ...form, building: e.target.value })}
-                  className={inputClass("building")}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Street</label>
-                <input
-                  value={form.street}
-                  onChange={(e) => setForm({ ...form, street: e.target.value })}
-                  className={inputClass("street")}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Locality</label>
-                <input
-                  value={form.locality}
-                  onChange={(e) => setForm({ ...form, locality: e.target.value })}
-                  className={inputClass("locality")}
+                  value={form.registered_address_line_2}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, registered_address_line_2: e.target.value }))}
+                  className={inputClass("registered_address_line_2")}
                 />
               </div>
               <div>
                 <label className="text-sm font-semibold mb-1 block">Country</label>
                       <select
-        value={form.country}
+        value={form.registered_country}
         onChange={(e) =>
-          setForm({ ...form, country: e.target.value, state: "", city: "" })
+          updateForm((prev) => ({
+            ...prev,
+            registered_country: e.target.value,
+            registered_state: "",
+            registered_city: "",
+          }))
         }
-        className={inputClass("country")}
+        className={inputClass("registered_country")}
       >
         <option value="">Select Country</option>
         {countryOptions.map((country) => (
@@ -520,14 +574,18 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">State</label>
                       <select
-        value={form.state}
+        value={form.registered_state}
         onChange={(e) =>
-          setForm({ ...form, state: e.target.value, city: "" })
+          updateForm((prev) => ({
+            ...prev,
+            registered_state: e.target.value,
+            registered_city: "",
+          }))
         }
-        className={inputClass("state")}
+        className={inputClass("registered_state")}
       >
         <option value="">Select State</option>
-        {stateOptions.map((state) => (
+        {registeredStateOptions.map((state) => (
           <option key={state.isoCode} value={state.name}>
             {state.name}
           </option>
@@ -537,14 +595,14 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">City</label>
                       <select
-        value={form.city}
+        value={form.registered_city}
         onChange={(e) =>
-          setForm({ ...form, city: e.target.value })
+          updateForm((prev) => ({ ...prev, registered_city: e.target.value }))
         }
-        className={inputClass("city")}
+        className={inputClass("registered_city")}
       >
         <option value="">Select City</option>
-        {cityOptions.map((city) => (
+        {registeredCityOptions.map((city) => (
           <option
             key={`${city.name}-${city.latitude}-${city.longitude}`}
             value={city.name}
@@ -557,126 +615,259 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Pincode</label>
                 <input
-                  value={form.pincode}
-                  onChange={(e) => setForm({ ...form, pincode: e.target.value })}
-                  className={inputClass("pincode")}
+                  value={form.registered_pincode}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, registered_pincode: e.target.value }))}
+                  className={inputClass("registered_pincode")}
                 />
               </div>
             </div>
 )}
-{activeTab === "contact" && ( <div className="grid md:grid-cols-4 gap-6 mt-6">
+{activeTab === "bill" && (
+            <div className="grid md:grid-cols-4 gap-6 mt-6">
+              <div className="md:col-span-4">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={form.same_as_registered}
+                    onChange={(e) => updateForm((prev) => ({ ...prev, same_as_registered: e.target.checked }))}
+                    className={checkboxClass}
+                  />
+                  Same As Registered Address
+                </label>
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
+                <input
+                  value={form.bill_address_line_1}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, bill_address_line_1: e.target.value }))}
+                  className={inputClass("bill_address_line_1")}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
+                <input
+                  value={form.bill_address_line_2}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, bill_address_line_2: e.target.value }))}
+                  className={inputClass("bill_address_line_2")}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Country</label>
+                <select
+                  value={form.bill_country}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      bill_country: e.target.value,
+                      bill_state: "",
+                      bill_city: "",
+                    }))
+                  }
+                  className={inputClass("bill_country")}
+                >
+                  <option value="">Select Country</option>
+                  {countryOptions.map((country) => (
+                    <option key={country.isoCode} value={country.name}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">State</label>
+                <select
+                  value={form.bill_state}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      bill_state: e.target.value,
+                      bill_city: "",
+                    }))
+                  }
+                  className={inputClass("bill_state")}
+                >
+                  <option value="">Select State</option>
+                  {billStateOptions.map((state) => (
+                    <option key={state.isoCode} value={state.name}>
+                      {state.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">City</label>
+                <select
+                  value={form.bill_city}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, bill_city: e.target.value }))}
+                  className={inputClass("bill_city")}
+                >
+                  <option value="">Select City</option>
+                  {billCityOptions.map((city) => (
+                    <option
+                      key={`${city.name}-${city.latitude}-${city.longitude}`}
+                      value={city.name}
+                    >
+                      {city.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Pincode</label>
+                <input
+                  value={form.bill_pincode}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, bill_pincode: e.target.value }))}
+                  className={inputClass("bill_pincode")}
+                />
+              </div>
+            </div>
+)}
+{activeTab === "ship" && (
+            <div className="grid md:grid-cols-4 gap-6 mt-6">
+              <div className="md:col-span-4">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={form.same_as_bill_to}
+                    onChange={(e) => updateForm((prev) => ({ ...prev, same_as_bill_to: e.target.checked }))}
+                    className={checkboxClass}
+                  />
+                  Same As Bill To Address
+                </label>
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
+                <input
+                  value={form.ship_address_line_1}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, ship_address_line_1: e.target.value }))}
+                  className={inputClass("ship_address_line_1")}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
+                <input
+                  value={form.ship_address_line_2}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, ship_address_line_2: e.target.value }))}
+                  className={inputClass("ship_address_line_2")}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Country</label>
+                <select
+                  value={form.ship_country}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      ship_country: e.target.value,
+                      ship_state: "",
+                      ship_city: "",
+                    }))
+                  }
+                  className={inputClass("ship_country")}
+                >
+                  <option value="">Select Country</option>
+                  {countryOptions.map((country) => (
+                    <option key={country.isoCode} value={country.name}>
+                      {country.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">State</label>
+                <select
+                  value={form.ship_state}
+                  onChange={(e) =>
+                    updateForm((prev) => ({
+                      ...prev,
+                      ship_state: e.target.value,
+                      ship_city: "",
+                    }))
+                  }
+                  className={inputClass("ship_state")}
+                >
+                  <option value="">Select State</option>
+                  {shipStateOptions.map((state) => (
+                    <option key={state.isoCode} value={state.name}>
+                      {state.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">City</label>
+                <select
+                  value={form.ship_city}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, ship_city: e.target.value }))}
+                  className={inputClass("ship_city")}
+                >
+                  <option value="">Select City</option>
+                  {shipCityOptions.map((city) => (
+                    <option
+                      key={`${city.name}-${city.latitude}-${city.longitude}`}
+                      value={city.name}
+                    >
+                      {city.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Pincode</label>
+                <input
+                  value={form.ship_pincode}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, ship_pincode: e.target.value }))}
+                  className={inputClass("ship_pincode")}
+                />
+              </div>
+            </div>
+)}
+{activeTab === "contact" && ( <div className="grid md:grid-cols-5 gap-6 mt-6">
               <div>
                 <label className="text-sm font-semibold mb-1 block">Landline</label>
                 <input
-                  value={form.landline}
-                  onChange={(e) => setForm({ ...form, landline: e.target.value })}
+                  value={form.landline || ""}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, landline: e.target.value ?? "" }))}
                   className={inputClass("landline")}
                 />
               </div>
               <div>
                 <label className="text-sm font-semibold mb-1 block">Mobile</label>
                 <input
-                  value={form.mobile}
-                  onChange={(e) => setForm({ ...form, mobile: e.target.value })}
+                  value={form.mobile || ""}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, mobile: e.target.value ?? "" }))}
                   className={inputClass("mobile")}
                 />
               </div>
               <div>
                 <label className="text-sm font-semibold mb-1 block">Fax</label>
                 <input
-                  value={form.fax}
-                  onChange={(e) => setForm({ ...form, fax: e.target.value })}
+                  value={form.fax || ""}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, fax: e.target.value ?? ""}))}
                   className={inputClass("fax")}
                 />
               </div>
               <div>
                 <label className="text-sm font-semibold mb-1 block">Email</label>
                 <input
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  type="email"
+                  value={form.email || ""}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, email: e.target.value ?? "" }))}
                   className={inputClass("email")}
                 />
                 {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
               </div>
-            </div>
-          ) }
-</div>
-{activeTab === "shipping" && (
-   <div className="grid md:grid-cols-3 gap-6">
               <div>
                 <label className="text-sm font-semibold mb-1 block">Contact Person</label>
                 <input
                   value={form.contact_person}
-                  onChange={(e) => setForm({ ...form, contact_person: e.target.value })}
+                  onChange={(e) => updateForm((prev) => ({ ...prev, contact_person: e.target.value }))}
                   className={inputClass("contact_person")}
                 />
               </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Ship To Location</label>
-                <input
-                  value={form.ship_to_location}
-                  onChange={(e) => setForm({ ...form, ship_to_location: e.target.value })}
-                  className={inputClass("ship_to_location")}
-                />
-              </div>
-              <div className="flex items-center gap-3 mt-8">
-                <input
-                  type="checkbox"
-                  checked={form.same_as_ship_to}
-                  onChange={(e) => setForm({ ...form, same_as_ship_to: e.target.checked })}
-                  className={checkboxClass}
-                />
-                <label className="text-sm font-semibold">Same as Ship To</label>
-              </div>
-                         
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={form.ship_to_site}
-                  onChange={(e) => setForm({ ...form, ship_to_site: e.target.checked })}
-                  className={checkboxClass}
-                />
-                Ship To Site
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={form.receiving_site}
-                  onChange={(e) => setForm({ ...form, receiving_site: e.target.checked })}
-                  className={checkboxClass}
-                />
-                Receiving Site
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={form.office_site}
-                  onChange={(e) => setForm({ ...form, office_site: e.target.checked })}
-                  className={checkboxClass}
-                />
-                Office Site
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={form.bill_to_site}
-                  onChange={(e) => setForm({ ...form, bill_to_site: e.target.checked })}
-                  className={checkboxClass}
-                />
-                Bill To Site
-              </label>
-              <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={form.internal_site}
-                  onChange={(e) => setForm({ ...form, internal_site: e.target.checked })}
-                  className={checkboxClass}
-                />
-                Internal Site
-              </label>
-          
             </div>
-)}
+          ) }
+          </div>
 
 
           <div className="ui-form-actions">
@@ -686,6 +877,7 @@ export default function LocationMasterPage() {
                 setShowForm(false);
                 setForm(getInitialForm());
                 setErrors({});
+                setActiveTab("registered");
               }}
               className="ui-btn ui-btn-secondary ui-btn-responsive"
             >

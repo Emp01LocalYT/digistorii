@@ -3,6 +3,7 @@ import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/hash";
 import { createCompanySchema } from "@/lib/schema";
 import { ensureDB } from "@/lib/ensure-db";
+import { ensureCompanyResponsibilities, getResponsibilitiesForCompany } from "@/lib/userResponsibilities";
 
 type SetupPayload = {
   businessName?: string;
@@ -84,6 +85,14 @@ export async function POST(req: Request) {
     );
 
     await createCompanySchema(client, schemaName);
+    await ensureCompanyResponsibilities(client, companyId);
+    const responsibilities = await getResponsibilitiesForCompany(client, companyId);
+    const adminResponsibility = responsibilities.find(
+      (entry) => entry.responsibility_name === "Admin"
+    );
+    if (!adminResponsibility) {
+      throw new Error("Default Admin responsibility could not be created");
+    }
 
     const existingEmail = await client.query(
       `SELECT id FROM public.users WHERE company_id = $1 AND email = $2`,
@@ -104,10 +113,17 @@ export async function POST(req: Request) {
     const passwordHash = await hashPassword(input.password);
     const userResult = await client.query(
       `INSERT INTO public.users
-       (company_id, name, email, phone, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, 'ADMIN')
+       (company_id, name, email, phone, password_hash, responsibility_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [companyId, input.ownerName, input.ownerEmail, input.ownerPhone, passwordHash]
+      [
+        companyId,
+        input.ownerName,
+        input.ownerEmail,
+        input.ownerPhone,
+        passwordHash,
+        adminResponsibility.id,
+      ]
     );
 
     const ownerUserId = Number(userResult.rows[0].id);
@@ -115,11 +131,11 @@ export async function POST(req: Request) {
 
     await client.query(
       `INSERT INTO public.company_user_map
-       (user_id, company_id, username, role, is_active)
-       VALUES ($1, $2, $3, 'OWNER', TRUE)
+       (user_id, company_id, username, responsibility_id, is_active)
+       VALUES ($1, $2, $3, $4, TRUE)
        ON CONFLICT (user_id, company_id) DO UPDATE
-       SET role = EXCLUDED.role, is_active = TRUE`,
-      [ownerUserId, companyId, defaultUsername]
+       SET responsibility_id = EXCLUDED.responsibility_id, is_active = TRUE`,
+      [ownerUserId, companyId, defaultUsername, adminResponsibility.id]
     );
 
     await client.query("COMMIT");

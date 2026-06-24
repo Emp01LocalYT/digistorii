@@ -15,8 +15,18 @@ import {
 import { useTenant } from "@/context/TenantContext";
 import { useUser } from "@/context/CurrentUserContext";
 import SalesHeader from "@/components/sales/SalesHeader";
-import type { CustomerSelectOption } from "@/components/sales/SalesHeader";
 import SalesTable from "@/components/sales/SalesTable";
+import {
+  buildProductMaps,
+  calculatePaymentStatus,
+  createPaymentEntry,
+  generateSalesNo,
+  getCustomerAddress,
+  getCustomerDisplayName,
+  roundMoney,
+} from "@/components/sales/salesUtils";
+import { useResolvedWarehouseContext } from "@/components/sales/useResolvedWarehouseContext";
+import { useSalesCustomer } from "@/components/sales/useSalesCustomer";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import ThermalInvoice from "@/components/ThermalInvoice";
 import {
@@ -66,81 +76,6 @@ const formatTimeLabel = (value?: string) => {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
-const generateSalesNo = () => {
-  const datePart = new Date().toISOString().split("T")[0].replaceAll("-", "");
-  const randomPart = Math.floor(Math.random() * 9000 + 1000);
-  return `SAL-${datePart}-${randomPart}`;
-};
-
-const roundMoney = (value: unknown) => Number(Number(value || 0).toFixed(2));
-
-const calculatePaymentStatus = (totalAmount: number, paidAmount: number) => {
-  const total = roundMoney(totalAmount);
-  const paid = roundMoney(paidAmount);
-  if (paid <= 0) return "unpaid";
-  if (Math.abs(total - paid) <= 0.01) return "paid";
-  return "partial";
-};
-
-const formatPaymentStatusLabel = (status: string) =>
-  status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unpaid";
-
-const normalizeCustomer = (raw: any): Customer | null => {
-  if (!raw || typeof raw !== "object") return null;
-  const numericId = Number(raw.id ?? raw.customer_id ?? raw.customerId);
-  if (!Number.isFinite(numericId) || numericId <= 0) return null;
-
-  const customerName = String(
-    raw.cust_name ?? raw.name ?? raw.customer_name ?? raw.customerName ?? ""
-  ).trim();
-  const customerPhone = String(
-    raw.phone ?? raw.phoneNumber ?? raw.contact_phone1 ?? raw.mobile_no ?? ""
-  ).trim();
-  const customerCode = String(raw.customer_code ?? raw.cust_code ?? "").trim();
-
-  return {
-    ...raw,
-    id: numericId,
-    customer_code: customerCode,
-    cust_code: customerCode || String(raw.cust_code || "").trim(),
-    name: customerName,
-    cust_name: customerName,
-    phone: customerPhone || null,
-  } as Customer;
-};
-
-const mapCustomerToSelectOption = (customer: Customer): CustomerSelectOption => {
-  const phoneNumber = String(customer.phone || "").trim();
-  const customerName = String(customer.cust_name || customer.name || "").trim();
-  return {
-    value: String(customer.id),
-    label: `${phoneNumber} - ${customerName}`,
-    phoneNumber,
-    customerName,
-    customer,
-  };
-};
-
-const getCustomerDisplayName = (customer?: Customer | null) => {
-  if (!customer) return "";
-  return String(customer.cust_name || customer.name || "");
-};
-
-const getCustomerAddress = (customer?: Customer | null) => {
-  if (!customer) return "";
-  const parts = [
-    customer.address_line1,
-    customer.address_line2,
-    customer.address_line3,
-    customer.city,
-    customer.state,
-    customer.pincode,
-  ]
-    .map((p) => String(p || "").trim())
-    .filter(Boolean);
-  return parts.join(", ");
 };
 
 type ThermalPrintHeader = {
@@ -229,14 +164,12 @@ export default function SalesForm() {
     showProductPopup: false,
     selectedProducts: [] as number[],
     popupError: "",
-    savedProductIds: [] as string[],
     showBillsPanel: false,
     billsList: [] as SalesIndexRow[],
     billsLoading: false,
     billsError: "",
     showQuickCustomerPopup: false,
     customerLookupInput: "",
-    customerSearchPhone: "",
     newCustomerName: "",
     newCustomerPhone: "",
     customerQuickAddLoading: false,
@@ -249,9 +182,6 @@ export default function SalesForm() {
     header: ThermalPrintHeader;
     details: ThermalPrintDetail[];
   } | null>(null);
-  const [customerOptions, setCustomerOptions] = useState<CustomerSelectOption[]>([]);
-  const [selectedCustomerOption, setSelectedCustomerOption] =
-    useState<CustomerSelectOption | null>(null);
   const [paymentPanelOpen, setPaymentPanelOpen] = useState(false);
   const [activeLineIndex, setActiveLineIndex] = useState<number | null>(null);
 
@@ -262,7 +192,6 @@ export default function SalesForm() {
     taxes: allTaxes,
     customers: allCustomers,
     uoms: allUoms,
-    warehouses,
     paymentModes,
     activeDiscountsForToday,
   } = masterData;
@@ -346,20 +275,6 @@ export default function SalesForm() {
     []
   );
 
-  const filteredCustomerOptions = useMemo(() => {
-    const search = String(customerLookupInput || "").trim().toLowerCase();
-    console.log("[sales] search input:", search);
-    const filtered = !search
-      ? customerOptions
-      : customerOptions.filter((option) => {
-          const phone = String(option.phoneNumber || "").toLowerCase();
-          const name = String(option.customerName || "").toLowerCase();
-          return phone.includes(search) || name.includes(search);
-        });
-    console.log("[sales] filtered results:", filtered);
-    return filtered;
-  }, [customerLookupInput, customerOptions]);
-
   const setErrors = useCallback(
     (updater: Record<string, string> | ((prev: Record<string, string>) => Record<string, string>)) => {
       setUiState((prev) => ({
@@ -381,35 +296,10 @@ export default function SalesForm() {
     []
   );
 
-  const setSavedProductIds = useCallback(
-    (updater: string[] | ((prev: string[]) => string[])) => {
-      setUiState((prev) => ({
-        ...prev,
-        savedProductIds: typeof updater === "function" ? (updater as any)(prev.savedProductIds) : updater,
-      }));
-    },
-    []
+  const { productById, productByBarcode } = useMemo(
+    () => buildProductMaps(allProducts),
+    [allProducts]
   );
-
-
-  const productById = useMemo(() => {
-    const map = new Map<number, Product>();
-    allProducts.forEach((product) => {
-      if (Number.isFinite(product.id)) {
-        map.set(Number(product.id), product);
-      }
-    });
-    return map;
-  }, [allProducts]);
-
-  const productByBarcode = useMemo(() => {
-    const map = new Map<string, Product>();
-    allProducts.forEach((product) => {
-      const key = String(product.barcode || "").trim();
-      if (key) map.set(key, product);
-    });
-    return map;
-  }, [allProducts]);
 
   const uomById = useMemo(() => {
     const map = new Map<string, any>();
@@ -552,14 +442,13 @@ export default function SalesForm() {
   }, [billsList]);
 
   const billingTotals = useMemo(() => calculateSalesTotals(details), [details]);
-
-  const selectedWarehouse = useMemo(
-    () =>
-      warehouses.find(
-        (warehouse) => String(warehouse.id) === String(user?.warehouse_id || header.warehouse_id || "")
-      ) || null,
-    [header.warehouse_id, user?.warehouse_id, warehouses]
-  );
+  const {
+    activeWarehouseId,
+    activeLocationId,
+    selectedWarehouse,
+    selectedWarehouseName,
+    selectedLocationName,
+  } = useResolvedWarehouseContext(user, header, company);
 
   const totalPaidAmount = useMemo(
     () => roundMoney(payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)),
@@ -579,6 +468,32 @@ export default function SalesForm() {
     () => (resolvedActiveLineIndex === null ? null : details[resolvedActiveLineIndex] || null),
     [details, resolvedActiveLineIndex]
   );
+
+  const {
+    filteredCustomerOptions,
+    selectedCustomerOption,
+    setCustomerOptions,
+    setSelectedCustomerOption,
+    syncCustomers,
+    handleCustomerSelect,
+    handleCustomerSearchInputChange,
+    handleOpenQuickCustomerPopup,
+    closeQuickCustomerPopup,
+    handleCreateCustomer,
+    handleNewCustomerNameChange,
+    handleNewCustomerPhoneChange,
+  } = useSalesCustomer({
+    company,
+    customerId: header.customer_id,
+    customerLookupInput,
+    newCustomerName,
+    newCustomerPhone,
+    setHeader,
+    setErrors,
+    updateUiState,
+    setUiState,
+    setMasterData,
+  });
 
   const toggleProduct = (id: number) => {
     setSelectedProducts((prev) =>
@@ -869,7 +784,6 @@ export default function SalesForm() {
       if (!salesId || !company) return;
       if (lastFetchedIdRef.current === salesId) return;
       lastFetchedIdRef.current = salesId;
-      console.log("Fetching sales with ID:", salesId);
       try {
         updateUiState({ pageLoading: true });
         const res = await fetch(`/api/sales/${salesId}`, {
@@ -928,7 +842,6 @@ export default function SalesForm() {
               }))
             : [];
           setPayments(fetchedPayments);
-          setSavedProductIds(fetchedDetails.map((d: any) => String(d.product_id)));
         }
       } catch (err) {
         console.error(err);
@@ -949,15 +862,11 @@ export default function SalesForm() {
     setDetails,
     setPayments,
     setHeader,
-    setSavedProductIds,
     setDiscountMode,
   ]);
 
-  const hasLogged = useRef(false);
   useEffect(() => {
-    if (!user?.name || hasLogged.current) return;
-    hasLogged.current = true;
-    console.log("User Name : ", user?.name);
+    if (!user?.name) return;
     setHeader((prev) => {
       if (prev.user_name === user.name) return prev;
       return {
@@ -966,13 +875,6 @@ export default function SalesForm() {
       };
     });
   }, [user?.name, setHeader]);
-
-  const hasLoggedTenant = useRef(false);
-  useEffect(() => {
-    if (!company || hasLoggedTenant.current) return;
-    hasLoggedTenant.current = true;
-    console.log("Company:", company);
-  }, [company]);
 
   useEffect(() => {
     salesIndexRef.current = null;
@@ -988,7 +890,6 @@ export default function SalesForm() {
       customers: [],
       uoms: [],
       taxes: [],
-      warehouses: [],
       paymentModes: [],
     });
     updateUiState({
@@ -1004,48 +905,70 @@ export default function SalesForm() {
     if (!company || hasLoadedMasterRef.current) return;
     hasLoadedMasterRef.current = true;
 
+
     const loadMasterData = async () => {
       try {
         updateUiState({ pageLoading: true });
+
         const res = await fetch("/api/sales/master-data", {
           headers: { "x-tenant": company },
         });
         const data = await res.json();
-        if (data?.success) {
-          const payload = data.data || {};
-          const normalizedCustomers = (payload.customers ?? masterData.customers)
-            .map((customer: any) => normalizeCustomer(customer))
-            .filter((customer: Customer | null): customer is Customer => Boolean(customer));
-          const normalizedTaxes = (payload.taxes ?? masterData.taxes).map((tax: any) => ({
-            ...tax,
-            tax_name:
-              tax.tax_name ||
-              tax.name ||
-              tax.taxName ||
-              tax.gst_name ||
-              "",
+        console.log("HTTP STATUS", res.status);
+console.log("RESPONSE JSON", data);
+        const payload = data?.data || {};
+        console.log("FULL RESPONSE", data);
+        console.log("PAYLOAD", payload);
+        console.log("PAYLOAD KEYS", Object.keys(payload));
+        console.log("MASTER DATA RESPONSE", payload);
+        console.log("CUSTOMERS", payload.customers?.length);
+        console.log("TAXES", payload.taxes?.length);
+        console.log("PAYMENT MODES", payload.payment_modes?.length);
+
+        const normalizedTaxes = (payload.taxes || []).map((tax: any) => ({
+          ...tax,
+          id: Number(tax.id),
+          total_percentage: Number(tax.total_percentage || 0),
+          tax_name: tax.tax_name || tax.name || tax.taxName || tax.gst_name || "",
+        }));
+
+        const normalizedPaymentModes = (payload.payment_modes || [])
+          .filter((mode: any) => mode?.is_active !== false)
+          .map((mode: any) => ({
+            ...mode,
+            id: Number(mode.id),
+            payment_mode_name: String(mode.payment_mode_name || mode.name || ""),
           }));
-          updateMasterData({
-            customers: normalizedCustomers,
-            uoms: payload.uoms ?? masterData.uoms,
-            taxes: normalizedTaxes,
-            warehouses: payload.warehouses ?? masterData.warehouses,
-            paymentModes: payload.payment_modes ?? masterData.paymentModes,
-          });
-          if (payload.sales_no) {
-            setHeader((prev) => ({ ...prev, sales_no: payload.sales_no }));
-          }
+
+       
+
+        updateMasterData({
+          uoms: Array.isArray(payload.uoms) ? payload.uoms : [],
+          taxes: normalizedTaxes,
+          paymentModes: normalizedPaymentModes,
+        });
+
+        if (Array.isArray(payload.customers)) {
+          syncCustomers(payload.customers);
+        }
+
+        if (!isEdit && payload.sales_no) {
+          setHeader((prev) => ({
+            ...prev,
+            sales_no: prev.sales_no || payload.sales_no,
+          }));
         }
       } catch (err) {
         console.error("Master data load failed:", err);
+        console.log("fails in loadmasterdata!!");
       } finally {
         updateUiState({ pageLoading: false });
       }
     };
 
     loadMasterData();
-  }, [company, updateMasterData]);
-
+  }, [company, isEdit, setHeader, syncCustomers, updateMasterData, updateUiState]);
+ 
   useEffect(() => {
     if (isEdit || header.sales_no) return;
 
@@ -1213,16 +1136,25 @@ export default function SalesForm() {
     const nextPaymentStatus = calculatePaymentStatus(billingTotals.total, totalPaidAmount);
     setHeader((prev) => ({
       ...prev,
-      warehouse_id: user?.warehouse_id ?? prev.warehouse_id ?? "",
-      location_id: selectedWarehouse?.location_id ?? prev.location_id ?? "",
-      warehouse_name: selectedWarehouse?.name ?? prev.warehouse_name ?? "",
-      location_name: selectedWarehouse?.location_name ?? prev.location_name ?? "",
+      warehouse_id: activeWarehouseId ?? prev.warehouse_id ?? "",
+      location_id: selectedWarehouse?.location_id ?? activeLocationId ?? prev.location_id ?? "",
+      warehouse_name: selectedWarehouseName || prev.warehouse_name || "",
+      location_name: selectedLocationName || prev.location_name || "",
       subtotal: Number(billingTotals.taxable.toFixed(2)),
       tax_amount: Number(billingTotals.tax.toFixed(2)),
       total_amount: Number(billingTotals.total.toFixed(2)),
       payment_status: nextPaymentStatus,
     }));
-  }, [billingTotals, selectedWarehouse, setHeader, totalPaidAmount, user?.warehouse_id]);
+  }, [
+    activeLocationId,
+    activeWarehouseId,
+    billingTotals,
+    selectedLocationName,
+    selectedWarehouse,
+    selectedWarehouseName,
+    setHeader,
+    totalPaidAmount,
+  ]);
 
   useEffect(() => {
     if (details.length === 0) {
@@ -1307,13 +1239,7 @@ export default function SalesForm() {
           if (prev.some((payment) => payment.payment_mode_id === mode.id)) return prev;
           return [
             ...prev,
-            {
-              payment_mode_id: mode.id,
-              payment_mode_name: mode.payment_mode_name,
-              amount: "",
-              location_id: selectedWarehouse?.location_id ?? null,
-              warehouse_id: selectedWarehouse?.id ?? null,
-            },
+            createPaymentEntry(mode, prev, billingTotals.total, selectedWarehouse),
           ];
         }
         return prev.filter((payment) => payment.payment_mode_id !== mode.id);
@@ -1325,7 +1251,7 @@ export default function SalesForm() {
         return next;
       });
     },
-    [selectedWarehouse, setErrors, setPayments]
+    [billingTotals.total, selectedWarehouse, setErrors, setPayments]
   );
 
   const updatePaymentAmount = useCallback(
@@ -1419,6 +1345,10 @@ export default function SalesForm() {
         ...initialHeader,
         sales_date: new Date().toISOString().split("T")[0],
         user_name: user?.name || prev.header.user_name || "",
+        warehouse_id: selectedWarehouse?.id ?? activeWarehouseId ?? "",
+        location_id: selectedWarehouse?.location_id ?? activeLocationId ?? "",
+        warehouse_name: selectedWarehouseName,
+        location_name: selectedLocationName,
       },
       details: [],
       payments: [],
@@ -1430,7 +1360,6 @@ export default function SalesForm() {
       ...prev,
       errors: {},
       errorMessage: "",
-      savedProductIds: [],
       selectedProducts: [],
     }));
     resetLookupFilters();
@@ -1470,7 +1399,7 @@ export default function SalesForm() {
   const saveSales = async (printAfterSave: boolean, options: SaveOptions = {}) => {
     const { redirect = true, reset = true } = options;
     updateUiState({ errorMessage: "" });
-    if (!user?.warehouse_id) {
+    if (!activeWarehouseId) {
       updateUiState({ errorMessage: "Warehouse not assigned for this user. Contact administrator." });
       return null;
     }
@@ -1481,10 +1410,10 @@ export default function SalesForm() {
       // Batch stock check before saving
       const stockCheckRes = await fetch("/api/pricing", {
         method: "PATCH",
-        headers: { 
+        headers: {
           "Content-Type": "application/json", 
           "x-tenant": company,
-          "x-warehouse-id": user?.warehouse_id?.toString(),
+          "x-warehouse-id": String(activeWarehouseId),
         },
         body: JSON.stringify({
           items: details.map((d) => ({
@@ -1495,7 +1424,6 @@ export default function SalesForm() {
 
       });
       const stockCheckData = await stockCheckRes.json();
-      console.log("STEP 1 - pricing response:", stockCheckData,"warehouse", user?.warehouse_id);
       if (!stockCheckData.success) {
         console.error("Stock check failed:", stockCheckData);
         // stockCheckData.errors is an array of { product_id, requested, available, product_name }
@@ -1513,7 +1441,6 @@ export default function SalesForm() {
         });
         return;
       }
-      console.log("STEP 3 - stock ok, preparing sales save");
       const url = salesId ? `/api/sales/${salesId}` : "/api/sales";
       const method = salesId ? "PUT" : "POST";
       const payloadDetails = details.map((row) => ({
@@ -1526,7 +1453,6 @@ export default function SalesForm() {
         ...payment,
         amount: Number(payment.amount || 0),
       }));
-      console.log("STEP 4 - calling sales API:", url, method);
       const res = await fetch(url, {
         method: method,
         headers: {
@@ -1537,17 +1463,15 @@ export default function SalesForm() {
           header: {
             ...header,
             user_name: user?.name,
-            warehouse_id: selectedWarehouse?.id ?? user?.warehouse_id ?? header.warehouse_id,
-            location_id: selectedWarehouse?.location_id ?? header.location_id,
+            warehouse_id: selectedWarehouse?.id ?? activeWarehouseId ?? header.warehouse_id,
+            location_id: selectedWarehouse?.location_id ?? activeLocationId ?? header.location_id,
             payment_status: calculatePaymentStatus(billingTotals.total, totalPaidAmount),
           },
           details: payloadDetails,
           payments: payloadPayments,
         }),
       });
-      console.log("STEP 5 - sales API response status:", res.status);
       const data = await res.json();
-      console.log("STEP 6 - sales API data:", data);
       if (!data.success) throw new Error(data.error || "Failed to save sales");
 
       const mergedHeader: SalesHeaderType = {
@@ -1651,198 +1575,6 @@ export default function SalesForm() {
       await resetFormAfterSave();
     }
   };
-  const loadCustomers = useCallback(async () => {
-    if (!company) return [] as Customer[];
-    try {
-      const res = await fetch("/api/customers", {
-        headers: {
-          "x-tenant": company,
-        },
-      });
-      const data = await res.json();
-      if (data?.success) {
-        const fetchedCustomers = Array.isArray(data.data) ? data.data : [];
-        console.log("[sales] fetched customers:", fetchedCustomers);
-        const normalizedCustomers = fetchedCustomers
-          .map((customer: any) => normalizeCustomer(customer))
-          .filter((customer: Customer | null): customer is Customer => Boolean(customer));
-        const mappedOptions = normalizedCustomers.map(mapCustomerToSelectOption);
-        console.log("[sales] mapped options:", mappedOptions);
-        updateMasterData({ customers: normalizedCustomers });
-        setCustomerOptions(mappedOptions);
-        return normalizedCustomers;
-      }
-    } catch (err) {
-      console.error("Failed to refresh customer list", err);
-    }
-    return [] as Customer[];
-  }, [company, updateMasterData]);
-
-  useEffect(() => {
-    if (!company) return;
-    loadCustomers();
-  }, [company, loadCustomers]);
-
-  useEffect(() => {
-    if (!header.customer_id) {
-      setSelectedCustomerOption(null);
-      return;
-    }
-    const selected =
-      customerOptions.find((option) => option.value === String(header.customer_id)) ?? null;
-    setSelectedCustomerOption(selected);
-  }, [customerOptions, header.customer_id]);
-
-  const handleCustomerSelect = useCallback(
-    (option: CustomerSelectOption | null) => {
-      console.log("[sales] selected customer option:", option);
-      if (option?.customer) {
-        console.log("[sales] selected customer object:", option.customer);
-      }
-      setSelectedCustomerOption(option);
-      setHeader((prev) => ({
-        ...prev,
-        customer_id: option ? String(option.value) : "",
-      }));
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.customer_id;
-        return newErrors;
-      });
-      updateUiState({
-        customerLookupInput: "",
-        customerQuickAddError: "",
-      });
-    },
-    [setErrors, setHeader, updateUiState]
-  );
-
-  const handleCustomerSearchInputChange = useCallback(
-    (value: string, meta: { action: string }) => {
-      console.log("[sales] search input:", value, "action:", meta.action);
-      if (meta.action !== "input-change" && meta.action !== "set-value") return;
-      updateUiState({ customerLookupInput: value });
-    },
-    [updateUiState]
-  );
-
-  const handleOpenQuickCustomerPopup = useCallback(() => {
-    updateUiState({
-      showQuickCustomerPopup: true,
-      newCustomerName: "",
-      newCustomerPhone: String(customerLookupInput || "").trim(),
-      customerQuickAddError: "",
-    });
-  }, [customerLookupInput, updateUiState]);
-
-  const closeQuickCustomerPopup = useCallback(() => {
-    updateUiState({
-      showQuickCustomerPopup: false,
-      newCustomerName: "",
-      newCustomerPhone: "",
-      customerQuickAddLoading: false,
-      customerQuickAddError: "",
-    });
-  }, [updateUiState]);
-
-  const handleCreateCustomer = useCallback(async () => {
-    const trimmedName = String(newCustomerName || "").trim();
-    const trimmedPhone = String(newCustomerPhone || "").trim();
-
-    if (!trimmedName) {
-      setUiState((prev) => ({ ...prev, customerQuickAddError: "Customer name is required" }));
-      return;
-    }
-    if (!company) {
-      setUiState((prev) => ({ ...prev, customerQuickAddError: "Company context is missing" }));
-      return;
-    }
-
-    setUiState((prev) => ({ ...prev, customerQuickAddLoading: true, customerQuickAddError: "" }));
-    try {
-      const res = await fetch("/api/customers", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-tenant": company,
-        },
-        body: JSON.stringify({
-          name: trimmedName,
-          phone: trimmedPhone || null,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.success) {
-        throw new Error(data?.error || "Failed to create customer");
-      }
-
-      const createdCustomer = normalizeCustomer(
-        data?.customer || data?.data?.customer || data?.data
-      );
-      if (createdCustomer?.id) {
-        const createdOption = mapCustomerToSelectOption(createdCustomer);
-        setMasterData((prev) => ({
-          ...prev,
-          customers: [
-            createdCustomer,
-            ...prev.customers.filter(
-              (customer) => String(customer.id) !== String(createdCustomer.id)
-            ),
-          ],
-        }));
-        setCustomerOptions((prev) => [
-          createdOption,
-          ...prev.filter((option) => option.value !== createdOption.value),
-        ]);
-        setSelectedCustomerOption(createdOption);
-        setHeader((prev) => ({
-          ...prev,
-          customer_id: String(createdCustomer.id),
-        }));
-      } else {
-        const refreshedCustomers = await loadCustomers();
-        const found = refreshedCustomers.find(
-          (c: Customer) =>
-            String(c.name || c.cust_name || "").trim().toLowerCase() ===
-              trimmedName.toLowerCase() &&
-            String(c.phone || "").trim() === trimmedPhone
-        );
-        if (found) {
-          const foundOption = mapCustomerToSelectOption(found);
-          setSelectedCustomerOption(foundOption);
-          setHeader((prev) => ({
-            ...prev,
-            customer_id: String(found.id),
-          }));
-        }
-      }
-
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.customer_id;
-        return newErrors;
-      });
-      updateUiState({ customerLookupInput: "" });
-      closeQuickCustomerPopup();
-    } catch (err: any) {
-      console.error("Create customer failed", err);
-      setUiState((prev) => ({
-        ...prev,
-        customerQuickAddError: err?.message || "Unable to create customer",
-      }));
-    } finally {
-      setUiState((prev) => ({ ...prev, customerQuickAddLoading: false }));
-    }
-  }, [company, closeQuickCustomerPopup, loadCustomers, newCustomerName, newCustomerPhone, setErrors, setHeader]);
-
-  const handleNewCustomerNameChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setUiState((prev) => ({ ...prev, newCustomerName: e.target.value }));
-  };
-
-  const handleNewCustomerPhoneChange = (e: ChangeEvent<HTMLInputElement>) => {
-    setUiState((prev) => ({ ...prev, newCustomerPhone: e.target.value }));
-  };
-
   const handleSalesDateChange = (e: ChangeEvent<HTMLInputElement>) => {
     setHeader((prev) => ({
       ...prev,
@@ -1975,6 +1707,10 @@ export default function SalesForm() {
           <div className="space-y-3">
             <SalesHeader
               header={header}
+              warehouseName={selectedWarehouseName}
+              locationName={selectedLocationName}
+              couponCode={couponCode}
+              discountMode={discountMode}
               selectedCustomerOption={selectedCustomerOption}
               customerOptions={filteredCustomerOptions}
               customerSearchInput={customerLookupInput}
@@ -1985,6 +1721,10 @@ export default function SalesForm() {
               onCustomerSearchInputChange={handleCustomerSearchInputChange}
               onOpenQuickCustomerPopup={handleOpenQuickCustomerPopup}
               onSalesDateChange={handleSalesDateChange}
+              onCouponChange={handleCouponChange}
+              onDiscountModeChange={(e) =>
+                setDiscountMode(e.target.value as "percent" | "amount")
+              }
             />
 
             <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
@@ -2001,13 +1741,13 @@ export default function SalesForm() {
                       value={barcodeValue}
                       onChange={handleBarcodeChange}
                       onKeyDown={handleBarcodeKeyDown}
-                      placeholder="Barcode, product code, or name"
+                      placeholder="Scan Barcode"
                       className="h-10 w-full rounded-lg border border-gray-200 pl-9 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
-                  <p className={`mt-1 text-xs ${barcodeMessage ? "text-red-500" : "text-gray-500"}`}>
+                  {/* <p className={`mt-1 text-xs ${barcodeMessage ? "text-red-500" : "text-gray-500"}`}>
                     {barcodeMessage || "Scan with Enter for instant add, or browse products to add."}
-                  </p>
+                  </p> */}
                 </div>
                 <div className="md:col-span-2">
                   <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -2066,11 +1806,9 @@ export default function SalesForm() {
                 <span>
                   Active line: {activeLine ? `${activeLine.product_name} x ${activeLine.qty}` : "No item selected yet"}
                 </span>
-                <span>Same scanned item increases quantity automatically.</span>
+                {/* <span>Same scanned item increases quantity automatically.</span> */}
               </div>
-            </section>
-
-            <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
+           
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
                 <div className="text-sm font-semibold text-slate-800">Billing Items</div>
                 <div className="text-xs text-slate-500">
@@ -2091,123 +1829,6 @@ export default function SalesForm() {
               />
             </section>
 
-            <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
-              <div className="grid gap-3 md:grid-cols-12">
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    Warehouse
-                  </label>
-                  <input
-                    value={selectedWarehouse?.name || header.warehouse_name || ""}
-                    readOnly
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-slate-700"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    Location
-                  </label>
-                  <input
-                    value={selectedWarehouse?.location_name || header.location_name || ""}
-                    readOnly
-                    className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-slate-700"
-                  />
-                </div>
-                <div className="md:col-span-3">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    Payment Mode
-                  </label>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentPanelOpen((prev) => !prev)}
-                      className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-200 px-3 text-sm text-slate-700"
-                    >
-                      <span className="truncate">
-                        {payments.length
-                          ? payments
-                              .map((payment) => payment.payment_mode_name || payment.mode_name || "Payment")
-                              .join(", ")
-                          : "Select payment mode"}
-                      </span>
-                      <span className="text-xs text-slate-400">{paymentPanelOpen ? "Close" : "Open"}</span>
-                    </button>
-                    {paymentPanelOpen ? (
-                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
-                        <div className="max-h-64 space-y-2 overflow-auto">
-                          {paymentModes.map((mode, index) => {
-                            const selectedPayment = payments.find(
-                              (payment) => payment.payment_mode_id === mode.id
-                            );
-                            return (
-                              <div key={mode.id} className="rounded-lg border border-gray-100 p-2">
-                                <label className="flex items-center gap-2 text-sm text-slate-700">
-                                  <input
-                                    type="checkbox"
-                                    checked={Boolean(selectedPayment)}
-                                    onChange={(e) => togglePaymentMode(mode, e.target.checked)}
-                                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                  />
-                                  <span className="flex-1">{mode.payment_mode_name}</span>
-                                </label>
-                                {selectedPayment ? (
-                                  <input
-                                    ref={(element) => {
-                                      paymentAmountRefs.current[index] = element;
-                                    }}
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={selectedPayment.amount}
-                                    onChange={(e) => updatePaymentAmount(mode.id, e.target.value)}
-                                    onKeyDown={(e) => handlePaymentAmountKeyDown(index, e)}
-                                    placeholder="Amount"
-                                    className={`mt-2 h-9 w-full rounded-lg border px-3 text-sm outline-none ${
-                                      errors[`payment_mode_${mode.id}`]
-                                        ? "border-red-500 focus:ring-2 focus:ring-red-100"
-                                        : "border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                    }`}
-                                  />
-                                ) : null}
-                                {errors[`payment_mode_${mode.id}`] ? (
-                                  <p className="mt-1 text-xs text-red-500">{errors[`payment_mode_${mode.id}`]}</p>
-                                ) : null}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {errors.payments ? <p className="mt-2 text-xs text-red-500">{errors.payments}</p> : null}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    Coupon Code
-                  </label>
-                  <input
-                    type="text"
-                    value={couponCode}
-                    onChange={handleCouponChange}
-                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    placeholder="Coupon"
-                  />
-                </div>
-                <div className="md:col-span-3">
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                    Discount Mode
-                  </label>
-                  <select
-                    value={discountMode}
-                    onChange={(e) => setDiscountMode(e.target.value as "percent" | "amount")}
-                    className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="percent">Percentage</option>
-                    <option value="amount">Amount</option>
-                  </select>
-                </div>
-              </div>
-            </section>
           </div>
 
           <aside className="space-y-3 xl:sticky xl:top-3 xl:self-start">
@@ -2248,6 +1869,87 @@ export default function SalesForm() {
                     <span>{header.payment_status ? header.payment_status.toUpperCase() : "UNPAID"}</span>
                   </div>
                   <div className="mt-1 text-2xl font-bold">{billingTotals.total.toFixed(2)}</div>
+                </div>
+                <div className="rounded-xl border border-gray-200 p-3">
+                  <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                    Payment Mode
+                  </label>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentPanelOpen((prev) => !prev)}
+                      className="flex h-10 w-full items-center justify-between rounded-lg border border-gray-200 px-3 text-sm text-slate-700"
+                    >
+                      <span className="truncate">
+                        {payments.length
+                          ? payments
+                              .map((payment) => payment.payment_mode_name || "Payment")
+                              .join(", ")
+                          : "Select payment mode"}
+                      </span>
+                      <span className="text-xs text-slate-400">{paymentPanelOpen ? "Close" : "Open"}</span>
+                    </button>
+                    {paymentPanelOpen ? (
+                      <div className="absolute z-20 mt-2 w-full rounded-xl border border-gray-200 bg-white p-3 shadow-xl">
+                        <div className="max-h-64 space-y-2 overflow-auto">
+                          {paymentModes.map((mode) => {
+                            const selectedPayment = payments.find(
+                              (payment) => payment.payment_mode_id === mode.id
+                            );
+                            return (
+                              <label
+                                key={mode.id}
+                                className="flex items-center gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm text-slate-700"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(selectedPayment)}
+                                  onChange={(e) => togglePaymentMode(mode, e.target.checked)}
+                                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="flex-1">{mode.payment_mode_name}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  {payments.length ? (
+                    <div className="mt-3 space-y-2">
+                      {payments.map((payment, index) => (
+                        <div key={payment.payment_mode_id}>
+                          <label className="mb-1 block text-xs font-semibold text-slate-600">
+                            {(payment.payment_mode_name || "Payment").trim()} Amount
+                          </label>
+                          <input
+                            ref={(element) => {
+                              paymentAmountRefs.current[index] = element;
+                            }}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={payment.amount}
+                            onChange={(e) =>
+                              updatePaymentAmount(payment.payment_mode_id, e.target.value)
+                            }
+                            onKeyDown={(e) => handlePaymentAmountKeyDown(index, e)}
+                            className={`h-10 w-full rounded-lg border px-3 text-sm outline-none ${
+                              errors[`payment_mode_${payment.payment_mode_id}`]
+                                ? "border-red-500 focus:ring-2 focus:ring-red-100"
+                                : "border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            }`}
+                          />
+                          {errors[`payment_mode_${payment.payment_mode_id}`] ? (
+                            <p className="mt-1 text-xs text-red-500">
+                              {errors[`payment_mode_${payment.payment_mode_id}`]}
+                            </p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {errors.payments ? <p className="mt-2 text-xs text-red-500">{errors.payments}</p> : null}
                 </div>
                 <div className="border-t border-gray-100 pt-2">
                   <div className="flex justify-between">

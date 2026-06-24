@@ -1,246 +1,402 @@
 "use client";
- 
-import React, { forwardRef } from "react";
+
+import React, { forwardRef, useMemo } from "react";
 import { useTenant } from "@/context/TenantContext";
- 
+
 type TaxComponent = {
-    component_name: string;
-    component_percentage: number;
+  component_name: string;
+  component_percentage: number;
 };
- 
+
+type PaymentRow = {
+  payment_mode_name?: string;
+  mode_name?: string;
+  amount?: number;
+};
+
 type Detail = {
-    product_name?: string;
-    qty: number;
-    rate: number;
-    discount: number;
-    tax_percent: number;
-    tax_amount: number;
-    line_total: number;
-    tax_components?: TaxComponent[];
+  product_name?: string;
+  sku?: string;
+  hsn_code?: string;
+  hsn_no?: string;
+  qty: number;
+  rate: number;
+  discount: number;
+  tax_percent: number;
+  tax_amount: number;
+  line_total: number;
+  tax_components?: TaxComponent[];
 };
- 
+
 type Header = {
-    sales_no: string;
-    customer_name?: string;
-    customer_email?: string;
-    customer_phone?: string;
-    customer_address?: string;
-    sales_date: string;
-    subtotal: number;
-    tax_amount: number;
-    total_amount: number;
+  sales_no: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  customer_address?: string;
+  sales_date: string;
+  subtotal: number;
+  tax_amount: number;
+  total_amount: number;
+  company_name?: string;
+  company_address?: string;
+  company_phone?: string;
+  company_gstin?: string;
+  gst_number?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  salesman_name?: string;
+  sales_person_name?: string;
+  sales_person_id?: number | string;
+  payment_modes?: PaymentRow[];
+  payments?: PaymentRow[];
 };
- 
+
 type Props = {
-    header: Header;
-    details: Detail[];
+  header: Header;
+  details: Detail[];
 };
- 
+
 const currency = (n: number) => Number(n || 0).toFixed(2);
- 
-const formatDate = (date: string) => {
-    if (!date) return "";
-    const d = new Date(date);
-    const day = String(d.getDate()).padStart(2, "0");
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const year = d.getFullYear();
- 
-    return `${day}-${month}-${year}`;
+const divider = "-".repeat(38);
+
+const formatDateTime = (date: string) => {
+  if (!date) return "";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+
+  const day = String(parsed.getDate()).padStart(2, "0");
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const year = parsed.getFullYear();
+  const hours = String(parsed.getHours()).padStart(2, "0");
+  const minutes = String(parsed.getMinutes()).padStart(2, "0");
+
+  return `${day}-${month}-${year} ${hours}:${minutes}`;
 };
- 
-// perfect 32-char line for 80mm
-const line = "--------------------------------";
- 
-const ThermalInvoice = forwardRef<HTMLDivElement, Props>(
-    ({ header, details }, ref) => {
-        const { company } = useTenant();
- 
-        const hasTax = Number(header.tax_amount) > 0;
- 
-        // Step 1: Calculate tax split per line item
-        const getDetailTaxSplits = (details: Detail[]) => {
-            const totalSplit: Record<string, number> = {};
- 
-            details.forEach(detail => {
-                if (!detail.tax_components?.length || !detail.tax_amount) return;
- 
-                const totalPercent = detail.tax_components.reduce(
-                    (sum, comp) => sum + comp.component_percentage,
-                    0
-                );
- 
-                detail.tax_components.forEach(comp => {
-                    const name = comp.component_name;
-                    const amount = (comp.component_percentage / totalPercent) * detail.tax_amount;
- 
-                    if (!totalSplit[name]) totalSplit[name] = 0;
-                    totalSplit[name] += amount;
-                });
-            });
- 
-            return totalSplit;
-        };
- 
-        const taxSplit = getDetailTaxSplits(details);
- 
-        return (
-            <div
-                ref={ref}
-                style={{
-                    width: "280px",
-                    fontFamily: "monospace",
-                    fontSize: "12px",
-                    padding: "10px",
-                    color: "#000",
-                    lineHeight: "1.4",
-                }}
-            >
-                {/* HEADER */}
-                <div style={{ textAlign: "center", marginBottom: "6px" }}>
-                    <div style={{ fontWeight: "bold", fontSize: "16px" }}>
-                        {company || "YOUR COMPANY"}
-                    </div>
-                    <div style={{ fontSize: "11px" }}>Chennai, Tamil Nadu</div>
-                    <div style={{ fontSize: "11px" }}>GSTIN: 33XXXXXXXX</div>
-                </div>
- 
-                <hr />
- 
-                {/* BILL INFO */}
-                <div style={{ fontSize: "11px", margin: "4px 0" }}>
-                    <div>Bill No : {header.sales_no}</div>
-                    <div>Date    : {formatDate(header.sales_date)}</div>
-                </div>
- 
-                <hr />
- 
-                {/* CUSTOMER */}
-                <div style={{ fontSize: "11px", margin: "4px 0" }}>
-                    <div style={{ fontWeight: "bold" }}>
-                        {header.customer_name || "Walk-in Customer"}
-                    </div>
-                    <div>{header.customer_phone}</div>
-                    {/* <div>{header.customer_email}</div>
-                    <div>{header.customer_address}</div> */}
-                </div>
- 
-                <hr />
- 
-                {/* TABLE HEADER */}
-               {/* TABLE HEADER */}
-<div
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    fontWeight: "bold",
-    fontSize: "11px",
-  }}
->
-  <span>Item</span>
-  <span>Total</span>
-</div>
 
-<hr />
+const keyRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "6px",
+};
 
-{/* ITEMS */}
-{details.map((item, i) => {
-  const qty = Number(item.qty || 0);
-  const rate = Number(item.rate || 0);
-  const discount = Number(item.discount || 0);
+const labelStyle: React.CSSProperties = {
+  whiteSpace: "pre",
+  flex: "0 0 auto",
+};
 
-  // Final amount already includes discount & tax
-  const lineTotal = Number(item.line_total || 0);
+const valueStyle: React.CSSProperties = {
+  textAlign: "right",
+  flex: 1,
+  minWidth: 0,
+  wordBreak: "break-word",
+};
+
+const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, ref) => {
+  const { company } = useTenant();
+
+  const companyName = header.company_name || company || "YOUR COMPANY";
+  const companyGstin = header.company_gstin || header.gst_number || "";
+  const companyPhone = header.company_phone || "";
+  const cityStatePin = [header.city, header.state, header.pincode]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const salesmanName = header.salesman_name || header.sales_person_name || "";
+  const payments = Array.isArray(header.payments)
+    ? header.payments
+    : Array.isArray(header.payment_modes)
+      ? header.payment_modes
+      : [];
+
+  const totals = useMemo(() => {
+    const totalQty = details.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    const totalDiscount = details.reduce((sum, row) => sum + Number(row.discount || 0), 0);
+    const amount = Number(header.subtotal || 0) + totalDiscount;
+    const rounding = Number(header.total_amount || 0) - Number(header.subtotal || 0) - Number(header.tax_amount || 0);
+    const savings = totalDiscount;
+
+    return {
+      totalQty,
+      totalDiscount,
+      amount,
+      rounding,
+      savings,
+    };
+  }, [details, header.subtotal, header.tax_amount, header.total_amount]);
+
+  const taxGroups = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { label: string; cgst: number; sgst: number; tax: number }
+    >();
+
+    details.forEach((detail) => {
+      const components = Array.isArray(detail.tax_components) ? detail.tax_components : [];
+      const totalTax = Number(detail.tax_amount || 0);
+      const percent = Number(detail.tax_percent || 0);
+      if (!components.length || totalTax <= 0 || percent <= 0) return;
+
+      const label = `GST${Number.isInteger(percent) ? percent : percent.toFixed(2)}`;
+      const totalPercent = components.reduce(
+        (sum, component) => sum + Number(component.component_percentage || 0),
+        0
+      );
+      if (totalPercent <= 0) return;
+
+      let cgst = 0;
+      let sgst = 0;
+      let otherTax = 0;
+
+      components.forEach((component) => {
+        const componentAmount =
+          (Number(component.component_percentage || 0) / totalPercent) * totalTax;
+        const name = String(component.component_name || "").toUpperCase();
+        if (name.includes("CGST")) cgst += componentAmount;
+        else if (name.includes("SGST")) sgst += componentAmount;
+        else otherTax += componentAmount;
+      });
+
+      const existing = grouped.get(label) || { label, cgst: 0, sgst: 0, tax: 0 };
+      existing.cgst += cgst;
+      existing.sgst += sgst;
+      existing.tax += totalTax + otherTax;
+      grouped.set(label, existing);
+    });
+
+    return Array.from(grouped.values());
+  }, [details]);
 
   return (
-    <div key={i} style={{ marginBottom: "6px" }}>
-      
-      {/* MAIN LINE */}
+    <div
+      ref={ref}
+      style={{
+        width: "280px",
+        padding: "8px",
+        color: "#000",
+        background: "#fff",
+        fontFamily:
+          '"Courier New", Courier, "Liberation Mono", "DejaVu Sans Mono", monospace',
+        fontSize: "11px",
+        lineHeight: "1.2",
+        letterSpacing: "0.1px",
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <div style={{ fontSize: "15px", fontWeight: 700 }}>{companyName}</div>
+        {header.company_address ? <div>{header.company_address}</div> : null}
+        {cityStatePin ? <div>{cityStatePin}</div> : null}
+        {companyPhone ? <div>Ph: {companyPhone}</div> : null}
+        {companyGstin ? <div>GST: {companyGstin}</div> : null}
+        <div style={{ marginTop: "4px", fontWeight: 700 }}>TAX INVOICE</div>
+      </div>
+
+      <div style={{ margin: "4px 0" }}>{divider}</div>
+
+      <div style={{ display: "grid", gap: "1px" }}>
+        <div style={keyRowStyle}>
+          <span style={labelStyle}>Bill No          :</span>
+          <span style={valueStyle}>{header.sales_no}</span>
+        </div>
+        <div style={keyRowStyle}>
+          <span style={labelStyle}>Date             :</span>
+          <span style={valueStyle}>{formatDateTime(header.sales_date)}</span>
+        </div>
+        <div style={keyRowStyle}>
+          <span style={labelStyle}>Customer         :</span>
+          <span style={valueStyle}>{header.customer_name || "Walk-in Customer"}</span>
+        </div>
+        <div style={keyRowStyle}>
+          <span style={labelStyle}>Mobile No        :</span>
+          <span style={valueStyle}>{header.customer_phone || "-"}</span>
+        </div>
+        {salesmanName ? (
+          <div style={keyRowStyle}>
+            <span style={labelStyle}>Salesman         :</span>
+            <span style={valueStyle}>{salesmanName}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ margin: "9px 0" }}>{divider}</div>
+
+      <div style={{ display: "grid", gap: "1px" }}>
+        <div style={{ ...keyRowStyle, fontWeight: 700 }}>
+          <span style={labelStyle}>Item Name</span>
+          <span style={valueStyle}>Amount</span>
+        </div>
+        <div style={{ fontWeight: 700, fontSize: "10px" }}>Qty x Unit Price</div>
+      </div>
+
+      <div style={{ margin: "9px 0" }}>{divider}</div>
+
+      {details.map((item, index) => {
+        const productName = item.product_name || "Item";
+        const qty = Number(item.qty || 0);
+        const rate = Number(item.rate || 0);
+        const lineTotal = Number(item.line_total || 0);
+        const discount = Number(item.discount || 0);
+        const sku = String(item.sku || "").trim();
+        const hsn = String(item.hsn_code || item.hsn_no || "").trim();
+
+        return (
+          <div key={`${productName}-${index}`} style={{ marginBottom: "4px" }}>
+            <div style={{  whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              {productName}
+            </div>
+            {(sku || hsn) && (
+              <div style={{ ...keyRowStyle, fontSize: "10px" }}>
+                <span style={labelStyle}>{sku ? `SKU: ${sku}` : ""}</span>
+                <span style={valueStyle}>{hsn ? `HSN: ${hsn}` : ""}</span>
+              </div>
+            )}
+            <div style={{ ...keyRowStyle, marginTop: "1px" }}>
+              <span style={labelStyle}>{`${qty} x ${currency(rate)}`}</span>
+              <span style={{ ...valueStyle, fontWeight: 700 }}>{currency(lineTotal)}</span>
+            </div>
+            {discount > 0 ? (
+              <div style={{ ...keyRowStyle, fontSize: "10px" }}>
+                <span style={labelStyle}>Disc: {currency(discount)}</span>
+                <span style={valueStyle}></span>
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+
+      <div style={{ margin: "4px 0" }}>{divider}</div>
+
+      <div style={{ display: "grid", gap: "1px" }}>
+        <div style={keyRowStyle}>
+          <span style={labelStyle}>Amount          :</span>
+          <span style={valueStyle}>{currency(totals.amount)}</span>
+        </div>
+        {totals.totalDiscount > 0 ? (
+          <div style={keyRowStyle}>
+            <span style={labelStyle}>Bill Discount   :</span>
+            <span style={valueStyle}>{currency(totals.totalDiscount)}</span>
+          </div>
+        ) : null}
+        {Number(header.tax_amount || 0) > 0 ? (
+          <div style={keyRowStyle}>
+            <span style={labelStyle}>Tax Amount      :</span>
+            <span style={valueStyle}>{currency(Number(header.tax_amount || 0))}</span>
+          </div>
+        ) : null}
+        {Math.abs(totals.rounding) > 0.001 ? (
+          <div style={keyRowStyle}>
+            <span style={labelStyle}>ROD             :</span>
+            <span style={valueStyle}>{currency(totals.rounding)}</span>
+          </div>
+        ) : null}
+      </div>
+
+      <div style={{ margin: "4px 0" }}>{divider}</div>
+
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          fontSize: "11px",
+          ...keyRowStyle,
+          fontWeight: 700,
+          fontSize: "13px",
         }}
       >
-        <span style={{ maxWidth: "140px", overflow: "hidden" }}>
-          {item.product_name}
-        </span>
-
-        <span>
-          {qty}x{currency(rate)}
-        </span>
-
-        <span>{currency(lineTotal)}</span>
+        <span style={labelStyle}>TOTAL AMOUNT    :</span>
+        <span style={valueStyle}>{currency(Number(header.total_amount || 0))}</span>
       </div>
 
-      {/* OPTIONAL DISCOUNT */}
-      {discount > 0 && (
-        <div
-          style={{
-            textAlign: "right",
-            fontSize: "10px",
-          }}
-        >
-          Disc: -{currency(discount)}
+      <div style={{ margin: "4px 0" }}>{divider}</div>
+
+      <div style={{ display: "grid", gap: "1px" }}>
+        <div style={keyRowStyle}>
+          <span style={labelStyle}>Total Prod/Qty  :</span>
+          <span style={valueStyle}>{`${details.length}/${currency(totals.totalQty)}`}</span>
         </div>
-      )}
+        {totals.savings > 0 ? (
+          <div style={keyRowStyle}>
+            <span style={labelStyle}>Total Savings   :</span>
+            <span style={valueStyle}>{currency(totals.savings)}</span>
+          </div>
+        ) : null}
+      </div>
+
+      {taxGroups.length ? (
+        <>
+          <div style={{ margin: "4px 0" }}>{divider}</div>
+          <div style={{ fontWeight: 700, marginBottom: "2px" }}>TAX DETAILS</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr",
+              gap: "4px",
+              fontSize: "10px",
+              fontWeight: 700,
+            }}
+          >
+            <div>Desc</div>
+            <div style={{ textAlign: "right" }}>CGST</div>
+            <div style={{ textAlign: "right" }}>SGST</div>
+            <div style={{ textAlign: "right" }}>Tax</div>
+          </div>
+          {taxGroups.map((row) => (
+            <div
+              key={row.label}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.2fr 0.8fr 0.8fr 0.8fr",
+                gap: "4px",
+                fontSize: "10px",
+                marginTop: "1px",
+              }}
+            >
+              <div>{row.label}</div>
+              <div style={{ textAlign: "right" }}>{currency(row.cgst)}</div>
+              <div style={{ textAlign: "right" }}>{currency(row.sgst)}</div>
+              <div style={{ textAlign: "right" }}>{currency(row.tax)}</div>
+            </div>
+          ))}
+        </>
+      ) : null}
+
+      {salesmanName ? (
+        <>
+          <div style={{ margin: "4px 0" }}>{divider}</div>
+          <div style={keyRowStyle}>
+            <span style={labelStyle}>Salesman :</span>
+            <span style={valueStyle}>{salesmanName}</span>
+          </div>
+        </>
+      ) : null}
+
+      {payments.length ? (
+        <>
+          <div style={{ margin: "4px 0" }}>{divider}</div>
+          <div style={{ fontWeight: 700, marginBottom: "2px" }}>PAYMENT DETAILS</div>
+          {payments.map((payment, index) => (
+            <div
+              key={`${payment.payment_mode_name || payment.mode_name || "payment"}-${index}`}
+              style={keyRowStyle}
+            >
+              <span style={labelStyle}>
+                {payment.payment_mode_name || payment.mode_name || "Payment"}
+              </span>
+              <span style={valueStyle}>{currency(Number(payment.amount || 0))}</span>
+            </div>
+          ))}
+        </>
+      ) : null}
+
+      <div style={{ margin: "4px 0" }}>{divider}</div>
+
+      <div style={{ marginTop: "4px", textAlign: "center" }}>
+        <div style={{ fontWeight: 700 }}>*** THANK YOU ***</div>
+        <div>VISIT AGAIN</div>
+      </div>
     </div>
   );
-})}
+});
 
-<hr />
-
-{/* TOTAL SECTION */}
-<div style={{ marginTop: "4px", fontSize: "11px" }}>
-  
-  {/* SUBTOTAL */}
-  <div style={{ display: "flex", justifyContent: "space-between" }}>
-    <span>Subtotal</span>
-    <span>{currency(header.subtotal)}</span>
-  </div>
-
-  {/* TAX SPLIT */}
-  {hasTax &&
-    Object.entries(taxSplit).map(([name, amount]) => (
-      <div key={name} style={{ display: "flex", justifyContent: "space-between" }}>
-        <span>{name}</span>
-        <span>{currency(amount)}</span>
-      </div>
-    ))}
-
-  <hr />
-
-  {/* FINAL TOTAL */}
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      fontWeight: "bold",
-      fontSize: "14px",
-    }}
-  >
-    <span>TOTAL</span>
-    <span>{currency(header.total_amount)}</span>
-  </div>
-</div>
-
-<hr />
-
-{/* FOOTER */}
-<div
-  style={{
-    textAlign: "center",
-    marginTop: "6px",
-    fontSize: "11px",
-  }}
->
-  <div>Items: {details.length}</div>
-  <div>*** Thank You Visit Again ***</div>
-</div>
-            </div>
-        );
-    }
-);
- 
 ThermalInvoice.displayName = "ThermalInvoice";
+
 export default ThermalInvoice;

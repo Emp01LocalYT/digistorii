@@ -555,29 +555,6 @@ export default function WarehouseMasterPage() {
               </div>
             </div>
           </div>
-
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Others</h3>
-            <div className="grid md:grid-cols-3 gap-6">
-              <div>
-                <label className="text-sm font-semibold mb-1 block">PAN</label>
-                <input
-                  value={form.pan}
-                  onChange={(e) => setForm({ ...form, pan: e.target.value })}
-                  className={inputClass("pan")}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">GSTIN</label>
-                <input
-                  value={form.gstin}
-                  onChange={(e) => setForm({ ...form, gstin: e.target.value })}
-                  className={inputClass("gstin")}
-                />
-              </div>
-            </div>
-          </div>
-
           <div className="ui-form-actions">
             <button
               type="button"

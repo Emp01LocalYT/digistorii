@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/hash";
 import { getTenantSchema } from "@/lib/tenant";
-
-const STAFF_ROLES = new Set(["ADMIN", "MANAGER", "CASHIER", "WAREHOUSE_STAFF"]);
+import {
+  ensureCompanyResponsibilities,
+  getResponsibilitiesForCompany,
+} from "@/lib/userResponsibilities";
 
 function parsePositiveInt(value: unknown): number | null {
   const parsed = Number(value);
@@ -31,6 +33,7 @@ export async function GET(
       );
     }
     const companyId = Number(companyRes.rows[0].id);
+    await ensureCompanyResponsibilities(client, companyId);
 
     const userRes = await client.query(
       `SELECT
@@ -40,7 +43,8 @@ export async function GET(
          u.email,
          u.phone,
          u.is_active,
-         COALESCE(cum.role, u.role, 'CASHIER') AS role,
+         COALESCE(cum.responsibility_id, u.responsibility_id) AS responsibility_id,
+         r.responsibility_name,
          cum.location_id,
          cum.warehouse_id,
          l.name AS location_name,
@@ -49,6 +53,8 @@ export async function GET(
        LEFT JOIN public.company_user_map cum
          ON cum.user_id = u.id
         AND cum.company_id = u.company_id
+       LEFT JOIN public.user_responsibilities r
+         ON r.id = COALESCE(cum.responsibility_id, u.responsibility_id)
        LEFT JOIN "${schema}".locations l
          ON l.id = cum.location_id
        LEFT JOIN "${schema}".warehouses w
@@ -101,6 +107,8 @@ export async function PUT(
       );
     }
     const companyId = Number(companyRes.rows[0].id);
+    await ensureCompanyResponsibilities(client, companyId);
+    const responsibilities = await getResponsibilitiesForCompany(client, companyId);
 
     const userRes = await client.query(
       `SELECT id, username FROM public.users WHERE id = $1 AND company_id = $2`,
@@ -113,12 +121,12 @@ export async function PUT(
       );
     }
 
-    const role = String(user?.role || "").trim().toUpperCase();
+    const responsibilityId = parsePositiveInt(user?.responsibility_id);
     const locationId = parsePositiveInt(user?.location_id);
     const warehouseId = parsePositiveInt(user?.warehouse_id);
-    if (!STAFF_ROLES.has(role)) {
+    if (!responsibilityId || !responsibilities.some((entry) => entry.id === responsibilityId)) {
       return NextResponse.json(
-        { success: false, message: "Invalid role selected", field: "role", index: 0 },
+        { success: false, message: "Invalid responsibility selected", field: "responsibility_id", index: 0 },
         { status: 400 }
       );
     }
@@ -174,31 +182,31 @@ export async function PUT(
         `UPDATE public.users
          SET password_hash = $1,
              is_active = $2,
-             role = $3
+             responsibility_id = $3
          WHERE id = $4 AND company_id = $5`,
-        [hashedPassword, status, role, id, companyId]
+        [hashedPassword, status, responsibilityId, id, companyId]
       );
     } else {
       await client.query(
         `UPDATE public.users
          SET is_active = $1,
-             role = $2
+             responsibility_id = $2
          WHERE id = $3 AND company_id = $4`,
-        [status, role, id, companyId]
+        [status, responsibilityId, id, companyId]
       );
     }
 
     await client.query(
       `INSERT INTO public.company_user_map
-       (user_id, company_id, username, role, location_id, warehouse_id, is_active)
+       (user_id, company_id, username, responsibility_id, location_id, warehouse_id, is_active)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (user_id, company_id) DO UPDATE
        SET username = EXCLUDED.username,
-           role = EXCLUDED.role,
+           responsibility_id = EXCLUDED.responsibility_id,
            location_id = EXCLUDED.location_id,
            warehouse_id = EXCLUDED.warehouse_id,
            is_active = EXCLUDED.is_active`,
-      [id, companyId, username, role, locationId, warehouseId, status]
+      [id, companyId, username, responsibilityId, locationId, warehouseId, status]
     );
 
     await client.query("COMMIT");

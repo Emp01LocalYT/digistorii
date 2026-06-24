@@ -1,11 +1,7 @@
-import { Dispatch, SetStateAction } from "react";
+import Link from "next/link";
 import { useState } from "react";
- 
-type AboutServiceProps = {
-  setActiveTab: Dispatch<SetStateAction<"about" | "get" | "admin">>;
-};
- 
-export default function HeroSection({ setActiveTab }: AboutServiceProps) {
+
+export default function HeroSection() {
   const [showDemoVideo, setShowDemoVideo] = useState(false);
   return (
     <section className="relative bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 text-white py-20 overflow-hidden">
@@ -26,7 +22,7 @@ export default function HeroSection({ setActiveTab }: AboutServiceProps) {
           <h1 className="text-5xl md:text-6xl font-bold leading-tight mb-6">
             Get Your Business Online in <span className="text-yellow-300">24 Hours</span>
           </h1>
-          
+
           {/* Subheadline */}
           <p className="text-xl md:text-2xl text-blue-100 mb-4 max-w-4xl mx-auto">
             With Your Own Store + Admin Dashboard
@@ -34,7 +30,7 @@ export default function HeroSection({ setActiveTab }: AboutServiceProps) {
 
           {/* Supporting line */}
           <p className="text-lg text-blue-200 mb-8 max-w-3xl mx-auto">
-            We build a complete website for your business, including an online store, inventory management, 
+            We build a complete website for your business, including an online store, inventory management,
             invoices, and order tracking — all in one system.
           </p>
 
@@ -44,11 +40,12 @@ export default function HeroSection({ setActiveTab }: AboutServiceProps) {
 
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <button onClick={ () => setActiveTab("get")}
-            className="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+            <Link
+              href="/#pricing"
+              className="bg-white text-blue-600 px-8 py-4 rounded-lg font-semibold text-lg hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
             >
-              Get My Website →
-            </button>
+              View Pricing →
+            </Link>
             <button className="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg font-semibold text-lg hover:bg-white hover:text-blue-600 transition-all">
               Watch Demo
             </button>

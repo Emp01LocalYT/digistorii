@@ -10,7 +10,7 @@ type UserOption = {
   id: number;
   name: string;
   email?: string;
-  role?: string;
+  responsibility_name?: string;
   is_active?: boolean;
 };
 

@@ -1,4 +1,5 @@
 import { pool } from "../lib/db";
+import { ensureResponsibilitySchema } from "./userResponsibilities";
  
 declare global {
   var dbInitialized: boolean | undefined;
@@ -28,6 +29,7 @@ export async function initializeDatabase() {
         company_name VARCHAR(200) NOT NULL UNIQUE,
         gst_number VARCHAR(20),
         pan_number VARCHAR(20),
+        currency VARCHAR(10),
         address TEXT,
         city VARCHAR(100),
         state VARCHAR(100),
@@ -56,7 +58,8 @@ export async function initializeDatabase() {
         phone VARCHAR(20) NOT NULL UNIQUE,
         username VARCHAR(100),
         password_hash TEXT NOT NULL,
-        role VARCHAR(50) DEFAULT 'ADMIN',
+        responsibility_id INT,
+        phone_verified BOOLEAN DEFAULT FALSE,
         is_active BOOLEAN DEFAULT true,
         last_login TIMESTAMP,
         created_at TIMESTAMP DEFAULT now(),
@@ -93,9 +96,29 @@ await client.query(`
   name           VARCHAR(50) NOT NULL UNIQUE,  -- 'STARTER', 'GROWTH', 'ENTERPRISE'
   price_monthly  INTEGER NOT NULL DEFAULT 0,   -- in paise (INR smallest unit)
   price_yearly   INTEGER NOT NULL DEFAULT 0,
+  billing_period  VARCHAR(50) DEFAULT 'Monthly / Yearly',
+  features        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  display_order   INTEGER DEFAULT 0,
   is_active      BOOLEAN DEFAULT TRUE,
   created_at     TIMESTAMP DEFAULT NOW()
 );
+`);
+await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE;`);
+await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS billing_period VARCHAR(50) DEFAULT 'Monthly / Yearly';`);
+await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;`);
+await client.query(`
+  CREATE TABLE IF NOT EXISTS onboarding_otps (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    resend_count INTEGER NOT NULL DEFAULT 0,
+    verified_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+  );
 `);
 await client.query(`
   CREATE TABLE IF NOT EXISTS plan_features (
@@ -132,106 +155,86 @@ await client.query(`
 );`);
 
 await client.query(`
-  ALTER TABLE public.company_subscriptions
-  ADD COLUMN IF NOT EXISTS max_locations INTEGER DEFAULT 1;
-`);
-
-await client.query(`
   CREATE UNIQUE INDEX IF NOT EXISTS uq_company_subscriptions_company
   ON company_subscriptions(company_id);
 `);
 
 
-await client.query(`
-  CREATE TABLE IF NOT EXISTS company_user_map (
-  id           SERIAL PRIMARY KEY,
-  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  company_id   INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-  username     VARCHAR(100),
-  role         VARCHAR(50) NOT NULL DEFAULT 'CASHIER',  -- 'OWNER', 'ADMIN', 'MANAGER', 'CASHIER', 'WAREHOUSE_STAFF'
-  location_id  INTEGER,
-  warehouse_id INTEGER,
-  is_active    BOOLEAN DEFAULT TRUE,
-  joined_at    TIMESTAMP DEFAULT NOW(),
-  UNIQUE(company_id, username),
-  UNIQUE(user_id, company_id)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS company_user_map (
+      id           SERIAL PRIMARY KEY,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_id   INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      username     VARCHAR(100),
+      responsibility_id INT,
+      location_id  INTEGER,
+      warehouse_id INTEGER,
+      is_active    BOOLEAN DEFAULT TRUE,
+      joined_at    TIMESTAMP DEFAULT NOW(),
+      UNIQUE(company_id, username),
+      UNIQUE(user_id, company_id)
 );
   `);
 
-    await client.query(`
-      INSERT INTO plans (name, price_monthly, price_yearly, is_active)
+
+        await client.query(`
+      INSERT INTO plans (name, price_monthly, price_yearly, billing_period, features, display_order, is_active)
       VALUES
-        ('BASIC', 99, 950, TRUE),
-        ('STARTER', 999, 9590, TRUE),
-        ('GROWTH', 1999, 19190, TRUE)
+        ('INSTORE', 500, 5500, 'Monthly / Yearly', '["Point-of-sale ready website", "Inventory and order dashboard", "Fast storefront setup"]'::jsonb, 1, TRUE),
+        ('BASIC', 1500, 16500, 'Monthly / Yearly', '["Online catalog and checkout", "Business admin workspace", "Customer and order management"]'::jsonb, 2, TRUE),
+        ('GROWTH', 6000, 56000, 'Monthly / Yearly', '["Multi-location operations", "Advanced ecommerce controls", "Team roles and approval flows"]'::jsonb, 3, TRUE),
+        ('ENTERPRISE', 22500, 247500, 'Monthly / Yearly', '["Scalable rollout for large teams", "Custom operations support", "Priority launch assistance"]'::jsonb, 4, TRUE)
       ON CONFLICT (name) DO UPDATE
       SET
         price_monthly = EXCLUDED.price_monthly,
         price_yearly = EXCLUDED.price_yearly,
+        billing_period = EXCLUDED.billing_period,
+        features = EXCLUDED.features,
+        display_order = EXCLUDED.display_order,
         is_active = EXCLUDED.is_active;
     `);
 
     await client.query(`
-      INSERT INTO plan_features (plan_id, feature_key, value_int, value_bool)
-      SELECT p.id, v.feature_key, v.value_int, v.value_bool
-      FROM plans p
-      JOIN (
-        VALUES
-          ('BASIC', 'max_users', 5, NULL::BOOLEAN),
-          ('BASIC', 'max_locations', 1, NULL::BOOLEAN),
-          ('BASIC', 'max_warehouses', 1, NULL::BOOLEAN),
-          ('BASIC', 'ecommerce_access', NULL::INTEGER, FALSE),
-          ('STARTER', 'max_users', 10, NULL::BOOLEAN),
-          ('STARTER', 'max_locations', 2, NULL::BOOLEAN),
-          ('STARTER', 'max_warehouses', 2, NULL::BOOLEAN),
-          ('STARTER', 'ecommerce_access', NULL::INTEGER, TRUE),
-          ('GROWTH', 'max_users', 20, NULL::BOOLEAN),
-          ('GROWTH', 'max_locations', 10, NULL::BOOLEAN),
-          ('GROWTH', 'max_warehouses', 10, NULL::BOOLEAN),
-          ('GROWTH', 'ecommerce_access', NULL::INTEGER, TRUE)
-      ) AS v(plan_name, feature_key, value_int, value_bool)
-        ON v.plan_name = p.name
-      ON CONFLICT (plan_id, feature_key) DO UPDATE
-      SET
-        value_int = EXCLUDED.value_int,
-        value_bool = EXCLUDED.value_bool;
+    INSERT INTO plan_features (plan_id, feature_key, value_int, value_bool)
+SELECT p.id, v.feature_key, v.value_int, v.value_bool
+FROM plans p
+JOIN (
+  VALUES
+    -- 1) INSTORE Plan
+    ('INSTORE', 'max_users', 5, NULL::BOOLEAN),
+    ('INSTORE', 'max_locations', 1, NULL::BOOLEAN),
+    ('INSTORE', 'max_warehouses', 1, NULL::BOOLEAN),
+    ('INSTORE', 'ecommerce_access', NULL::INTEGER, FALSE),
+
+    -- 3) BASIC Plan (Includes ecommerce)
+    ('BASIC', 'max_warehouses', 1, NULL::BOOLEAN),
+    ('BASIC', 'ecommerce_access', NULL::INTEGER, TRUE),
+
+    -- 4) GROWTH Plan
+    ('GROWTH', 'max_users', 10, NULL::BOOLEAN),
+
+    -- 5) ENTERPRISE Plan (-1 typically denotes 'Unlimited')
+    ('ENTERPRISE', 'max_users', -1, NULL::BOOLEAN),
+    ('ENTERPRISE', 'max_warehouses', -1, NULL::BOOLEAN),
+    ('ENTERPRISE', 'ecommerce_access', NULL::INTEGER, TRUE),
+
+    -- 6) ADVANCED Plan (Customizable / Unlimited / Flexible)
+    ('ADVANCED', 'max_users', -1, NULL::BOOLEAN),
+    ('ADVANCED', 'max_locations', -1, NULL::BOOLEAN),
+    ('ADVANCED', 'max_warehouses', -1, NULL::BOOLEAN),
+    ('ADVANCED', 'ecommerce_access', NULL::INTEGER, TRUE)
+) AS v(plan_name, feature_key, value_int, value_bool)
+  ON v.plan_name = p.name
+ON CONFLICT (plan_id, feature_key) DO UPDATE
+SET
+  value_int = EXCLUDED.value_int,
+  value_bool = EXCLUDED.value_bool;
     `);
 
+    await ensureResponsibilitySchema(client);
 
-//     INSERT INTO plan_features (plan_id, feature_key, value_int, value_bool)
-// SELECT p.id, v.feature_key, v.value_int, v.value_bool
-// FROM plans p
-// JOIN (
-//   VALUES
-//     -- 1) INSTORE Plan
-//     ('INSTORE', 'max_users', 5, NULL::BOOLEAN),
-//     ('INSTORE', 'max_locations', 1, NULL::BOOLEAN),
-//     ('INSTORE', 'max_warehouses', 1, NULL::BOOLEAN),
-//     ('INSTORE', 'ecommerce_access', NULL::INTEGER, FALSE),
 
-//     -- 3) BASIC Plan (Includes ecommerce)
-//     ('BASIC', 'max_warehouses', 1, NULL::BOOLEAN),
-//     ('BASIC', 'ecommerce_access', NULL::INTEGER, TRUE),
 
-//     -- 4) GROWTH Plan
-//     ('GROWTH', 'max_users', 10, NULL::BOOLEAN),
-
-//     -- 5) ENTERPRISE Plan (-1 typically denotes 'Unlimited')
-//     ('ENTERPRISE', 'max_users', -1, NULL::BOOLEAN),
-//     ('ENTERPRISE', 'max_warehouses', -1, NULL::BOOLEAN),
-//     ('ENTERPRISE', 'ecommerce_access', NULL::INTEGER, TRUE),
-
-//     -- 6) ADVANCED Plan (Customizable / Unlimited / Flexible)
-//     ('ADVANCED', 'max_users', -1, NULL::BOOLEAN),
-//     ('ADVANCED', 'max_locations', -1, NULL::BOOLEAN),
-//     ('ADVANCED', 'max_warehouses', -1, NULL::BOOLEAN),
-//     ('ADVANCED', 'ecommerce_access', NULL::INTEGER, TRUE)
-// ) AS v(plan_name, feature_key, value_int, value_bool)
-//   ON v.plan_name = p.name
-// ON CONFLICT (plan_id, feature_key) DO UPDATE
-// SET
-//   value_int = EXCLUDED.value_int,
-//   value_bool = EXCLUDED.value_bool;
     await client.query("COMMIT");
     console.log("DB initialized successfully");
     global.dbInitialized = true;

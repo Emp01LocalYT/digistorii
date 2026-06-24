@@ -130,7 +130,9 @@ const SalesLineItemRow = memo(function SalesLineItemRow({
           <option value="">--Select--</option>
           {taxes.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.tax_name || t.name || t.taxName || t.gst_name || ""}
+              {`${t.tax_name || t.name || t.taxName || t.gst_name || "Tax"}${
+                t.total_percentage != null ? ` (${Number(t.total_percentage).toFixed(2)}%)` : ""
+              }`}
             </option>
           ))}
         </select>

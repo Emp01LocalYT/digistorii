@@ -4,10 +4,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeftIcon, ChevronRightIcon,  EyeIcon,
+import {
+  ChevronLeftIcon, ChevronRightIcon, EyeIcon,
   MagnifyingGlassIcon,
   PencilSquareIcon,
-ArchiveBoxArrowDownIcon  } from "@heroicons/react/24/outline";
+  ArchiveBoxArrowDownIcon
+} from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
@@ -53,6 +55,60 @@ type MappingTemplate = {
   };
 };
 
+const PRODUCT_IMPORT_FIELDS = [
+  "name",
+  "description",
+  "category",
+  "material",
+  "uom",
+  "hsn_code",
+  "weight",
+  "length",
+  "width",
+  "height",
+  "color",
+  "size",
+  "fitting",
+  "gender",
+  "parent_sku",
+  "sku",
+  "low_stock_threshold",
+  "backorders_allowed",
+  "barcode",
+] as const;
+
+const REQUIRED_IMPORT_FIELDS = new Set<string>([
+  "name",
+  "description",
+  "hsn_code",
+  "color",
+  "size",
+  "fitting",
+  "gender",
+]);
+
+const IMPORT_FIELD_LABELS: Record<(typeof PRODUCT_IMPORT_FIELDS)[number], string> = {
+  name: "Name",
+  description: "Description",
+  category: "Category",
+  material: "Material",
+  uom: "UOM",
+  hsn_code: "HSN Code",
+  weight: "Weight",
+  length: "Length",
+  width: "Width",
+  height: "Height",
+  color: "Color",
+  size: "Size",
+  fitting: "Fitting",
+  gender: "Gender",
+  parent_sku: "Parent SKU",
+  sku: "SKU",
+  low_stock_threshold: "Low Stock Threshold",
+  backorders_allowed: "Backorders Allowed",
+  barcode: "Barcode",
+};
+
 export default function ProductsPage() {
   const { company } = useTenant();
 
@@ -81,9 +137,9 @@ export default function ProductsPage() {
   const [barcodeValue, setBarcodeValue] = useState("");
   const [barcodeMessage, setBarcodeMessage] = useState("");
   const productTypeLabel: Record<string, string> = {
-  finished_good: "Finished Good",
-  raw_material: "Raw Material",
-  other: "Other",
+    finished_good: "Finished Good",
+    raw_material: "Raw Material",
+    other: "Other",
   };
   const sourceLabel: Record<string, string> = {
     own: "Own",
@@ -204,7 +260,7 @@ export default function ProductsPage() {
     if (!company) return;
     fetchProducts();
     loadImportMeta();
-  }, [company, search, category, source, status,type]);
+  }, [company, search, category, source, status, type]);
 
   async function archiveProduct(productId: number) {
     const ok = window.confirm("Archive this product?");
@@ -239,8 +295,8 @@ export default function ProductsPage() {
       setSelectedSheet(data.sheets?.[0]?.sheetName || "");
       const firstHeaders = data.sheets?.[0]?.headers || [];
       const nextMapping: Record<string, string> = {};
-      ["name","description","category","material","uom","hsn_code","weight","length","width","height","color","size","fitting","gender","parent_sku","sku","low_stock_threshold","backorders_allowed","barcode"].forEach((field) => {
-        const match = firstHeaders.find((header:string) => header.toLowerCase().replace(/[^a-z0-9]/g,"") === field.replace(/[^a-z0-9]/g,""));
+      PRODUCT_IMPORT_FIELDS.forEach((field) => {
+        const match = firstHeaders.find((header: string) => header.toLowerCase().replace(/[^a-z0-9]/g, "") === field.replace(/[^a-z0-9]/g, ""));
         if (match) nextMapping[field] = match;
       });
       setFieldMapping(nextMapping);
@@ -285,7 +341,7 @@ export default function ProductsPage() {
       if (!res.ok) throw new Error(data.message || "Import failed");
       setMessage(
         data.message ||
-          `Uploaded ${data.uploadedRows ?? data.variantCount ?? 0} rows as ${data.productCount ?? 0} products and ${data.variantCount ?? 0} variants.`
+        `Uploaded ${data.uploadedRows ?? data.variantCount ?? 0} rows as ${data.productCount ?? 0} products and ${data.variantCount ?? 0} variants.`
       );
       setImportOpen(false);
       setImportFile(null);
@@ -329,7 +385,17 @@ export default function ProductsPage() {
       return;
     }
     if (data.found && data.product?.id) {
-      window.location.href = `/${company}/inventory/products/add-products?id=${data.product.id}&mode=edit`;
+      const params = new URLSearchParams({
+        id: String(data.product.id),
+        mode: "edit",
+      });
+      if (data.variant?.id) {
+        params.set("variant_id", String(data.variant.id));
+      }
+      if (data.variant?.barcode) {
+        params.set("barcode", String(data.variant.barcode));
+      }
+      window.location.href = `/${company}/inventory/products/add-products?${params.toString()}`;
       return;
     }
     window.location.href = `/${company}/inventory/products/add-products?mode=add&barcode=${encodeURIComponent(input)}`;
@@ -375,12 +441,12 @@ export default function ProductsPage() {
           <p className="text-sm text-gray-500">Manage products and variants for this tenant.</p>
         </div>
         <div className="flex items-center gap-2">
-          
+
           <Link
             href={`/${company}/inventory/products/add-products`}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
-            + Add Product 
+            + Add Product
           </Link>
           <button
             onClick={() => setImportOpen(true)}
@@ -388,12 +454,12 @@ export default function ProductsPage() {
           >
             Bulk Import Excel
           </button>
-          <button
+          {/* <button
             onClick={undoLastImport}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Undo Last Import
-          </button>
+          </button> */}
         </div>
       </div>
 
@@ -449,8 +515,8 @@ export default function ProductsPage() {
                     <td className="px-4 py-3">{item.product_code}</td>
                     <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
                     <td className="px-4 py-3">
-  {productTypeLabel[item.type] ?? item.type}
-</td>
+                      {productTypeLabel[item.type] ?? item.type}
+                    </td>
                     <td className="px-4 py-3">
                       {item.category ? categoryLabelMap.get(item.category) || item.category : "-"}
                     </td>
@@ -463,11 +529,10 @@ export default function ProductsPage() {
                     <td className="px-4 py-3">{item.variants_count || '-'}</td>
                     <td className="px-4 py-3">
                       <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${
-                          item.status === 1
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${item.status === 1
                             ? "bg-green-200 text-black"
                             : "bg-gray-300 text-black"
-                        }`}
+                          }`}
                       >
                         {item.status === 1 ? "Active" : "Archived"}
                       </span>
@@ -476,14 +541,14 @@ export default function ProductsPage() {
                       <div className="flex items-center gap-3">
                         <Link
                           href={`/${company}/inventory/products/add-products?id=${item.id}&mode=view`}
-className="text-indigo-600" title="View Details"    >
- <EyeIcon className="w-5 h-5" />                        </Link>
+                          className="text-indigo-600" title="View Details"    >
+                          <EyeIcon className="w-5 h-5" />                        </Link>
                         <Link
                           href={
                             `/${company}/inventory/products/add-products?id=${item.id}&mode=edit`}
                           className="text-indigo-600" title="Edit Product"
                         >
-                          <PencilSquareIcon className="w-5 h-5"/>
+                          <PencilSquareIcon className="w-5 h-5" />
                         </Link>
                         <button
                           onClick={() => archiveProduct(item.id)}
@@ -570,11 +635,10 @@ className="text-indigo-600" title="View Details"    >
                       type="button"
                       onClick={() => goToPage(page)}
                       aria-current={currentPage === page ? "page" : undefined}
-                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${
-                        currentPage === page
+                      className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${currentPage === page
                           ? "z-10 bg-indigo-600 text-white"
                           : "text-gray-900 hover:bg-gray-50"
-                      }`}
+                        }`}
                     >
                       {page}
                     </button>
@@ -678,10 +742,22 @@ className="text-indigo-600" title="View Details"    >
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-gray-500">
+                    <span className="font-medium text-red-500">*</span> Mandatory fields.
+                    SKU or Parent SKU: at least one is required.
+                  </p>
                   <div className="grid max-h-72 gap-2 overflow-y-auto">
-                    {["name","description","category","material","uom","hsn_code","weight","length","width","height","color","size","fitting","gender","parent_sku","sku","low_stock_threshold","backorders_allowed","barcode"].map((field) => (
+                    {PRODUCT_IMPORT_FIELDS.map((field) => (
                       <label key={field} className="grid grid-cols-2 items-center gap-2 text-sm">
-                        <span>{field}</span>
+                        <span>
+                          {IMPORT_FIELD_LABELS[field]}
+                          {REQUIRED_IMPORT_FIELDS.has(field) ? (
+                            <span className="ml-0.5 font-semibold text-red-500">*</span>
+                          ) : null}
+                          {field === "sku" || field === "parent_sku" ? (
+                            <span className="ml-1 text-xs text-amber-600">(one required)</span>
+                          ) : null}
+                        </span>
                         <select
                           value={fieldMapping[field] || ""}
                           onChange={(e) => setFieldMapping((prev) => ({ ...prev, [field]: e.target.value }))}
@@ -711,7 +787,7 @@ className="text-indigo-600" title="View Details"    >
                     <p>Valid rows: {importPreview?.validRows || 0}</p>
                     <p>Failed rows: {importPreview?.failedRows || 0}</p>
                     <p>Errors: {importPreview?.rowErrors?.length || 0}</p>
-                    {(importPreview?.rowErrors || []).slice(0, 10).map((row:any) => (
+                    {(importPreview?.rowErrors || []).slice(0, 10).map((row: any) => (
                       <p key={row.rowNumber}>Row {row.rowNumber}: {row.errors.join(", ")}</p>
                     ))}
                   </div>

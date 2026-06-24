@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
           *,
           COALESCE(cust_name, name) AS cust_name,
           COALESCE(name, cust_name) AS name,
-          COALESCE(phone, contact_phone1) AS phone
+          COALESCE(phone, phone) AS phone
         FROM "${schema}".customers
         ORDER BY id DESC
         `

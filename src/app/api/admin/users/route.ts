@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/hash";
 import { getTenantSchema } from "@/lib/tenant";
-
-const STAFF_ROLES = new Set(["ADMIN", "MANAGER", "CASHIER", "WAREHOUSE_STAFF"]);
+import {
+  ensureCompanyResponsibilities,
+  getResponsibilitiesForCompany,
+} from "@/lib/userResponsibilities";
 
 type ApiError = {
   status: number;
@@ -44,6 +46,7 @@ export async function GET(req: NextRequest) {
       );
     }
     const companyId = Number(existingCompany.rows[0].id);
+    await ensureCompanyResponsibilities(client, companyId);
 
     const result = await client.query(
       `SELECT
@@ -53,7 +56,8 @@ export async function GET(req: NextRequest) {
          u.phone,
          u.is_active,
          u.created_at,
-         COALESCE(cum.role, u.role, 'CASHIER') AS role,
+         COALESCE(cum.responsibility_id, u.responsibility_id) AS responsibility_id,
+         r.responsibility_name,
          cum.location_id,
          cum.warehouse_id,
          l.name AS location_name,
@@ -62,12 +66,13 @@ export async function GET(req: NextRequest) {
        LEFT JOIN public.company_user_map cum
          ON cum.user_id = u.id
         AND cum.company_id = u.company_id
+       LEFT JOIN public.user_responsibilities r
+         ON r.id = COALESCE(cum.responsibility_id, u.responsibility_id)
        LEFT JOIN "${schema}".locations l
          ON l.id = cum.location_id
        LEFT JOIN "${schema}".warehouses w
          ON w.id = cum.warehouse_id
        WHERE u.company_id = $1
-         AND COALESCE(cum.role, u.role, 'CASHIER') <> 'OWNER'
        ORDER BY u.id DESC`,
       [companyId]
     );
@@ -110,19 +115,21 @@ export async function POST(req: NextRequest) {
       throw { status: 404, message: "Company not found" } as ApiError;
     }
     const companyId = Number(existingCompany.rows[0].id);
+    await ensureCompanyResponsibilities(client, companyId);
+    const responsibilities = await getResponsibilitiesForCompany(client, companyId);
 
     for (let i = 0; i < users.length; i++) {
       const user = users[i];
-      const role = String(user?.role || "").trim().toUpperCase();
+      const responsibilityId = parsePositiveInt(user?.responsibility_id);
       const locationId = parsePositiveInt(user?.location_id);
       const warehouseId = parsePositiveInt(user?.warehouse_id);
 
-      if (!STAFF_ROLES.has(role)) {
+      if (!responsibilityId || !responsibilities.some((entry) => entry.id === responsibilityId)) {
         throw {
           status: 400,
-          field: "role",
+          field: "responsibility_id",
           index: i,
-          message: "Invalid role selected",
+          message: "Invalid responsibility selected",
         } as ApiError;
       }
       if (!locationId) {
@@ -215,7 +222,7 @@ export async function POST(req: NextRequest) {
 
       const hashed = await hashPassword(String(user?.password || ""));
       const userInsert = await client.query(
-        `INSERT INTO public.users (company_id, name, username, email, phone, password_hash, is_active, role)
+        `INSERT INTO public.users (company_id, name, username, email, phone, password_hash, is_active, responsibility_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
          RETURNING id`,
         [
@@ -226,22 +233,22 @@ export async function POST(req: NextRequest) {
           phone,
           hashed,
           Boolean(user?.status),
-          role,
+          responsibilityId,
         ]
       );
 
       const newUserId = Number(userInsert.rows[0]?.id);
       await client.query(
         `INSERT INTO public.company_user_map
-         (user_id, company_id, username, role, location_id, warehouse_id, is_active)
+         (user_id, company_id, username, responsibility_id, location_id, warehouse_id, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, TRUE)
          ON CONFLICT (user_id, company_id) DO UPDATE
          SET username = EXCLUDED.username,
-             role = EXCLUDED.role,
+             responsibility_id = EXCLUDED.responsibility_id,
              location_id = EXCLUDED.location_id,
              warehouse_id = EXCLUDED.warehouse_id,
              is_active = TRUE`,
-        [newUserId, companyId, username, role, locationId, warehouseId]
+        [newUserId, companyId, username, responsibilityId, locationId, warehouseId]
       );
     }
 

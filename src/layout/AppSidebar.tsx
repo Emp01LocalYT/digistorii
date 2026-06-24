@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSidebar } from "../context/SidebarContext";
 import { useParams, usePathname } from "next/navigation";
+import { useUser } from "@/context/CurrentUserContext";
 import {
   BoxCubeIcon,
   CalenderIcon,
@@ -17,7 +18,7 @@ import {
   PlugInIcon,
   TableIcon,
   UserCircleIcon,
-  PaperPlaneIcon,IconSettings,
+  PaperPlaneIcon, IconSettings, Cash
 } from "../icons/index";
 
 import {
@@ -26,12 +27,15 @@ import {
   Cog6ToothIcon,
   BanknotesIcon,
 } from "@heroicons/react/24/outline";
+import { canAccess } from "@/lib/accessControl";
+import { ResponsibilityAccessKey } from "@/lib/userResponsibilities";
 
 
 type NavItem = {
   name: string;
   icon: React.ReactNode;
   path?: string;
+  permission?: ResponsibilityAccessKey;
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
@@ -39,55 +43,70 @@ const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
+    permission: "dashboard_access",
     // subItems: [{ name: "Ecommerce", path: "/", pro: false }],
     path: "/", // go straight to dashboard
   },
-  
-  {   name: "Purchase",
-      icon: <FileIcon />,
-      subItems: [
-       { name: "Supplier", path: "/purchase/supplier", pro: false },
-       {name: "Purchase Order", path: "/transactions/purchase", pro: false },
-       {name: "Purchase Order Approval", path: "/transactions/purchase-approval", pro: false },
-       {name: "GRN", path: "/transactions/grn", pro: false },
-      ],
+
+  {
+    name: "Purchase",
+    icon: <FileIcon />,
+    permission: "purchase_access",
+    subItems: [
+      { name: "Supplier", path: "/purchase/supplier", pro: false },
+      { name: "Purchase Order", path: "/transactions/purchase", pro: false },
+      { name: "Purchase Order Approval", path: "/transactions/purchase-approval", pro: false },
+      { name: "GRN", path: "/transactions/grn", pro: false },
+    ],
   },
   {
-      name: "Inventory",
-      icon: <BoxCubeIcon />,
-      subItems: [
+    name: "Inventory",
+    icon: <BoxCubeIcon />,
+    permission: "inventory_access",
+    subItems: [
       { name: "Products", path: "/inventory/products", pro: false },
       // { name: "Image Master", path: "/inventory/image-master", pro: false },
       { name: "Image Master", path: "/inventory/image-master-v2", pro: false },
       // { name: "Add Product", path: "/inventory/product/add-products", pro: false },
-      { name: "Opening Stock" , path :"/inventory/opening-stock" ,pro: false},
-     
+      { name: "Opening Stock", path: "/inventory/opening-stock", pro: false },
+
     ],
   },
-  {   name: "Sales",
-      icon: <PaperPlaneIcon />,
-      subItems: [
-         {name: "Customer", path: "/sales/customer", pro: false },
-         { name: "Pricing", path: "/inventory/pricing", pro: false },
-         { name: "Discount Schemes", path: "/inventory/discounts", pro: false },
-         {name: "Sales Billing" ,path:"/transactions/sales",pro:false}
-      ],
+  {
+    name: "Sales",
+    icon: <PaperPlaneIcon />,
+    permission: "sales_access",
+    subItems: [
+      { name: "Customer", path: "/sales/customer", pro: false },
+      { name: "Pricing", path: "/inventory/pricing", pro: false },
+      { name: "Discount Schemes", path: "/inventory/discounts", pro: false },
+    ],
+  }, {
+    name: "Sales Billing",
+    icon: <Cash />,
+    permission: "sales_billing_access",
+    // subItems: [
+    //    {name: "Sales Billing" ,path:"/transactions/sales",pro:false}
+    // ],
+    path: "/transactions/sales",
   },
   {
-      name: "Reports",
-      icon: <TableIcon />,
-      subItems: [
-        { name: "Stock Ledger", path: "/reports/stock-ledger-report", pro: false },
-        { name: "PO Summary Report", path: "/reports/po-summary-report", pro: false },
-        { name: "PO Items Report", path: "/reports/po-items-report", pro: false },
-      ],
+    name: "Reports",
+    icon: <TableIcon />,
+    permission: "reports_access",
+    subItems: [
+      { name: "Stock Ledger", path: "/reports/stock-ledger-report", pro: false },
+      { name: "PO Summary Report", path: "/reports/po-summary-report", pro: false },
+      { name: "PO Items Report", path: "/reports/po-items-report", pro: false },
+    ],
   },
   {
-      name: "Settings",
-      icon: <IconSettings />,
-      subItems: [
-      {name: "Categories" , path:"/inventory/categories" ,pro:false},
-      {name: "Materials" , path : "/inventory/materials" , pro: false},
+    name: "Settings",
+    icon: <IconSettings />,
+    permission: "settings_access",
+    subItems: [
+      { name: "Categories", path: "/inventory/categories", pro: false },
+      { name: "Materials", path: "/inventory/materials", pro: false },
       { name: "UOM", path: "/inventory/uom", pro: false },
       { name: "Tax", path: "/inventory/tax", pro: false },
       { name: "Payment Modes", path: "/inventory/payment-mode", pro: false },
@@ -98,9 +117,10 @@ const navItems: NavItem[] = [
       { name: "Warehouse", path: "/inventory/warehouse", pro: false },
       { name: "Locator", path: "/inventory/locator", pro: false },
       { name: "Despatch Terms", path: "/inventory/despatch-terms", pro: false },
-      { name: "Company Settings", path: "/inventory/company-settings", pro: false },
+      // { name: "Company Settings", path: "/inventory/company-settings", pro: false },
       { name: "User Settings", path: "/inventory/user-settings", pro: false },
-      ],
+      { name: "User Responsibilities", path: "/settings/user-responsibilities", pro: false },
+    ],
   }
   // {
   //   name: "Transactions",
@@ -109,13 +129,14 @@ const navItems: NavItem[] = [
   //     { name: "Purchase", path: "/transactions/purchase", pro: false },
   //   ],
   // },
-  
+
 ];
 
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
-  
+  const { user } = useUser();
+
   // Replace the pathname.split logic with useParams
   const params = useParams();
   const company = params.company as string || "";
@@ -132,11 +153,11 @@ const AppSidebar: React.FC = () => {
 
   // const isActive = useCallback((path: string) => path === pathname, [pathname]);
   const isActive = useCallback((path: string) => {
-  const fullPath = `/${company}${path}`;
-  // Check if the current pathname is exactly the full path 
-  // or if it's the root dashboard
-  return pathname === fullPath || (path === "/" && pathname === `/${company}`);
-}, [pathname, company]);
+    const fullPath = `/${company}${path}`;
+    // Check if the current pathname is exactly the full path 
+    // or if it's the root dashboard
+    return pathname === fullPath || (path === "/" && pathname === `/${company}`);
+  }, [pathname, company]);
 
   const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
     setOpenSubmenu((prevOpenSubmenu) => {
@@ -184,6 +205,10 @@ const AppSidebar: React.FC = () => {
     }
   }, [openSubmenu]);
 
+  const allowedNavItems = navItems.filter((item) =>
+    item.permission ? canAccess(user?.permissions, item.permission) : true
+  );
+
   const renderMenuItems = (navItems: NavItem[], menuType: "main" | "others") => (
     <ul className="flex flex-col gap-4">
       {navItems.map((nav, index) => (
@@ -192,20 +217,17 @@ const AppSidebar: React.FC = () => {
             <>
               <button
                 onClick={() => handleSubmenuToggle(index, menuType)}
-                className={`menu-item group ${
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
+                className={`menu-item group ${openSubmenu?.type === menuType && openSubmenu?.index === index
                     ? "menu-item-active"
                     : "menu-item-inactive"
-                } cursor-pointer ${
-                  !isExpanded && !isHovered ? "lg:justify-center" : "lg:justify-start"
-                }`}
+                  } cursor-pointer ${!isExpanded && !isHovered ? "lg:justify-center" : "lg:justify-start"
+                  }`}
               >
                 <span
-                  className={`${
-                    openSubmenu?.type === menuType && openSubmenu?.index === index
+                  className={`${openSubmenu?.type === menuType && openSubmenu?.index === index
                       ? "menu-item-icon-active"
                       : "menu-item-icon-inactive"
-                  }`}
+                    }`}
                 >
                   {nav.icon}
                 </span>
@@ -214,12 +236,11 @@ const AppSidebar: React.FC = () => {
                 )}
                 {(isExpanded || isHovered || isMobileOpen) && (
                   <ChevronDownIcon
-                    className={`ml-auto w-5 h-5 transition-transform duration-200 ${
-                      openSubmenu?.type === menuType &&
-                      openSubmenu?.index === index
+                    className={`ml-auto w-5 h-5 transition-transform duration-200 ${openSubmenu?.type === menuType &&
+                        openSubmenu?.index === index
                         ? "rotate-180 text-brand-500"
                         : ""
-                    }`}
+                      }`}
                   />
                 )}
               </button>
@@ -242,32 +263,29 @@ const AppSidebar: React.FC = () => {
                     <li key={subItem.name}>
                       <Link
                         href={`/${company}${subItem.path}`}
-                        className={`menu-dropdown-item ${
-                          isActive(subItem.path)
+                        className={`menu-dropdown-item ${isActive(subItem.path)
                             ? "menu-dropdown-item-active"
                             : "menu-dropdown-item-inactive"
-                        }`}
+                          }`}
                       >
                         {subItem.name}
                         <span className="flex items-center gap-1 ml-auto">
                           {subItem.new && (
                             <span
-                              className={`ml-auto ${
-                                isActive(subItem.path)
+                              className={`ml-auto ${isActive(subItem.path)
                                   ? "menu-dropdown-badge-active"
                                   : "menu-dropdown-badge-inactive"
-                              } menu-dropdown-badge`}
+                                } menu-dropdown-badge`}
                             >
                               new
                             </span>
                           )}
                           {subItem.pro && (
                             <span
-                              className={`ml-auto ${
-                                isActive(subItem.path)
+                              className={`ml-auto ${isActive(subItem.path)
                                   ? "menu-dropdown-badge-active"
                                   : "menu-dropdown-badge-inactive"
-                              } menu-dropdown-badge`}
+                                } menu-dropdown-badge`}
                             >
                               pro
                             </span>
@@ -283,16 +301,14 @@ const AppSidebar: React.FC = () => {
             nav.path && (
               <Link
                 href={`/${company}${nav.path}`}
-                className={`menu-item group ${
-                  isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
-                }`}
+                className={`menu-item group ${isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
+                  }`}
               >
                 <span
-                  className={`${
-                    isActive(nav.path)
+                  className={`${isActive(nav.path)
                       ? "menu-item-icon-active"
                       : "menu-item-icon-inactive"
-                  }`}
+                    }`}
                 >
                   {nav.icon}
                 </span>
@@ -310,10 +326,9 @@ const AppSidebar: React.FC = () => {
   return (
     <aside
       className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
-        ${
-          isExpanded || isMobileOpen
-            ? "w-[290px]"
-            : isHovered
+        ${isExpanded || isMobileOpen
+          ? "w-[290px]"
+          : isHovered
             ? "w-[290px]"
             : "w-[90px]"
         }
@@ -343,35 +358,34 @@ const AppSidebar: React.FC = () => {
         className="py-8 flex items-center gap-3">
         <Link href={`/${company || ""}/dashboard`} className="flex items-center gap-3">
           {/* Icon */}
-    <div className="bg-blue-600 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold text-lg">
-      {company.charAt(0).toUpperCase()}
-    </div>
+          <div className="bg-blue-600 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold text-lg">
+            {company.charAt(0).toUpperCase()}
+          </div>
 
-    {/* Company Name */}
-    {(isExpanded || isHovered || isMobileOpen) && (
-      <span className="text-lg font-semibold text-gray-800 dark:text-white">
-        {company.charAt(0).toUpperCase() + company.slice(1)}
-      </span>
-    )}
+          {/* Company Name */}
+          {(isExpanded || isHovered || isMobileOpen) && (
+            <span className="text-lg font-semibold text-gray-800 dark:text-white">
+              {company.charAt(0).toUpperCase() + company.slice(1)}
+            </span>
+          )}
         </Link>
       </div>
 
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
-            <div>{renderMenuItems(navItems, "main")}</div>
+            <div>{renderMenuItems(allowedNavItems, "main")}</div>
 
             <div>
               <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
+                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${!isExpanded && !isHovered
                     ? "lg:justify-center"
                     : "justify-start"
-                }`}
+                  }`}
               >
-                
+
               </h2>
-              
+
             </div>
           </div>
         </nav>

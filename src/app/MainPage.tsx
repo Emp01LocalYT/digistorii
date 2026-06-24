@@ -1,73 +1,64 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
 import AboutService from "../components/landing/AboutService";
-import AdminPlatform from "../components/landing/AdminPlatform";
-import GetService from "../components/GetService";
 
 export default function LandingPage() {
-  const [activeTab, setActiveTab] = useState<"about" | "get" | "admin">("about");
+  const router = useRouter();
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get("tab") === "get" || searchParams.get("plan_id")) {
+      const paramsStr = searchParams.toString();
+      router.replace(`/get-service${paramsStr ? `?${paramsStr}` : ""}`);
+    }
+  }, [router]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header/Nav */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-md">
-  <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-    
-    {/* Logo Section */}
-    <div className="flex items-center gap-3">
-      <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
-        <span className="text-white font-bold text-2xl">D</span>
-      </div>
-      <div>
-        <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
-          DigiStorii
-        </h1>
-        <p className="text-sm text-gray-500 -mt-1">
-          Smart E-Commerce  SaaS
-        </p>
-      </div>
-    </div>
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
 
-    {/* Navigation Buttons */}
-    <div className="flex gap-3 bg-gray-50 p-1 rounded-xl shadow-inner">
-      {/** About Tab */}
-      <button
-        onClick={() => setActiveTab("about")}
-        className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 ${
-          activeTab === "about"
-            ? "bg-gradient-to-tr from-blue-500 to-indigo-500 text-white shadow-lg"
-            : "text-gray-700 hover:text-blue-600 hover:bg-gray-100"
-        }`}
-      >
-        E-Commerce  Hub
-      </button>
+          {/* Logo Section */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+              <span className="text-white font-bold text-2xl">D</span>
+            </div>
+            <div>
+              <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">
+                DigiStorii
+              </h1>
+              <p className="text-sm text-gray-500 -mt-1">
+                Smart E-Commerce  SaaS
+              </p>
+            </div>
+          </div>
 
-      {/** Create Company Tab */}
-      <button
-        onClick={() => setActiveTab("get")}
-        className={`px-6 py-2 rounded-lg font-semibold transition-all duration-300 ${
-          activeTab === "get"
-            ? "bg-gradient-to-tr from-blue-500 to-indigo-500 text-white shadow-lg"
-            : "text-gray-700 hover:text-blue-600 hover:bg-gray-100"
-        }`}
-      >
-        Get Your Website 
-      </button>
-
-      
-    </div>
-  </div>
-</nav>
+          {/* Navigation Buttons 
+          <div className="flex gap-3 bg-gray-50 p-1 rounded-xl shadow-inner">
+           
+            <Link
+              href="/"
+              className="px-6 py-2 rounded-lg font-semibold transition-all duration-300 bg-gradient-to-tr from-blue-500 to-indigo-500 text-white shadow-lg"
+            >
+              E-Commerce  Hub
+            </Link>
+            <Link
+              href="/get-service"
+              className="px-6 py-2 rounded-lg font-semibold transition-all duration-300 text-gray-700 hover:text-blue-600 hover:bg-gray-100"
+            >
+              Get Your Website 
+            </Link>
+          </div>*/}
+        </div>
+      </nav>
 
       {/* Tab Content */}
       <main>
-        {/* {activeTab === "about" && <AboutService />} */}
-        {activeTab === "about" && (
-    <AboutService setActiveTab={setActiveTab} />
-  )}
-        {activeTab === "get" && <GetService />}
-        {activeTab === "admin" && <AdminPlatform />}
+        <AboutService />
       </main>
 
       {/* Footer */}
@@ -79,6 +70,5 @@ export default function LandingPage() {
     </div>
   );
 }
-
 
 

@@ -1,4 +1,5 @@
 import { PoolClient } from "pg";
+import { ensureLocationTableShape } from "./locationSchema";
 
 export async function createMasterTables(client: PoolClient, schema: string) {
   /* =========================================================
@@ -10,31 +11,38 @@ export async function createMasterTables(client: PoolClient, schema: string) {
       name VARCHAR(200) NOT NULL,
       type VARCHAR(20) NOT NULL CHECK (type IN ('global', 'local')),
       inactive_date DATE,
-      same_as_ship_to BOOLEAN DEFAULT FALSE,
+      same_as_registered BOOLEAN DEFAULT FALSE,
+      same_as_bill_to BOOLEAN DEFAULT FALSE,
       description TEXT,
-      number VARCHAR(50),
-      building VARCHAR(120),
-      street VARCHAR(120),
-      locality VARCHAR(120),
-      country VARCHAR(120),
-      state VARCHAR(120),
-      city VARCHAR(120),
-      pincode VARCHAR(20),
+      registered_address_line_1 TEXT,
+      registered_address_line_2 TEXT,
+      registered_country VARCHAR(120),
+      registered_state VARCHAR(120),
+      registered_city VARCHAR(120),
+      registered_pincode VARCHAR(20),
+      bill_address_line_1 TEXT,
+      bill_address_line_2 TEXT,
+      bill_country VARCHAR(120),
+      bill_state VARCHAR(120),
+      bill_city VARCHAR(120),
+      bill_pincode VARCHAR(20),
+      ship_address_line_1 TEXT,
+      ship_address_line_2 TEXT,
+      ship_country VARCHAR(120),
+      ship_state VARCHAR(120),
+      ship_city VARCHAR(120),
+      ship_pincode VARCHAR(20),
       landline VARCHAR(30),
       mobile VARCHAR(30),
       fax VARCHAR(30),
       email VARCHAR(150),
       contact_person VARCHAR(150),
-      ship_to_location VARCHAR(150),
-      ship_to_site BOOLEAN DEFAULT FALSE,
-      receiving_site BOOLEAN DEFAULT FALSE,
-      office_site BOOLEAN DEFAULT FALSE,
-      bill_to_site BOOLEAN DEFAULT FALSE,
-      internal_site BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
+  await ensureLocationTableShape(client, schema);
 
   /* =========================================================
      WAREHOUSE MASTER

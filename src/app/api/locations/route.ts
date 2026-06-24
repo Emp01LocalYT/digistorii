@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { pool } from "@/lib/db";
 import { getTenantSchema } from "@/lib/tenant";
+import { ensureLocationTableShape } from "@/lib/locationSchema";
 
 const schemaValidator = /^[a-z][a-z0-9_]{0,62}$/;
 const typeValues = ["global", "local"] as const;
@@ -10,27 +11,32 @@ const locationSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   type: z.enum(typeValues),
   inactive_date: z.string().optional().nullable(),
-  same_as_ship_to: z.boolean().optional(),
+  same_as_registered: z.boolean().optional(),
+  same_as_bill_to: z.boolean().optional(),
   description: z.string().optional().nullable(),
-  number: z.string().optional().nullable(),
-  building: z.string().optional().nullable(),
-  street: z.string().optional().nullable(),
-  locality: z.string().optional().nullable(),
-  country: z.string().optional().nullable(),
-  state: z.string().optional().nullable(),
-  city: z.string().optional().nullable(),
-  pincode: z.string().optional().nullable(),
+  registered_address_line_1: z.string().optional().nullable(),
+  registered_address_line_2: z.string().optional().nullable(),
+  registered_country: z.string().optional().nullable(),
+  registered_state: z.string().optional().nullable(),
+  registered_city: z.string().optional().nullable(),
+  registered_pincode: z.string().optional().nullable(),
+  bill_address_line_1: z.string().optional().nullable(),
+  bill_address_line_2: z.string().optional().nullable(),
+  bill_country: z.string().optional().nullable(),
+  bill_state: z.string().optional().nullable(),
+  bill_city: z.string().optional().nullable(),
+  bill_pincode: z.string().optional().nullable(),
+  ship_address_line_1: z.string().optional().nullable(),
+  ship_address_line_2: z.string().optional().nullable(),
+  ship_country: z.string().optional().nullable(),
+  ship_state: z.string().optional().nullable(),
+  ship_city: z.string().optional().nullable(),
+  ship_pincode: z.string().optional().nullable(),
   landline: z.string().optional().nullable(),
   mobile: z.string().optional().nullable(),
   fax: z.string().optional().nullable(),
   email: z.string().optional().nullable(),
   contact_person: z.string().optional().nullable(),
-  ship_to_location: z.string().optional().nullable(),
-  ship_to_site: z.boolean().optional(),
-  receiving_site: z.boolean().optional(),
-  office_site: z.boolean().optional(),
-  bill_to_site: z.boolean().optional(),
-  internal_site: z.boolean().optional(),
 });
 
 type LocationInput = z.infer<typeof locationSchema>;
@@ -60,27 +66,32 @@ function normalizePayload(data: LocationInput) {
     name: data.name.trim(),
     type: data.type,
     inactive_date: asNull(data.inactive_date),
-    same_as_ship_to: asBool(data.same_as_ship_to),
+    same_as_registered: asBool(data.same_as_registered),
+    same_as_bill_to: asBool(data.same_as_bill_to),
     description: asNull(data.description),
-    number: asNull(data.number),
-    building: asNull(data.building),
-    street: asNull(data.street),
-    locality: asNull(data.locality),
-    country: asNull(data.country),
-    state: asNull(data.state),
-    city: asNull(data.city),
-    pincode: asNull(data.pincode),
+    registered_address_line_1: asNull(data.registered_address_line_1),
+    registered_address_line_2: asNull(data.registered_address_line_2),
+    registered_country: asNull(data.registered_country),
+    registered_state: asNull(data.registered_state),
+    registered_city: asNull(data.registered_city),
+    registered_pincode: asNull(data.registered_pincode),
+    bill_address_line_1: asNull(data.bill_address_line_1),
+    bill_address_line_2: asNull(data.bill_address_line_2),
+    bill_country: asNull(data.bill_country),
+    bill_state: asNull(data.bill_state),
+    bill_city: asNull(data.bill_city),
+    bill_pincode: asNull(data.bill_pincode),
+    ship_address_line_1: asNull(data.ship_address_line_1),
+    ship_address_line_2: asNull(data.ship_address_line_2),
+    ship_country: asNull(data.ship_country),
+    ship_state: asNull(data.ship_state),
+    ship_city: asNull(data.ship_city),
+    ship_pincode: asNull(data.ship_pincode),
     landline: asNull(data.landline),
     mobile: asNull(data.mobile),
     fax: asNull(data.fax),
     email,
     contact_person: asNull(data.contact_person),
-    ship_to_location: asNull(data.ship_to_location),
-    ship_to_site: asBool(data.ship_to_site),
-    receiving_site: asBool(data.receiving_site),
-    office_site: asBool(data.office_site),
-    bill_to_site: asBool(data.bill_to_site),
-    internal_site: asBool(data.internal_site),
   };
 }
 
@@ -118,13 +129,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
+    await ensureLocationTableShape(client, schema);
+
     const result = await client.query(
       `SELECT
-        id, name, type, inactive_date, same_as_ship_to, description,
-        number, building, street, locality, country, state, city, pincode,
+        id, name, type, inactive_date, same_as_registered, same_as_bill_to, description,
+        registered_address_line_1, registered_address_line_2, registered_country, registered_state, registered_city, registered_pincode,
+        bill_address_line_1, bill_address_line_2, bill_country, bill_state, bill_city, bill_pincode,
+        ship_address_line_1, ship_address_line_2, ship_country, ship_state, ship_city, ship_pincode,
         landline, mobile, fax, email,
-        contact_person, ship_to_location,
-        ship_to_site, receiving_site, office_site, bill_to_site, internal_site,
+        contact_person,
         created_at, updated_at
        FROM "${schema}".locations
        ORDER BY id DESC`
@@ -146,6 +160,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
+    await ensureLocationTableShape(client, schema);
+
     const body = await req.json();
     const parsed = locationSchema.parse(body);
     const payload = normalizePayload(parsed);
@@ -159,7 +175,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `Cannot create more than ${maxLocations} locations for your plan`,
+          error: `Cannot create more than ${maxLocations} locations for subscription plan`,
         },
         { status: 400 }
       );
@@ -168,52 +184,60 @@ export async function POST(req: NextRequest) {
     const result = await client.query(
       `INSERT INTO "${schema}".locations
        (
-        name, type, inactive_date, same_as_ship_to, description,
-        number, building, street, locality, country, state, city, pincode,
+        name, type, inactive_date, same_as_registered, same_as_bill_to, description,
+        registered_address_line_1, registered_address_line_2, registered_country, registered_state, registered_city, registered_pincode,
+        bill_address_line_1, bill_address_line_2, bill_country, bill_state, bill_city, bill_pincode,
+        ship_address_line_1, ship_address_line_2, ship_country, ship_state, ship_city, ship_pincode,
         landline, mobile, fax, email,
-        contact_person, ship_to_location,
-        ship_to_site, receiving_site, office_site, bill_to_site, internal_site,
+        contact_person,
         created_at, updated_at
        )
        VALUES (
-        $1,$2,$3,$4,$5,
-        $6,$7,$8,$9,$10,$11,$12,$13,
-        $14,$15,$16,$17,
-        $18,$19,
-        $20,$21,$22,$23,$24,
+        $1,$2,$3,$4,$5,$6,
+        $7,$8,$9,$10,$11,$12,
+        $13,$14,$15,$16,$17,$18,
+        $19,$20,$21,$22,$23,$24,
+        $25,$26,$27,$28,
+        $29,
         NOW(), NOW()
        )
-       RETURNING id, name, type, inactive_date, same_as_ship_to, description,
-        number, building, street, locality, country, state, city, pincode,
+       RETURNING id, name, type, inactive_date, same_as_registered, same_as_bill_to, description,
+        registered_address_line_1, registered_address_line_2, registered_country, registered_state, registered_city, registered_pincode,
+        bill_address_line_1, bill_address_line_2, bill_country, bill_state, bill_city, bill_pincode,
+        ship_address_line_1, ship_address_line_2, ship_country, ship_state, ship_city, ship_pincode,
         landline, mobile, fax, email,
-        contact_person, ship_to_location,
-        ship_to_site, receiving_site, office_site, bill_to_site, internal_site,
+        contact_person,
         created_at, updated_at`,
       [
         payload.name,
         payload.type,
         payload.inactive_date,
-        payload.same_as_ship_to,
+        payload.same_as_registered,
+        payload.same_as_bill_to,
         payload.description,
-        payload.number,
-        payload.building,
-        payload.street,
-        payload.locality,
-        payload.country,
-        payload.state,
-        payload.city,
-        payload.pincode,
+        payload.registered_address_line_1,
+        payload.registered_address_line_2,
+        payload.registered_country,
+        payload.registered_state,
+        payload.registered_city,
+        payload.registered_pincode,
+        payload.bill_address_line_1,
+        payload.bill_address_line_2,
+        payload.bill_country,
+        payload.bill_state,
+        payload.bill_city,
+        payload.bill_pincode,
+        payload.ship_address_line_1,
+        payload.ship_address_line_2,
+        payload.ship_country,
+        payload.ship_state,
+        payload.ship_city,
+        payload.ship_pincode,
         payload.landline,
         payload.mobile,
         payload.fax,
         payload.email,
         payload.contact_person,
-        payload.ship_to_location,
-        payload.ship_to_site,
-        payload.receiving_site,
-        payload.office_site,
-        payload.bill_to_site,
-        payload.internal_site,
       ]
     );
 

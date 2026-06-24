@@ -82,7 +82,7 @@ async function createVariantForNewProduct(
       throw new Error(`Product code "${providedProductCode}" already exists`);
     }
   } else {
-    productCode = await getNextProductCodeByType(schema, type);
+    productCode = await getNextProductCodeByType(schema, type, client);
   }
 
   const productRes = await client.query(
@@ -360,9 +360,11 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const client = await pool.connect();
   let failedItem: any = null;
+  let body: any = null;
+  let createdProductRefs: Array<{ product_id?: number; variant_id?: number }> = [];
   try {
     const { company, schema } = await getTenantSchema(req);
-    const body = await req.json();
+    body = await req.json();
     const { header, details } = body;
     console.log("RECEIVED PO PAYLOAD", {
       header: { po_type: header?.po_type, purchase_no: header?.purchase_no, supplier_id: header?.supplier_id },
@@ -389,6 +391,23 @@ if (supplierRes.rows[0]?.purchase_hold) {
     { status: 400 }
   );
 }
+
+    createdProductRefs = Array.isArray(body?.createdProducts) ? body.createdProducts : [];
+    const cleanupCreatedProducts = async (refs: Array<{ product_id?: number; variant_id?: number }>) => {
+      const productIds = refs
+        .map((item) => Number(item?.product_id))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      const variantIds = refs
+        .map((item) => Number(item?.variant_id))
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+      if (variantIds.length) {
+        await client.query(`DELETE FROM "${schema}".product_variants WHERE id = ANY($1::int[])`, [variantIds]);
+      }
+      if (productIds.length) {
+        await client.query(`DELETE FROM "${schema}".products WHERE id = ANY($1::int[])`, [productIds]);
+      }
+    };
  
     if (!header || !details?.length) {
       return NextResponse.json(
@@ -413,6 +432,19 @@ if (supplierRes.rows[0]?.purchase_hold) {
  
     const toNumber = (value: any) => Number(value || 0);
     const round2 = (value: number) => Number(value.toFixed(2));
+    const existingProductIds = new Set<number>();
+    for (const detail of details) {
+      const productId = Number(detail?.product_id);
+      if (!Number.isFinite(productId) || productId <= 0) continue;
+      const productRes = await client.query(
+        `SELECT id FROM "${schema}".product_variants WHERE id = $1 LIMIT 1`,
+        [productId]
+      );
+      if (!productRes.rows.length) {
+        throw new Error(`Product variant ID ${productId} does not exist`);
+      }
+      existingProductIds.add(productId);
+    }
     const subtotal = details.reduce(
       (sum: number, d: any) => sum + toNumber(d.qty) * toNumber(d.rate),
       0
@@ -582,6 +614,15 @@ if (supplierRes.rows[0]?.purchase_hold) {
 
   } catch (err: any) {
     await client.query("ROLLBACK");
+    try {
+      if (createdProductRefs.length) {
+        await client.query("SAVEPOINT purchase_cleanup");
+        await cleanupCreatedProducts(createdProductRefs);
+        await client.query("RELEASE purchase_cleanup");
+      }
+    } catch (cleanupErr: any) {
+      console.error("Cleanup of created products failed:", cleanupErr);
+    }
     console.error("Purchase Save Failed, rolling back:", {
       code: err?.code,
       message: err?.message,

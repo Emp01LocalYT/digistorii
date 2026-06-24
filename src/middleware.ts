@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canAccess, getFirstAccessiblePath, getRequiredPermissionForPath } from "./lib/accessControl";
  
 export function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
@@ -10,6 +11,7 @@ export function middleware(req: NextRequest) {
         pathname.startsWith("/_next") ||
         pathname.startsWith("/api") ||
         pathname.startsWith("/setup") ||
+        pathname.startsWith("/get-service") ||
         pathname.startsWith("/favicon.ico") ||
         pathname.includes(".")
     ) {
@@ -50,14 +52,41 @@ export function middleware(req: NextRequest) {
         new URL(`/${company}/admin/login`, req.url)
       );
     }
+    try {
+      const adminUser = JSON.parse(admin);
+      const adminPath = pathname.slice(`/${company}`.length);
+      const requiredPermission = getRequiredPermissionForPath(adminPath);
+      if (requiredPermission && !canAccess(adminUser?.permissions, requiredPermission)) {
+        const fallbackPath = getFirstAccessiblePath(adminUser?.permissions);
+        return NextResponse.redirect(
+          new URL(fallbackPath ? `/${company}${fallbackPath}` : `/${company}/admin/login`, req.url)
+        );
+      }
+    } catch {
+      return NextResponse.redirect(new URL(`/${company}/admin/login`, req.url));
+    }
     return NextResponse.next();
   }
- 
+
   //  USER ROUTES
   if (!user) {
     return NextResponse.redirect(
       new URL(`/${company}/login`, req.url)
     );
+  }
+
+  try {
+    const currentUser = JSON.parse(user);
+    const userPath = pathname.slice(`/${company}`.length);
+    const requiredPermission = getRequiredPermissionForPath(userPath);
+    if (requiredPermission && !canAccess(currentUser?.permissions, requiredPermission)) {
+      const fallbackPath = getFirstAccessiblePath(currentUser?.permissions);
+      return NextResponse.redirect(
+        new URL(fallbackPath ? `/${company}${fallbackPath}` : `/${company}/login`, req.url)
+      );
+    }
+  } catch {
+    return NextResponse.redirect(new URL(`/${company}/login`, req.url));
   }
  
  

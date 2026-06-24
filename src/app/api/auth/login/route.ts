@@ -15,27 +15,22 @@ export async function POST(req: NextRequest) {
  
     const result = await loginUser(company, email, password);
     console.log("Login successful for user:", email, "in company:", company);
-    // return NextResponse.json({ success: true, ...result });
-    //  const response = NextResponse.json({
-    //   success: true,
-    //   ...result,
-    // });
     const response = NextResponse.json(result);
  
-    //store user in cookie
-    response.cookies.set("user", JSON.stringify(result.user), {
-      httpOnly: true,
-      path: "/",
-      maxAge: 60 * 60 * 24, // 1 day
-    });
- 
-    // store tenant also
-    response.cookies.set("tenant", company, {
-      httpOnly: true,
-      path: "/",
-      maxAge: 60 * 60 * 24,
-    });
- 
+    if (result.success && result.user) {
+      response.cookies.set("user", JSON.stringify(result.user), {
+        httpOnly: true,
+        path: "/",
+        maxAge: 60 * 60 * 24,
+      });
+
+      response.cookies.set("tenant", company, {
+        httpOnly: true,
+        path: "/",
+        maxAge: 60 * 60 * 24,
+      });
+    }
+
     return response;
  
   } catch (err: any) {

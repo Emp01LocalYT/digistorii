@@ -343,7 +343,14 @@ export default function PurchaseItemsTable({
                       )}
                     </td>
                     <td className="p-2">
-                      <div>{row.product_name}</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{row.product_name}</span>
+                        {(row.is_new === true || Boolean(row.temp_id) || String(row.product_id).startsWith("temp-")) && (
+                          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                            NEW (unsaved)
+                          </span>
+                        )}
+                      </div>
                       {errors[`product_name_${index}`] && (
                         <p className="text-red-500 text-sm mt-1">
                           {errors[`product_name_${index}`]}

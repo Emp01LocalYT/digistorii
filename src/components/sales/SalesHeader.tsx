@@ -22,6 +22,10 @@ type SalesHeaderProps = {
   salesNoError?: string;
   customerError?: string;
   salesDateError?: string;
+  warehouseName?: string;
+  locationName?: string;
+  couponCode?: string;
+  discountMode?: "percent" | "amount";
   selectedCustomerOption?: CustomerSelectOption | null;
   customerOptions?: CustomerSelectOption[];
   customerSearchInput?: string;
@@ -30,6 +34,8 @@ type SalesHeaderProps = {
   onOpenQuickCustomerPopup?: () => void;
   onOpenCustomerModal?: () => void;
   onSalesDateChange: (e: ChangeEvent<HTMLInputElement>) => void;
+  onCouponChange?: (e: ChangeEvent<HTMLInputElement>) => void;
+  onDiscountModeChange?: (e: ChangeEvent<HTMLSelectElement>) => void;
 };
 
 const SalesHeader = memo(function SalesHeader({
@@ -37,6 +43,10 @@ const SalesHeader = memo(function SalesHeader({
   salesNoError,
   customerError,
   salesDateError,
+  warehouseName = "",
+  locationName = "",
+  couponCode = "",
+  discountMode = "percent",
   selectedCustomerOption = null,
   customerOptions = [],
   customerSearchInput = "",
@@ -45,7 +55,12 @@ const SalesHeader = memo(function SalesHeader({
   onOpenQuickCustomerPopup,
   onOpenCustomerModal,
   onSalesDateChange,
+  onCouponChange,
+  onDiscountModeChange,
 }: SalesHeaderProps) {
+  const headerCustomerName = String((header as any).customer_name || "");
+  const headerCustomerPhone = String((header as any).customer_phone || "");
+
   return (
     <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm">
       <div className="grid gap-3 md:grid-cols-12">
@@ -74,8 +89,31 @@ const SalesHeader = memo(function SalesHeader({
           />
           {salesDateError ? <p className="mt-1 text-xs text-red-500">{salesDateError}</p> : null}
         </div>
+                <div className="md:col-span-3">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Warehouse
+          </label>
+          <input
+            value={warehouseName}
+            readOnly
+            className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-slate-700"
+          />
+        </div>
+        <div className="md:col-span-3">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Location
+          </label>
+          <input
+            value={locationName}
+            readOnly
+            className="h-10 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-slate-700"
+          />
+        </div>
 
-        <div className="md:col-span-8">
+
+      </div>
+      <div className="mt-3 grid gap-3 border-t border-gray-100 pt-3 md:grid-cols-12">
+        <div className="md:col-span-6">
           <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             Customer <span className="text-red-500">*</span>
           </label>
@@ -141,15 +179,40 @@ const SalesHeader = memo(function SalesHeader({
               +
             </button>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+          {/* <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
             <span>
-              Name: {selectedCustomerOption?.customerName || header.customer_name || "Not selected"}
+              Name: {selectedCustomerOption?.customerName || headerCustomerName || "Not selected"}
             </span>
             <span>
-              Mobile: {selectedCustomerOption?.phoneNumber || header.customer_phone || "-"}
+              Mobile: {selectedCustomerOption?.phoneNumber || headerCustomerPhone || "-"}
             </span>
-          </div>
+          </div> */}
           {customerError ? <p className="mt-1 text-xs text-red-500">{customerError}</p> : null}
+        </div>
+        <div className="md:col-span-3">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Coupon Code
+          </label>
+          <input
+            type="text"
+            value={couponCode}
+            onChange={onCouponChange}
+            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            placeholder="Coupon"
+          />
+        </div>
+        <div className="md:col-span-3">
+          <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Discount Mode
+          </label>
+          <select
+            value={discountMode}
+            onChange={onDiscountModeChange}
+            className="h-10 w-full rounded-lg border border-gray-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          >
+            <option value="percent">Percentage</option>
+            <option value="amount">Amount</option>
+          </select>
         </div>
       </div>
     </div>

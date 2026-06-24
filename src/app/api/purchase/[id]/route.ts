@@ -82,7 +82,7 @@ async function createVariantForNewProduct(
       throw new Error(`Product code "${providedProductCode}" already exists`);
     }
   } else {
-    productCode = await getNextProductCodeByType(schema, type);
+    productCode = await getNextProductCodeByType(schema, type, client);
   }
 
   const productRes = await client.query(

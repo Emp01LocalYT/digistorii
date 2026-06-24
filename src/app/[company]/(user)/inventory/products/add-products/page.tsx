@@ -115,6 +115,7 @@ type ProductFormProps = {
     payload: { product: any; variants: any[] },
     options?: { action: "save" | "save_add_new" }
   ) => void;
+  buttonLabel?: string;
 };
 
 const EMPTY_VARIANT: Variant = {
@@ -144,6 +145,7 @@ export function ProductForm({
   mode: modeOverride,
   saveMode = "api",
   onLocalSave,
+  buttonLabel,
 }: ProductFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1372,7 +1374,7 @@ async function handleImageUpload(
               disabled={loading}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loading ? "Saving..." : isEdit ? "Update Product" : "Save Product"}
+              {loading ? "Saving..." : buttonLabel || (isEdit ? "Update Product" : "Save Product")}
             </button>
             {!isEdit ? (
               <button
@@ -1381,7 +1383,7 @@ async function handleImageUpload(
                 disabled={loading}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Save & Add New
+                {buttonLabel ? `${buttonLabel} & Add Another` : "Save & Add New"}
               </button>
             ) : null}
             </div>

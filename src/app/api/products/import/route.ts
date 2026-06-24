@@ -9,6 +9,7 @@ import {
   validateBarcodeOrThrow,
 } from "@/lib/product-barcode";
 import { getTenantSchema } from "@/lib/tenant";
+import { normalizeSku } from "@/lib/product-utils";
 
 type FieldKey =
   | "name"
@@ -43,13 +44,60 @@ type ParsedRow = {
   errors: string[];
 };
 
+type ExistingSkuRecord = {
+  sku: string;
+  product_id: number;
+};
+
+type PreliminaryRow = {
+  rowNumber: number;
+  values: Partial<Record<FieldKey, string>>;
+  errors: string[];
+  categoryId: string | null;
+  materialId: string | null;
+  uomId: string | null;
+  barcode: string | null;
+  explicitSku: string;
+  normalizedSku: string | null;
+  parentSku: string;
+  normalizedParentSku: string | null;
+  finalSku: string | null;
+  rootSku: string | null;
+  rootType: "upload" | "existing" | null;
+  rootProductId: number | null;
+  rootRowNumber: number | null;
+  isRootRow: boolean;
+};
+
+type ValidatedRow = {
+  rowNumber: number;
+  values: Partial<Record<FieldKey, string>>;
+  categoryId: string | null;
+  materialId: string | null;
+  uomId: string | null;
+  barcode: string | null;
+  finalSku: string;
+  rootSku: string;
+  rootType: "upload" | "existing";
+  rootProductId: number | null;
+  rootRowNumber: number | null;
+  isRootRow: boolean;
+};
+
+type ProductFamily = {
+  rootSku: string;
+  rootRow: ValidatedRow;
+  rows: ValidatedRow[];
+};
+
 const REQUIRED_FIELDS: FieldKey[] = [
   "name",
-  "category",
-  "material",
-  "uom",
+  "description",
+  "hsn_code",
   "color",
   "size",
+  "fitting",
+  "gender",
 ];
 
 const IMPORTABLE_FIELDS: FieldKey[] = [
@@ -78,6 +126,10 @@ function stringValue(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function normalizeSkuRef(value: string): string {
+  return value.trim().toUpperCase();
+}
+
 function asNumber(value: string): number | null {
   if (!value) return null;
   const parsed = Number(value);
@@ -92,7 +144,21 @@ function asBoolean(value: string): boolean | null {
   return null;
 }
 
-async function loadLookupMap(client: PoolClient, schema: string, table: string, idCol: string, labelCols: string[]) {
+function buildVariantSku(parentSku: string, color: string, size: string, fitting: string) {
+  const safeParent = normalizeSku(parentSku || "NA");
+  const safeColor = normalizeSku(color || "NA");
+  const safeSize = normalizeSku(size || "NA");
+  const safeFitting = normalizeSku(fitting || "NA");
+  return `${safeParent}-${safeColor}-${safeSize}-${safeFitting}`;
+}
+
+async function loadLookupMap(
+  client: PoolClient,
+  schema: string,
+  table: string,
+  idCol: string,
+  labelCols: string[]
+) {
   const query = `SELECT ${[idCol, ...labelCols].join(", ")} FROM "${schema}".${table}`;
   const res = await client.query(query);
   const map = new Map<string, string>();
@@ -123,15 +189,27 @@ function parseRows(rows: Record<string, unknown>[], mapping: MappingConfig): Par
   return rows.map((row, index) => {
     const values: Partial<Record<FieldKey, string>> = {};
     const errors: string[] = [];
+
     for (const field of IMPORTABLE_FIELDS) {
       const header = mapping.fields[field];
       if (header) values[field] = stringValue(row[header]);
     }
+
     for (const field of REQUIRED_FIELDS) {
       if (!stringValue(values[field])) {
         errors.push(`${field} is required`);
       }
     }
+
+    const sku = stringValue(values.sku);
+    const parentSku = stringValue(values.parent_sku);
+    if (!sku && !parentSku) {
+      errors.push("Either sku or parent_sku is required");
+    }
+    if (sku && parentSku && normalizeSkuRef(sku) === normalizeSkuRef(parentSku)) {
+      errors.push(`parent_sku cannot be the same as sku for "${sku}"`);
+    }
+
     if (values.barcode) {
       try {
         validateBarcodeOrThrow(values.barcode);
@@ -139,15 +217,18 @@ function parseRows(rows: Record<string, unknown>[], mapping: MappingConfig): Par
         errors.push(error.message);
       }
     }
+
     if (values.backorders_allowed && asBoolean(values.backorders_allowed) === null) {
       errors.push("backorders_allowed must be yes/no or true/false");
     }
+
     for (const numericField of ["weight", "length", "width", "height", "low_stock_threshold"] as FieldKey[]) {
       const value = stringValue(values[numericField]);
       if (value && asNumber(value) === null) {
         errors.push(`${numericField} must be numeric`);
       }
     }
+
     return { rowNumber: index + 2, values, errors };
   });
 }
@@ -168,7 +249,7 @@ async function saveTemplate(client: PoolClient, schema: string, mapping: Mapping
   return Number(res.rows[0]?.id || 0) || null;
 }
 
-async function resolveLookupId(map: Map<string, string>, value: string, label: string, rowErrors: string[]) {
+function resolveLookupId(map: Map<string, string>, value: string, label: string, rowErrors: string[]) {
   if (!value) return null;
   const found = map.get(value.toLowerCase());
   if (!found) {
@@ -176,6 +257,320 @@ async function resolveLookupId(map: Map<string, string>, value: string, label: s
     return null;
   }
   return found;
+}
+
+async function loadExistingSkuMap(client: PoolClient, schema: string, skuRefs: string[]) {
+  if (!skuRefs.length) return new Map<string, ExistingSkuRecord>();
+  const res = await client.query(
+    `
+      SELECT upper(sku) AS sku_key, sku, product_id
+      FROM "${schema}".product_variants
+      WHERE upper(sku) = ANY($1::text[])
+    `,
+    [skuRefs]
+  );
+  return new Map<string, ExistingSkuRecord>(
+    res.rows.map((row: { sku_key: string; sku: string; product_id: number }) => [
+      String(row.sku_key),
+      { sku: row.sku, product_id: Number(row.product_id) },
+    ])
+  );
+}
+
+async function validateRows(options: {
+  client: PoolClient;
+  schema: string;
+  parsedRows: ParsedRow[];
+}) {
+  const { client, schema, parsedRows } = options;
+  const categoryMap = await loadLookupMap(client, schema, "product_categories", "id", [
+    "path_string",
+    "category_name",
+  ]);
+  const materialMap = await loadLookupMap(client, schema, "product_materials", "id", [
+    "material_code",
+    "material_name",
+  ]);
+  const uomMap = await loadLookupMap(client, schema, "uom", "id", ["uom_name", "uom_code"]);
+
+  const preliminaryRows: PreliminaryRow[] = [];
+  const rowErrors = new Map<number, string[]>();
+  const uploadSkuRows = new Map<string, PreliminaryRow[]>();
+  const skuRefs = new Set<string>();
+  const barcodeRows = new Map<string, PreliminaryRow[]>();
+
+  const pushErrors = (rowNumber: number, errors: string[]) => {
+    if (!errors.length) return;
+    const current = rowErrors.get(rowNumber) || [];
+    current.push(...errors);
+    rowErrors.set(rowNumber, current);
+  };
+
+  for (const row of parsedRows) {
+    const isEmpty = Object.values(row.values).every((value) => !stringValue(value));
+    if (isEmpty) {
+      pushErrors(row.rowNumber, row.errors);
+      continue;
+    }
+
+    const errors = [...row.errors];
+    const categoryId = resolveLookupId(categoryMap, stringValue(row.values.category), "category", errors);
+    const materialId = resolveLookupId(materialMap, stringValue(row.values.material), "material", errors);
+    const uomId = resolveLookupId(uomMap, stringValue(row.values.uom), "uom", errors);
+
+    const barcode = normalizeBarcode(row.values.barcode);
+    const explicitSku = stringValue(row.values.sku);
+    const normalizedSku = explicitSku ? normalizeSkuRef(explicitSku) : null;
+    const parentSku = stringValue(row.values.parent_sku);
+    const normalizedParentSku = parentSku ? normalizeSkuRef(parentSku) : null;
+
+    const nextRow: PreliminaryRow = {
+      rowNumber: row.rowNumber,
+      values: row.values,
+      errors,
+      categoryId,
+      materialId,
+      uomId,
+      barcode,
+      explicitSku,
+      normalizedSku,
+      parentSku,
+      normalizedParentSku,
+      finalSku: null,
+      rootSku: null,
+      rootType: null,
+      rootProductId: null,
+      rootRowNumber: null,
+      isRootRow: false,
+    };
+
+    preliminaryRows.push(nextRow);
+
+    if (normalizedSku) {
+      skuRefs.add(normalizedSku);
+      uploadSkuRows.set(normalizedSku, [...(uploadSkuRows.get(normalizedSku) || []), nextRow]);
+    }
+    if (normalizedParentSku) {
+      skuRefs.add(normalizedParentSku);
+    }
+    if (barcode) {
+      barcodeRows.set(barcode, [...(barcodeRows.get(barcode) || []), nextRow]);
+    }
+  }
+
+  const existingSkuMap = await loadExistingSkuMap(client, schema, [...skuRefs]);
+
+  for (const rows of uploadSkuRows.values()) {
+    if (rows.length > 1) {
+      rows.forEach((row) => row.errors.push(`Duplicate SKU "${row.explicitSku}" in upload`));
+    }
+  }
+
+  for (const row of preliminaryRows) {
+    if (row.normalizedSku && existingSkuMap.has(row.normalizedSku)) {
+      row.errors.push(`SKU "${row.explicitSku}" already exists`);
+    }
+  }
+
+  for (const [barcode, rows] of barcodeRows.entries()) {
+    if (rows.length > 1) {
+      rows.forEach((row) => row.errors.push(`Duplicate barcode "${barcode}" in upload`));
+      continue;
+    }
+    const existingBarcode = await client.query(
+      `SELECT 1 FROM "${schema}".product_variants WHERE barcode = $1 LIMIT 1`,
+      [barcode]
+    );
+    if ((existingBarcode.rowCount || 0) > 0) {
+      rows[0].errors.push(`Barcode "${barcode}" already exists`);
+    }
+  }
+
+  const resolving = new Set<number>();
+  const resolveFamily = (row: PreliminaryRow): boolean => {
+    if (row.rootType && row.rootSku) return true;
+    if (resolving.has(row.rowNumber)) {
+      row.errors.push("Circular parent_sku reference detected");
+      return false;
+    }
+
+    if (!row.normalizedParentSku) {
+      if (!row.normalizedSku) {
+        row.errors.push("Either sku or parent_sku is required");
+        return false;
+      }
+      row.rootType = "upload";
+      row.rootSku = row.normalizedSku;
+      row.rootProductId = null;
+      row.rootRowNumber = row.rowNumber;
+      row.isRootRow = true;
+      return true;
+    }
+
+    resolving.add(row.rowNumber);
+
+    const uploadParents = uploadSkuRows.get(row.normalizedParentSku) || [];
+    if (uploadParents.length > 1) {
+      row.errors.push(`parent_sku "${row.parentSku}" matches multiple rows in upload`);
+      resolving.delete(row.rowNumber);
+      return false;
+    }
+
+    if (uploadParents.length === 1) {
+      const parentRow = uploadParents[0];
+      const resolvedParent = resolveFamily(parentRow);
+      if (!resolvedParent || !parentRow.rootType || !parentRow.rootSku) {
+        row.errors.push(`parent_sku "${row.parentSku}" references a row with validation errors`);
+        resolving.delete(row.rowNumber);
+        return false;
+      }
+      row.rootType = parentRow.rootType;
+      row.rootSku = parentRow.rootSku;
+      row.rootProductId = parentRow.rootProductId;
+      row.rootRowNumber = parentRow.rootRowNumber;
+      row.isRootRow = false;
+      resolving.delete(row.rowNumber);
+      return true;
+    }
+
+    const existingParent = existingSkuMap.get(row.normalizedParentSku);
+    if (existingParent) {
+      row.rootType = "existing";
+      row.rootSku = normalizeSkuRef(existingParent.sku);
+      row.rootProductId = existingParent.product_id;
+      row.rootRowNumber = null;
+      row.isRootRow = false;
+      resolving.delete(row.rowNumber);
+      return true;
+    }
+
+    row.errors.push(`parent_sku "${row.parentSku}" not found in upload or database`);
+    resolving.delete(row.rowNumber);
+    return false;
+  };
+
+  for (const row of preliminaryRows) {
+    resolveFamily(row);
+  }
+
+  for (const row of preliminaryRows) {
+    if (row.errors.length > 0) {
+      pushErrors(row.rowNumber, row.errors);
+      continue;
+    }
+
+    row.finalSku =
+      row.explicitSku ||
+      buildVariantSku(
+        row.parentSku || row.rootSku || "",
+        stringValue(row.values.color),
+        stringValue(row.values.size),
+        stringValue(row.values.fitting)
+      );
+  }
+
+  const finalSkuRows = new Map<string, PreliminaryRow[]>();
+  for (const row of preliminaryRows) {
+    if (row.errors.length > 0 || !row.finalSku) continue;
+    const key = normalizeSkuRef(row.finalSku);
+    finalSkuRows.set(key, [...(finalSkuRows.get(key) || []), row]);
+  }
+
+  for (const rows of finalSkuRows.values()) {
+    if (rows.length > 1) {
+      rows.forEach((row) => row.errors.push(`Duplicate SKU "${row.finalSku}" in upload`));
+    }
+  }
+
+  const existingFinalSkus = await loadExistingSkuMap(client, schema, [...finalSkuRows.keys()]);
+  for (const row of preliminaryRows) {
+    if (row.errors.length > 0 || !row.finalSku) continue;
+    const key = normalizeSkuRef(row.finalSku);
+    if (row.normalizedSku && key === row.normalizedSku) continue;
+    if (existingFinalSkus.has(key)) {
+      row.errors.push(`SKU "${row.finalSku}" already exists`);
+    }
+  }
+
+  const validRows: ValidatedRow[] = [];
+  for (const row of preliminaryRows) {
+    if (row.errors.length > 0 || !row.finalSku || !row.rootSku || !row.rootType) {
+      pushErrors(row.rowNumber, row.errors);
+      continue;
+    }
+    validRows.push({
+      rowNumber: row.rowNumber,
+      values: row.values,
+      categoryId: row.categoryId,
+      materialId: row.materialId,
+      uomId: row.uomId,
+      barcode: row.barcode,
+      finalSku: row.finalSku,
+      rootSku: row.rootSku,
+      rootType: row.rootType,
+      rootProductId: row.rootProductId,
+      rootRowNumber: row.rootRowNumber,
+      isRootRow: row.isRootRow,
+    });
+  }
+
+  return {
+    validRows,
+    rowErrors: [...rowErrors.entries()]
+      .map(([rowNumber, errors]) => ({
+        rowNumber,
+        errors: Array.from(new Set(errors)),
+      }))
+      .sort((a, b) => a.rowNumber - b.rowNumber),
+  };
+}
+
+function groupNewFamilies(validRows: ValidatedRow[]) {
+  const families = new Map<string, ProductFamily>();
+
+  for (const row of validRows) {
+    if (row.rootType !== "upload") continue;
+    const existing = families.get(row.rootSku);
+    if (existing) {
+      existing.rows.push(row);
+      if (row.isRootRow) existing.rootRow = row;
+      continue;
+    }
+    families.set(row.rootSku, {
+      rootSku: row.rootSku,
+      rootRow: row,
+      rows: [row],
+    });
+  }
+
+  return families;
+}
+
+function getFamilyRowsInPriorityOrder(family: ProductFamily) {
+  return [family.rootRow, ...family.rows.filter((row) => row.rowNumber !== family.rootRow.rowNumber)];
+}
+
+function getFamilyString(family: ProductFamily, field: FieldKey) {
+  for (const row of getFamilyRowsInPriorityOrder(family)) {
+    const value = stringValue(row.values[field]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function getFamilyNumber(family: ProductFamily, field: FieldKey) {
+  for (const row of getFamilyRowsInPriorityOrder(family)) {
+    const value = asNumber(stringValue(row.values[field]));
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function getFamilyLookup(family: ProductFamily, field: "categoryId" | "materialId" | "uomId") {
+  for (const row of getFamilyRowsInPriorityOrder(family)) {
+    if (row[field]) return row[field];
+  }
+  return null;
 }
 
 async function importRows(options: {
@@ -186,19 +581,7 @@ async function importRows(options: {
   parsedRows: ParsedRow[];
 }) {
   const { client, schema, fileName, mapping, parsedRows } = options;
-  const categoryMap = await loadLookupMap(client, schema, "product_categories", "id", [
-    "path_string",
-    "category_name",
-  ]);
-  const materialMap = await loadLookupMap(client, schema, "product_materials", "id", [
-    "material_code",
-    "material_name",
-  ]);
-  const uomMap = await loadLookupMap(client, schema, "uom", "id", ["uom_name", "uom_code"]);
-  const barcodeSet = new Set<string>();
-  const productCodeCache = new Map<string, string>();
-  const productIdCache = new Map<string, number>();
-  const uploadSkuSet = new Set<string>();
+  const { validRows, rowErrors } = await validateRows({ client, schema, parsedRows });
   const batchTemplateId = await saveTemplate(client, schema, mapping);
   const batchRes = await client.query(
     `
@@ -210,91 +593,54 @@ async function importRows(options: {
     [mapping.sheetName, batchTemplateId, fileName, parsedRows.length]
   );
   const batchId = Number(batchRes.rows[0].id);
+
+  const families = groupNewFamilies(validRows);
+  const familyProductIds = new Map<string, number>();
   let productCount = 0;
   let variantCount = 0;
-  const rowErrors: Array<{ rowNumber: number; errors: string[] }> = [];
 
-  for (const row of parsedRows) {
-    if (Object.values(row.values).every((value) => !stringValue(value))) continue;
-    const errors = [...row.errors];
-    const name = stringValue(row.values.name);
-    const categoryId = await resolveLookupId(categoryMap, stringValue(row.values.category), "category", errors);
-    const materialId = await resolveLookupId(materialMap, stringValue(row.values.material), "material", errors);
-    const uomId = await resolveLookupId(uomMap, stringValue(row.values.uom), "uom", errors);
-    const barcode = normalizeBarcode(row.values.barcode);
-    if (barcode) {
-      if (barcodeSet.has(barcode)) {
-        errors.push(`Duplicate barcode "${barcode}" in upload`);
-      } else {
-        const existingBarcode = await client.query(
-          `SELECT 1 FROM "${schema}".product_variants WHERE barcode = $1 LIMIT 1`,
-          [barcode]
-        );
-        if ((existingBarcode.rowCount || 0) > 0) errors.push(`Barcode "${barcode}" already exists`);
-        barcodeSet.add(barcode);
-      }
-    }
-    const parentSku = stringValue(row.values.parent_sku);
-    const sku = stringValue(row.values.sku);
-    if (sku) {
-      const normalizedSku = sku.toUpperCase();
-      if (uploadSkuSet.has(normalizedSku)) {
-        errors.push(`Duplicate SKU "${sku}" in upload`);
-      }
-      const existingSku = await client.query(
-        `SELECT 1 FROM "${schema}".product_variants WHERE upper(sku) = upper($1) LIMIT 1`,
-        [sku]
-      );
-      if ((existingSku.rowCount || 0) > 0) errors.push(`SKU "${sku}" already exists`);
-      uploadSkuSet.add(normalizedSku);
-    }
-    if (parentSku) {
-      const normalizedParentSku = parentSku.toUpperCase();
-      if (sku && normalizedParentSku === sku.toUpperCase()) {
-        errors.push(`parent_sku cannot be the same as sku for "${sku}"`);
-      }
-    }
-    if (errors.length) {
-      rowErrors.push({ rowNumber: row.rowNumber, errors });
+  for (const family of families.values()) {
+    const productCode = await getNextProductCodeByType(schema, "finished_good", client);
+    const productRes = await client.query(
+      `
+        INSERT INTO "${schema}".products
+          (product_code, name, description, category, material, uom, hsn_code, weight, length, width, height, type, source, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'finished_good', 'vendor', 1)
+        RETURNING id
+      `,
+      [
+        productCode,
+        getFamilyString(family, "name"),
+        getFamilyString(family, "description") || null,
+        getFamilyLookup(family, "categoryId"),
+        getFamilyLookup(family, "materialId"),
+        getFamilyLookup(family, "uomId"),
+        getFamilyString(family, "hsn_code") || null,
+        getFamilyNumber(family, "weight"),
+        getFamilyNumber(family, "length"),
+        getFamilyNumber(family, "width"),
+        getFamilyNumber(family, "height"),
+      ]
+    );
+    const productId = Number(productRes.rows[0].id);
+    familyProductIds.set(family.rootSku, productId);
+    productCount += 1;
+
+    await client.query(
+      `INSERT INTO "${schema}".product_import_batch_items (batch_id, product_id, row_number, item_type) VALUES ($1, $2, $3, 'product')`,
+      [batchId, productId, family.rootRow.rowNumber]
+    );
+  }
+
+  for (const row of validRows) {
+    const productId =
+      row.rootType === "existing" ? row.rootProductId : familyProductIds.get(row.rootSku) ?? null;
+    if (!productId) {
+      rowErrors.push({
+        rowNumber: row.rowNumber,
+        errors: ["Unable to resolve product family for import"],
+      });
       continue;
-    }
-
-    const groupKey = parentSku || sku || `${name.toLowerCase()}::${stringValue(row.values.color).toLowerCase()}::${stringValue(
-      row.values.size
-    ).toLowerCase()}`;
-    let productCode = productCodeCache.get(groupKey);
-    let productId = productIdCache.get(groupKey) ?? null;
-    if (!productCode || !productId) {
-      productCode = await getNextProductCodeByType(schema, "finished_good");
-      productCodeCache.set(groupKey, productCode);
-      const productRes = await client.query(
-        `
-          INSERT INTO "${schema}".products
-            (product_code, name, description, category, material, uom, hsn_code, weight, length, width, height, type, source, status)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'finished_good', 'vendor', 1)
-          RETURNING id
-        `,
-        [
-          productCode,
-          name,
-          stringValue(row.values.description) || null,
-          categoryId,
-          materialId,
-          uomId,
-          stringValue(row.values.hsn_code) || null,
-          asNumber(stringValue(row.values.weight)),
-          asNumber(stringValue(row.values.length)),
-          asNumber(stringValue(row.values.width)),
-          asNumber(stringValue(row.values.height)),
-        ]
-      );
-      productId = Number(productRes.rows[0].id);
-      productIdCache.set(groupKey, productId);
-      productCount += 1;
-      await client.query(
-        `INSERT INTO "${schema}".product_import_batch_items (batch_id, product_id, row_number, item_type) VALUES ($1, $2, $3, 'product')`,
-        [batchId, productId, row.rowNumber]
-      );
     }
 
     const variantRes = await client.query(
@@ -310,12 +656,13 @@ async function importRows(options: {
         stringValue(row.values.size) || null,
         stringValue(row.values.fitting) || null,
         stringValue(row.values.gender) || null,
-        sku || `${productCode}-${stringValue(row.values.color) || "NA"}-${stringValue(row.values.size) || "NA"}`,
+        row.finalSku,
         asNumber(stringValue(row.values.low_stock_threshold)) ?? 5,
         asBoolean(stringValue(row.values.backorders_allowed)) ?? false,
-        barcode || null,
+        row.barcode || null,
       ]
     );
+
     const variantId = Number(variantRes.rows[0].id);
     if (!stringValue(variantRes.rows[0].barcode)) {
       await client.query(`UPDATE "${schema}".product_variants SET barcode = $2 WHERE id = $1`, [
@@ -323,6 +670,7 @@ async function importRows(options: {
         buildInternalBarcode(variantId),
       ]);
     }
+
     variantCount += 1;
     await client.query(
       `INSERT INTO "${schema}".product_import_batch_items (batch_id, product_id, variant_id, row_number, item_type) VALUES ($1, $2, $3, $4, 'variant')`,
@@ -334,13 +682,14 @@ async function importRows(options: {
     `UPDATE "${schema}".product_import_batches SET imported_products = $2, imported_variants = $3 WHERE id = $1`,
     [batchId, productCount, variantCount]
   );
+
   return {
     batchId,
     productCount,
     variantCount,
     uploadedRows: variantCount,
     failedRows: rowErrors.length,
-    rowErrors,
+    rowErrors: rowErrors.sort((a, b) => a.rowNumber - b.rowNumber),
   };
 }
 
@@ -376,13 +725,46 @@ export async function POST(req: NextRequest) {
       );
       const batchId = Number(batchRes.rows[0]?.id || 0);
       if (!batchId) throw new Error("No import batch available to undo");
-      const productsRes = await client.query(
-        `SELECT DISTINCT product_id FROM "${schema}".product_import_batch_items WHERE batch_id = $1 AND product_id IS NOT NULL`,
+
+      const createdProductsRes = await client.query(
+        `
+          SELECT DISTINCT product_id
+          FROM "${schema}".product_import_batch_items
+          WHERE batch_id = $1
+            AND item_type = 'product'
+            AND product_id IS NOT NULL
+        `,
         [batchId]
       );
-      for (const row of productsRes.rows) {
-        await client.query(`DELETE FROM "${schema}".products WHERE id = $1`, [row.product_id]);
+      const createdProductIds = createdProductsRes.rows.map((row) => Number(row.product_id)).filter(Boolean);
+
+      const createdVariantsRes = await client.query(
+        `
+          SELECT DISTINCT variant_id, product_id
+          FROM "${schema}".product_import_batch_items
+          WHERE batch_id = $1
+            AND item_type = 'variant'
+            AND variant_id IS NOT NULL
+        `,
+        [batchId]
+      );
+
+      const existingProductVariantIds = createdVariantsRes.rows
+        .filter((row) => !createdProductIds.includes(Number(row.product_id)))
+        .map((row) => Number(row.variant_id))
+        .filter(Boolean);
+
+      if (existingProductVariantIds.length) {
+        await client.query(
+          `DELETE FROM "${schema}".product_variants WHERE id = ANY($1::bigint[])`,
+          [existingProductVariantIds]
+        );
       }
+
+      if (createdProductIds.length) {
+        await client.query(`DELETE FROM "${schema}".products WHERE id = ANY($1::bigint[])`, [createdProductIds]);
+      }
+
       await client.query(`DELETE FROM "${schema}".product_import_batches WHERE id = $1`, [batchId]);
       await client.query("COMMIT");
       return NextResponse.json({ success: true, message: "Last import undone" });
@@ -416,13 +798,14 @@ export async function POST(req: NextRequest) {
     const parsedRows = parseRows(rows, mapping);
 
     if (action === "preview") {
+      const validation = await validateRows({ client, schema, parsedRows });
       return NextResponse.json({
-        success: parsedRows.every((row) => row.errors.length === 0),
+        success: validation.rowErrors.length === 0,
         totalRows: parsedRows.length,
-        validRows: parsedRows.filter((row) => row.errors.length === 0).length,
-        failedRows: parsedRows.filter((row) => row.errors.length > 0).length,
+        validRows: validation.validRows.length,
+        failedRows: validation.rowErrors.length,
         previewRows: parsedRows.slice(0, 10),
-        rowErrors: parsedRows.filter((row) => row.errors.length > 0),
+        rowErrors: validation.rowErrors,
       });
     }
 
