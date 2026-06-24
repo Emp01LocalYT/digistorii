@@ -16,7 +16,7 @@ function parseId(id: string): number | null {
 
 export async function PUT(
   req: NextRequest, 
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
@@ -58,7 +58,7 @@ export async function PUT(
 }
 
 export async function DELETE(req: NextRequest, 
-  context: { params: { id: string } }) {
+  context: { params: Promise<{ id: string }> }) {
   const client = await pool.connect();
   try {
     const { schema } = await getTenantSchema(req);

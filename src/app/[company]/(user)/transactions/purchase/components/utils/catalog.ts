@@ -1,4 +1,4 @@
-import type { ProductSavedPayload } from "../../../../inventory/products/add-products/page";
+import type { ProductSavedPayload } from "../../../../inventory/products/add-products/ProductForm";
 import type {
   ProductCatalogItem,
   ProductFiltersState,

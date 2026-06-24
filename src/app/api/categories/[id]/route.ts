@@ -50,15 +50,15 @@ async function isParentInSubtree(client: any, schema: string, id: number, parent
   );
   return result.rowCount > 0;
 }
-
 export async function PUT(
-  req: NextRequest, 
-  context: { params: { id: string } }) {
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const client = await pool.connect();
   let inTransaction = false;
   try {
     const { schema } = await getTenantSchema(req);
-    const {id}=await context.params;
+    const {id}=await params;
     const recordId = parseId(id);
     if (!schema || !schemaValidator.test(schema)) {
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
@@ -143,8 +143,10 @@ export async function PUT(
     client.release();
   }
 }
-
-export async function DELETE(req: NextRequest, context:{ params: { id: string } }) {
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   const client = await pool.connect();
   try {
     const { schema } = await getTenantSchema(req);
@@ -152,7 +154,7 @@ export async function DELETE(req: NextRequest, context:{ params: { id: string } 
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
-    const {id} = await context.params;
+    const {id} = await params;
     const recordId = parseId(id);
     if (!recordId) {
       return NextResponse.json({ success: false, error: "Invalid category id" }, { status: 400 });

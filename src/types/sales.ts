@@ -4,6 +4,9 @@ export type SalesDetail = {
   product_code?: string;
   product_name?: string;
   description: string;
+  barcode?: string;
+  sku?: string;
+  hsn_no: string;
   uom: string;
   uom_code: string;
   uom_name: string;

@@ -1,12 +1,15 @@
+// Your Modal File
 "use client";
 
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
-import type { ProductSavedPayload } from "../../../../inventory/products/add-products/page";
+// 1. Fix the type import path
+import type { ProductSavedPayload } from "../../../inventory/products/add-products/ProductForm";
 
+// 2. Fix the dynamic import path
 const ProductForm = dynamic(
   () =>
-    import("../../../../inventory/products/add-products/page").then(
+    import("../../../inventory/products/add-products/ProductForm").then(
       (mod) => mod.ProductForm
     ),
   { ssr: false }
@@ -45,7 +48,7 @@ export default function AddProductModal({
         </div>
         <div className="p-6 overflow-y-auto">
           <ProductForm
-            embedded
+            embeddedMode={true}
             saveMode={saveMode}
             onSaved={onSaved}
             onLocalSave={onLocalSave}

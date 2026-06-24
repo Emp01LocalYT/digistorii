@@ -1,3 +1,4 @@
+import { PoolClient } from "pg";
 const SCHEMA_NAME_REGEX = /^[a-z][a-z0-9_]{0,62}$/;
 
 export function assertSafeSchemaName(schema: string): string {

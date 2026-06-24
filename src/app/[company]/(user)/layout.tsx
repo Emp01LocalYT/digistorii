@@ -1,6 +1,4 @@
- 
 "use client";
- 
 import React, { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { Inter } from "next/font/google";
@@ -38,7 +36,7 @@ export default function CompanyLayout({
       : companyParam || "default-tenant"; // fallback if undefined
  
   // Idle logout after 20 minutes
-  useIdleLogout(tenant);
+  useIdleLogout(tenant,"/login");
  
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [hasError, setHasError] = useState(false);

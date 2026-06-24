@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
     const uomRange = `Lists!$C$2:$C$${Math.max(uoms.length + 1, 2)}`;
     const sourceRange = `Lists!$D$2:$D$${Math.max(sources.length + 1, 2)}`;
 
-    worksheet.dataValidations.add(`C2:C${maxRows}`, {
+    (worksheet as any).dataValidations.add(`C2:C${maxRows}`, {
       type: "list",
       allowBlank: true,
       showErrorMessage: true,
@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
       error: "Choose a category from the list or leave it blank.",
       formulae: [categoryRange],
     });
-    worksheet.dataValidations.add(`D2:D${maxRows}`, {
+    (worksheet as any).dataValidations.add(`D2:D${maxRows}`, {
       type: "list",
       allowBlank: true,
       showErrorMessage: true,
@@ -132,7 +132,7 @@ export async function GET(req: NextRequest) {
       error: "Choose a material from the list or leave it blank.",
       formulae: [materialRange],
     });
-    worksheet.dataValidations.add(`E2:E${maxRows}`, {
+    (worksheet as any).dataValidations.add(`E2:E${maxRows}`, {
       type: "list",
       allowBlank: true,
       showErrorMessage: true,
@@ -141,7 +141,7 @@ export async function GET(req: NextRequest) {
       error: "Choose a UOM from the list or leave it blank.",
       formulae: [uomRange],
     });
-    worksheet.dataValidations.add(`F2:F${maxRows}`, {
+    (worksheet as any).dataValidations.add(`F2:F${maxRows}`, {
       type: "list",
       allowBlank: true,
       showErrorMessage: true,

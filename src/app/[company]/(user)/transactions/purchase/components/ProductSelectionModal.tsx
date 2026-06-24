@@ -2,7 +2,7 @@
 
 import { Dispatch, SetStateAction } from "react";
 import { createPortal } from "react-dom";
-import ProductFilters from "../../../../inventory/products/components/ProductFilters";
+import ProductFilters from "../../../inventory/products/components/ProductFilters";
 import {
   PRODUCT_LOOKUP_COLUMNS,
   PRODUCT_LOOKUP_COLUMN_LABELS,

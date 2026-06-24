@@ -362,6 +362,7 @@ export async function POST(req: NextRequest) {
   let failedItem: any = null;
   let body: any = null;
   let createdProductRefs: Array<{ product_id?: number; variant_id?: number }> = [];
+  let cleanupCreatedProducts = null;
   try {
     const { company, schema } = await getTenantSchema(req);
     body = await req.json();
@@ -393,7 +394,7 @@ if (supplierRes.rows[0]?.purchase_hold) {
 }
 
     createdProductRefs = Array.isArray(body?.createdProducts) ? body.createdProducts : [];
-    const cleanupCreatedProducts = async (refs: Array<{ product_id?: number; variant_id?: number }>) => {
+    cleanupCreatedProducts = async (refs: Array<{ product_id?: number; variant_id?: number }>) => {
       const productIds = refs
         .map((item) => Number(item?.product_id))
         .filter((value) => Number.isFinite(value) && value > 0);
@@ -617,7 +618,9 @@ if (supplierRes.rows[0]?.purchase_hold) {
     try {
       if (createdProductRefs.length) {
         await client.query("SAVEPOINT purchase_cleanup");
-        await cleanupCreatedProducts(createdProductRefs);
+        if (createdProductRefs.length && cleanupCreatedProducts) {
+          await cleanupCreatedProducts(createdProductRefs);
+        }
         await client.query("RELEASE purchase_cleanup");
       }
     } catch (cleanupErr: any) {

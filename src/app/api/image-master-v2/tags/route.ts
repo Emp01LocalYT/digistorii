@@ -34,7 +34,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const setParts: string[] = [];
-    const params: Array<string | number | null> = [];
+    const params: Array<string | number | null | number[]> = [];
     let index = 1;
 
     if (Object.prototype.hasOwnProperty.call(payload, "category_id")) {

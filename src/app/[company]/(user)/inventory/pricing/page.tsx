@@ -89,7 +89,7 @@ function asDate(value: unknown): string {
   return asText(value).slice(0, 10);
 }
 
-function fmtMoney(value: number | string | null): string {
+function fmtMoney(value: number | string | null | undefined): string {
   if (value == null) return "-";
   const n = Number(value);
   if (!Number.isFinite(n)) return asText(value);

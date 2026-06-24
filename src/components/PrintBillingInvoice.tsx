@@ -2,6 +2,7 @@
  
 import React, { forwardRef } from "react";
 import { useTenant } from "@/context/TenantContext";
+import { any } from "zod";
  
 type TaxComponent = {
     component_name: string;
@@ -230,14 +231,14 @@ const PrintBillingInvoice = forwardRef<HTMLDivElement, Props>(
                                 <td className="p-2 text-center border align-top">{Number(row.qty)}</td>
                                 {/* <td className="p-2 text-right border align-top">{currency(row.qty * row.rate)}</td> */}
                                 <td className="p-2 text-right border align-top">{!isOverseas ? (
-                                    <>{currency(row.qty * row.rate)}</>
+                                    <>{currency(Number(row.qty) * Number(row.rate))}</>
                                 ) : (
                                     <div className="flex flex-col items-end">
                                         <span>
-                                            {currency(row.qty * row.rate)}
+                                            {currency(Number(row.qty) * Number(row.rate))}
                                         </span>
                                         <span className="text-[10px] text-gray-500">
-                                            {currency(convert(row.qty * row.rate))} {header.currency_code}
+                                            {currency(convert(Number(row.qty) * Number(row.rate)))} {header.currency_code}
                                         </span>
                                     </div>
                                 )}</td>

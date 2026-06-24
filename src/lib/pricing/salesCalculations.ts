@@ -1,11 +1,11 @@
 export type SalesRowCalculationInput = {
   rate: number | "";
-  qty: number | "";
-  tax_percent: number;
+  qty: number  | "";
+  tax_percent: number | "";
   discount: number | "";
   discount_auto?: boolean;
   discount_type?: "percentage" | "fixed";
-  discount_value?: number;
+  discount_value?: number | "";
 };
 
 export type SalesTotals = {
@@ -67,23 +67,36 @@ export function applySalesRowCalculation<
 
 export function calculateSalesTotals(
   details: Array<{
-    amount?: number;
+    amount?: number | "";
     discount?: number | "";
-    tax_amount?: number;
-    line_total?: number;
+    tax_amount?: number | "";
+    line_total?: number | "";
+    subtotal?: number | "";
   }>
 ): SalesTotals {
-  return details.reduce(
+  const totals = details.reduce<SalesTotals>(
     (acc, row) => {
       const amount = Number(row.amount || 0);
       const discount = Number(row.discount || 0);
-      acc.subtotal += amount;
-      acc.discount += discount;
-      acc.taxable += amount - discount;
-      acc.tax += Number(row.tax_amount || 0);
-      acc.total += Number(row.line_total || 0);
-      return acc;
+      const tax = Number(row.tax_amount || 0);
+      const total = Number(row.line_total || 0);
+
+      return {
+        subtotal: acc.subtotal + amount,
+        discount: acc.discount + discount,
+        taxable: acc.taxable + (amount - discount),
+        tax: acc.tax + tax,
+        total: acc.total + total,
+      };
     },
     { subtotal: 0, discount: 0, taxable: 0, tax: 0, total: 0 }
   );
+
+  return {
+    subtotal: round2(totals.subtotal),
+    discount: round2(totals.discount),
+    taxable: round2(totals.taxable),
+    tax: round2(totals.tax),
+    total: round2(totals.total),
+  };
 }

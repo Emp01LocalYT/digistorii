@@ -503,14 +503,19 @@ export default function SalesForm() {
 
   const applyBillingCalculation = useCallback(
     (row: SalesDetail) => {
-      const normalizedRow = {
-        ...row,
-        discount_type: row.discount_type === "percent" || row.discount_type === "percentage"
+      const normalizedDiscountType: "percentage" | "fixed" | undefined =
+        row.discount_type === "percent" || row.discount_type === "percentage"
           ? "percentage"
           : row.discount_type === "amount" || row.discount_type === "fixed"
             ? "fixed"
-            : undefined,
+            : undefined;
+
+      const normalizedRow: Parameters<typeof applySalesRowCalculation>[0] = {
+        ...row,
+        discount_type: normalizedDiscountType,
+        discount_value: row.discount_value === "" ? undefined : row.discount_value,
       };
+
       return applySalesRowCalculation(normalizedRow, discountMode) as SalesDetail;
     },
     [discountMode]
@@ -904,8 +909,6 @@ export default function SalesForm() {
   useEffect(() => {
     if (!company || hasLoadedMasterRef.current) return;
     hasLoadedMasterRef.current = true;
-
-
     const loadMasterData = async () => {
       try {
         updateUiState({ pageLoading: true });

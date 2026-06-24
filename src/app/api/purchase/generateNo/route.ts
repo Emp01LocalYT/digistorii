@@ -6,7 +6,7 @@ import { getTenantSchema } from "@/lib/tenant";
 
 export async function GET(req: NextRequest) {
   try {
-    const { tenant, schema } = await getTenantSchema(req);
+    const { company, schema } = await getTenantSchema(req);
     const purchase_no = await generatePurchaseNo(schema);
 
     return NextResponse.json({
