@@ -67,6 +67,19 @@ export async function initializeDatabase() {
         UNIQUE(company_id, email)
       );
     `);
+    await client.query(`
+  CREATE TABLE IF NOT EXISTS plans (
+  id             SERIAL PRIMARY KEY,
+  name           VARCHAR(50) NOT NULL UNIQUE,  -- 'STARTER', 'GROWTH', 'ENTERPRISE'
+  price_monthly  INTEGER NOT NULL DEFAULT 0,   -- in paise (INR smallest unit)
+  price_yearly   INTEGER NOT NULL DEFAULT 0,
+  billing_period  VARCHAR(50) DEFAULT 'Monthly / Yearly',
+  features        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  display_order   INTEGER DEFAULT 0,
+  is_active      BOOLEAN DEFAULT TRUE,
+  created_at     TIMESTAMP DEFAULT NOW()
+);
+`);
 await client.query(`
   CREATE TABLE IF NOT EXISTS company_subscriptions (
   id                    SERIAL PRIMARY KEY,
@@ -113,19 +126,7 @@ await client.query(`
       );
 `);
 
-await client.query(`
-  CREATE TABLE IF NOT EXISTS plans (
-  id             SERIAL PRIMARY KEY,
-  name           VARCHAR(50) NOT NULL UNIQUE,  -- 'STARTER', 'GROWTH', 'ENTERPRISE'
-  price_monthly  INTEGER NOT NULL DEFAULT 0,   -- in paise (INR smallest unit)
-  price_yearly   INTEGER NOT NULL DEFAULT 0,
-  billing_period  VARCHAR(50) DEFAULT 'Monthly / Yearly',
-  features        JSONB NOT NULL DEFAULT '[]'::jsonb,
-  display_order   INTEGER DEFAULT 0,
-  is_active      BOOLEAN DEFAULT TRUE,
-  created_at     TIMESTAMP DEFAULT NOW()
-);
-`);
+
 
 await client.query(`
   CREATE TABLE IF NOT EXISTS onboarding_otps (
