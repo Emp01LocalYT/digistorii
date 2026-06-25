@@ -67,68 +67,6 @@ export async function initializeDatabase() {
         UNIQUE(company_id, email)
       );
     `);
-
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS payments (
-  id                    SERIAL PRIMARY KEY,
-  company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-  subscription_id       INTEGER REFERENCES company_subscriptions(id),
-  plan_name             TEXT NOT NULL,
-  plan_price            INTEGER NOT NULL,
-  billing_interval      VARCHAR(20) DEFAULT 'monthly',
-  razorpay_order_id     TEXT,
-  razorpay_payment_id   TEXT,
-  razorpay_signature    TEXT,
-  amount                INTEGER NOT NULL,
-  currency              TEXT DEFAULT 'INR',
-  status                TEXT DEFAULT 'created',
-  payment_status        TEXT DEFAULT 'created',
-  subscription_start    TIMESTAMP,
-  subscription_end      TIMESTAMP,
-  created_at            TIMESTAMP DEFAULT NOW(),
-  updated_at            TIMESTAMP DEFAULT NOW()
-);
-`);
-
-await client.query(`
-  CREATE TABLE IF NOT EXISTS plans (
-  id             SERIAL PRIMARY KEY,
-  name           VARCHAR(50) NOT NULL UNIQUE,  -- 'STARTER', 'GROWTH', 'ENTERPRISE'
-  price_monthly  INTEGER NOT NULL DEFAULT 0,   -- in paise (INR smallest unit)
-  price_yearly   INTEGER NOT NULL DEFAULT 0,
-  billing_period  VARCHAR(50) DEFAULT 'Monthly / Yearly',
-  features        JSONB NOT NULL DEFAULT '[]'::jsonb,
-  display_order   INTEGER DEFAULT 0,
-  is_active      BOOLEAN DEFAULT TRUE,
-  created_at     TIMESTAMP DEFAULT NOW()
-);
-`);
-await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE;`);
-await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS billing_period VARCHAR(50) DEFAULT 'Monthly / Yearly';`);
-await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS features JSONB NOT NULL DEFAULT '[]'::jsonb;`);
-await client.query(`ALTER TABLE plans ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0;`);
-await client.query(`
-  CREATE TABLE IF NOT EXISTS onboarding_otps (
-    id SERIAL PRIMARY KEY,
-    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    otp_hash TEXT NOT NULL,
-    expires_at TIMESTAMP NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    resend_count INTEGER NOT NULL DEFAULT 0,
-    verified_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT NOW()
-  );
-`);
-await client.query(`
-  CREATE TABLE IF NOT EXISTS plan_features (
-  id           SERIAL PRIMARY KEY,
-  plan_id      INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
-  feature_key  VARCHAR(100) NOT NULL,   -- 'max_users', 'max_locations', 'max_pos_terminals', 'ecommerce_access'
-  value_int    INTEGER,                 -- used for numeric limits
-  value_bool   BOOLEAN,                -- used for feature flags
-  UNIQUE(plan_id, feature_key)
-);`);
 await client.query(`
   CREATE TABLE IF NOT EXISTS company_subscriptions (
   id                    SERIAL PRIMARY KEY,
@@ -153,6 +91,65 @@ await client.query(`
   created_at            TIMESTAMP DEFAULT NOW(),
   updated_at            TIMESTAMP DEFAULT NOW()
 );`);
+      await client.query(`
+      CREATE TABLE IF NOT EXISTS payments (
+        id                    SERIAL PRIMARY KEY,
+        company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+        subscription_id       INTEGER REFERENCES company_subscriptions(id),
+        plan_name             TEXT NOT NULL,
+        plan_price            INTEGER NOT NULL,
+        billing_interval      VARCHAR(20) DEFAULT 'monthly',
+        razorpay_order_id     TEXT,
+        razorpay_payment_id   TEXT,
+        razorpay_signature    TEXT,
+        amount                INTEGER NOT NULL,
+        currency              TEXT DEFAULT 'INR',
+        status                TEXT DEFAULT 'created',
+        payment_status        TEXT DEFAULT 'created',
+        subscription_start    TIMESTAMP,
+        subscription_end      TIMESTAMP,
+        created_at            TIMESTAMP DEFAULT NOW(),
+        updated_at            TIMESTAMP DEFAULT NOW()
+      );
+`);
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS plans (
+  id             SERIAL PRIMARY KEY,
+  name           VARCHAR(50) NOT NULL UNIQUE,  -- 'STARTER', 'GROWTH', 'ENTERPRISE'
+  price_monthly  INTEGER NOT NULL DEFAULT 0,   -- in paise (INR smallest unit)
+  price_yearly   INTEGER NOT NULL DEFAULT 0,
+  billing_period  VARCHAR(50) DEFAULT 'Monthly / Yearly',
+  features        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  display_order   INTEGER DEFAULT 0,
+  is_active      BOOLEAN DEFAULT TRUE,
+  created_at     TIMESTAMP DEFAULT NOW()
+);
+`);
+
+await client.query(`
+  CREATE TABLE IF NOT EXISTS onboarding_otps (
+    id SERIAL PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    otp_hash TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    resend_count INTEGER NOT NULL DEFAULT 0,
+    verified_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+  );
+`);
+await client.query(`
+  CREATE TABLE IF NOT EXISTS plan_features (
+  id           SERIAL PRIMARY KEY,
+  plan_id      INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
+  feature_key  VARCHAR(100) NOT NULL,   -- 'max_users', 'max_locations', 'max_pos_terminals', 'ecommerce_access'
+  value_int    INTEGER,                 -- used for numeric limits
+  value_bool   BOOLEAN,                -- used for feature flags
+  UNIQUE(plan_id, feature_key)
+);`);
+
 
 await client.query(`
   CREATE UNIQUE INDEX IF NOT EXISTS uq_company_subscriptions_company
