@@ -7,10 +7,11 @@
 
 import AdminLoginForm from "./AdminLoginForm";
 
+
 interface Props {
   params: Promise<{
     company: string;
-  }> | { company: string };
+  }>;
 }
 
 export default async function LoginPage({ params }: Props) {
