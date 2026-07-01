@@ -31,6 +31,31 @@ function asApiError(error: unknown): ApiError | null {
   };
 }
 
+async function getCompanyUserLimit(client: any, companySlug: string): Promise<number> {
+  const result = await client.query(
+    `SELECT
+       COALESCE(
+         cs.max_users,
+         (
+           SELECT pf.value_int
+           FROM public.plan_features pf
+           WHERE pf.plan_id = cs.plan_id
+             AND pf.feature_key = 'max_users'
+           LIMIT 1
+         ),
+         1
+       ) AS max_users
+     FROM public.companies c
+     LEFT JOIN public.company_subscriptions cs
+       ON cs.company_id = c.id
+     WHERE c.subdomain_url = $1
+     ORDER BY cs.updated_at DESC NULLS LAST, cs.id DESC NULLS LAST
+     LIMIT 1`,
+    [companySlug]
+  );
+  return Number(result.rows[0]?.max_users ?? 1);
+}
+
 export async function GET(req: NextRequest) {
   const client = await pool.connect();
   try {
@@ -96,7 +121,6 @@ export async function POST(req: NextRequest) {
   const { company, schema } = await getTenantSchema(req);
   const body = await req.json();
   const users = Array.isArray(body?.users) ? body.users : [];
-  const client = await pool.connect();
 
   if (!users.length) {
     return NextResponse.json(
@@ -105,8 +129,34 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const client = await pool.connect();
+
   try {
+    // 1. CHECK LIMITS BEFORE STARTING THE TRANSACTION
+    const maxUsers = await getCompanyUserLimit(client, company);
+    const userCountResult = await client.query(
+      `SELECT COUNT(*)::int AS count FROM public.users WHERE company_id = (
+         SELECT id FROM public.companies WHERE subdomain_url = $1
+       )`,
+      [company]
+    );
+    const currentCount = Number(userCountResult.rows[0]?.count || 0);
+
+    // Check if adding the incoming users will exceed the limit
+    if (currentCount + users.length > maxUsers) {
+      return NextResponse.json(
+        {
+          success: false,
+          // Changed 'error' to 'message' to match your API standard
+          message: `Cannot create more than ${maxUsers} users for subscription plan. You currently have ${currentCount}.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. START TRANSACTION ONLY AFTER CHECKS PASS
     await client.query("BEGIN");
+    
     const existingCompany = await client.query(
       `SELECT id FROM public.companies WHERE subdomain_url = $1`,
       [company]
@@ -163,9 +213,7 @@ export async function POST(req: NextRequest) {
       }
 
       const warehouseExists = await client.query(
-        `SELECT id
-         FROM "${schema}".warehouses
-         WHERE id = $1 AND location_id = $2`,
+        `SELECT id FROM "${schema}".warehouses WHERE id = $1 AND location_id = $2`,
         [warehouseId, locationId]
       );
       if (!warehouseExists.rowCount) {

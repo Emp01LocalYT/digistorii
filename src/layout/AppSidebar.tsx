@@ -53,10 +53,10 @@ const navItems: NavItem[] = [
     icon: <FileIcon />,
     permission: "purchase_access",
     subItems: [
-      { name: "Supplier", path: "/purchase/supplier", pro: false },
-      { name: "Purchase Order", path: "/transactions/purchase", pro: false },
-      { name: "Purchase Order Approval", path: "/transactions/purchase-approval", pro: false },
-      { name: "GRN", path: "/transactions/grn", pro: false },
+      { name: "Supplier", path: "/workspace/purchase/supplier", pro: false },
+      { name: "Purchase Order", path: "/workspace/transactions/purchase", pro: false },
+      { name: "Purchase Order Approval", path: "/workspace/transactions/purchase-approval", pro: false },
+      { name: "GRN", path: "/workspace/transactions/grn", pro: false },
     ],
   },
   {
@@ -64,11 +64,11 @@ const navItems: NavItem[] = [
     icon: <BoxCubeIcon />,
     permission: "inventory_access",
     subItems: [
-      { name: "Products", path: "/inventory/products", pro: false },
-      // { name: "Image Master", path: "/inventory/image-master", pro: false },
-      { name: "Image Master", path: "/inventory/image-master-v2", pro: false },
-      // { name: "Add Product", path: "/inventory/product/add-products", pro: false },
-      { name: "Opening Stock", path: "/inventory/opening-stock", pro: false },
+      { name: "Products", path: "/workspace/inventory/products", pro: false },
+      // { name: "Image Master", path: "/workspace/inventory/image-master", pro: false },
+      { name: "Image Master", path: "/workspace/inventory/image-master-v2", pro: false },
+      // { name: "Add Product", path: "/workspace/inventory/product/add-products", pro: false },
+      { name: "Opening Stock", path: "/workspace/inventory/opening-stock", pro: false },
 
     ],
   },
@@ -77,27 +77,27 @@ const navItems: NavItem[] = [
     icon: <PaperPlaneIcon />,
     permission: "sales_access",
     subItems: [
-      { name: "Customer", path: "/sales/customer", pro: false },
-      { name: "Pricing", path: "/inventory/pricing", pro: false },
-      { name: "Discount Schemes", path: "/inventory/discounts", pro: false },
+      { name: "Customer", path: "/workspace/sales/customer", pro: false },
+      { name: "Pricing", path: "/workspace/inventory/pricing", pro: false },
+      { name: "Discount Schemes", path: "/workspace/inventory/discounts", pro: false },
     ],
   }, {
     name: "Sales Billing",
     icon: <Cash />,
     permission: "sales_billing_access",
     // subItems: [
-    //    {name: "Sales Billing" ,path:"/transactions/sales",pro:false}
+    //    {name: "Sales Billing" ,path:"/workspace/transactions/sales",pro:false}
     // ],
-    path: "/transactions/sales",
+    path: "/workspace/transactions/sales",
   },
   {
     name: "Reports",
     icon: <TableIcon />,
     permission: "reports_access",
     subItems: [
-      { name: "Stock Ledger", path: "/reports/stock-ledger-report", pro: false },
-      { name: "PO Summary Report", path: "/reports/po-summary-report", pro: false },
-      { name: "PO Items Report", path: "/reports/po-items-report", pro: false },
+      { name: "Stock Ledger", path: "/workspace/reports/stock-ledger-report", pro: false },
+      { name: "PO Summary Report", path: "/workspace/reports/po-summary-report", pro: false },
+      { name: "PO Items Report", path: "/workspace/reports/po-items-report", pro: false },
     ],
   },
   {
@@ -105,28 +105,26 @@ const navItems: NavItem[] = [
     icon: <IconSettings />,
     permission: "settings_access",
     subItems: [
-      { name: "Categories", path: "/inventory/categories", pro: false },
-      { name: "Materials", path: "/inventory/materials", pro: false },
-      { name: "UOM", path: "/inventory/uom", pro: false },
-      { name: "Tax", path: "/inventory/tax", pro: false },
-      { name: "Payment Modes", path: "/inventory/payment-mode", pro: false },
-      { name: "Payment Terms", path: "/inventory/payment-terms", pro: false },
-      // { name: "Currencies", path: "/inventory/currencies", pro: false },
-      { name: "Currencies", path: "/inventory/currency-rate", pro: false },
-      { name: "Location", path: "/inventory/location", pro: false },
-      { name: "Warehouse", path: "/inventory/warehouse", pro: false },
-      { name: "Locator", path: "/inventory/locator", pro: false },
-      { name: "Despatch Terms", path: "/inventory/despatch-terms", pro: false },
-      // { name: "Company Settings", path: "/inventory/company-settings", pro: false },
-      { name: "User Settings", path: "/inventory/user-settings", pro: false },
-      { name: "User Responsibilities", path: "/settings/user-responsibilities", pro: false },
+      { name: "Categories", path: "/workspace/inventory/categories", pro: false },
+      { name: "Materials", path: "/workspace/inventory/materials", pro: false },
+      { name: "UOM", path: "/workspace/inventory/uom", pro: false },
+      { name: "Tax", path: "/workspace/inventory/tax", pro: false },
+      { name: "Payment Modes", path: "/workspace/inventory/payment-mode", pro: false },
+      { name: "Payment Terms", path: "/workspace/inventory/payment-terms", pro: false },
+      // { name: "Currencies", path: "/workspace/inventory/currencies", pro: false },
+      { name: "Currencies", path: "/workspace/inventory/currency-rate", pro: false },
+      { name: "Store Location", path: "/workspace/inventory/location", pro: false },
+      { name: "Warehouse", path: "/workspace/inventory/warehouse", pro: false },
+      { name: "Locator", path: "/workspace/inventory/locator", pro: false },
+      { name: "Despatch Terms", path: "/workspace/inventory/despatch-terms", pro: false },
+      { name: "User Responsibilities", path: "/workspace/settings/user-responsibilities", pro: false },
     ],
   }
   // {
   //   name: "Transactions",
   //   icon: <ArrowsRightLeftIcon className="w-5 h-5" />,
   //   subItems: [
-  //     { name: "Purchase", path: "/transactions/purchase", pro: false },
+  //     { name: "Purchase", path: "/workspace/transactions/purchase", pro: false },
   //   ],
   // },
 
@@ -218,15 +216,15 @@ const AppSidebar: React.FC = () => {
               <button
                 onClick={() => handleSubmenuToggle(index, menuType)}
                 className={`menu-item group ${openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? "menu-item-active"
-                    : "menu-item-inactive"
+                  ? "menu-item-active"
+                  : "menu-item-inactive"
                   } cursor-pointer ${!isExpanded && !isHovered ? "lg:justify-center" : "lg:justify-start"
                   }`}
               >
                 <span
                   className={`${openSubmenu?.type === menuType && openSubmenu?.index === index
-                      ? "menu-item-icon-active"
-                      : "menu-item-icon-inactive"
+                    ? "menu-item-icon-active"
+                    : "menu-item-icon-inactive"
                     }`}
                 >
                   {nav.icon}
@@ -237,9 +235,9 @@ const AppSidebar: React.FC = () => {
                 {(isExpanded || isHovered || isMobileOpen) && (
                   <ChevronDownIcon
                     className={`ml-auto w-5 h-5 transition-transform duration-200 ${openSubmenu?.type === menuType &&
-                        openSubmenu?.index === index
-                        ? "rotate-180 text-brand-500"
-                        : ""
+                      openSubmenu?.index === index
+                      ? "rotate-180 text-brand-500"
+                      : ""
                       }`}
                   />
                 )}
@@ -264,8 +262,8 @@ const AppSidebar: React.FC = () => {
                       <Link
                         href={`/${company}${subItem.path}`}
                         className={`menu-dropdown-item ${isActive(subItem.path)
-                            ? "menu-dropdown-item-active"
-                            : "menu-dropdown-item-inactive"
+                          ? "menu-dropdown-item-active"
+                          : "menu-dropdown-item-inactive"
                           }`}
                       >
                         {subItem.name}
@@ -273,8 +271,8 @@ const AppSidebar: React.FC = () => {
                           {subItem.new && (
                             <span
                               className={`ml-auto ${isActive(subItem.path)
-                                  ? "menu-dropdown-badge-active"
-                                  : "menu-dropdown-badge-inactive"
+                                ? "menu-dropdown-badge-active"
+                                : "menu-dropdown-badge-inactive"
                                 } menu-dropdown-badge`}
                             >
                               new
@@ -283,8 +281,8 @@ const AppSidebar: React.FC = () => {
                           {subItem.pro && (
                             <span
                               className={`ml-auto ${isActive(subItem.path)
-                                  ? "menu-dropdown-badge-active"
-                                  : "menu-dropdown-badge-inactive"
+                                ? "menu-dropdown-badge-active"
+                                : "menu-dropdown-badge-inactive"
                                 } menu-dropdown-badge`}
                             >
                               pro
@@ -306,8 +304,8 @@ const AppSidebar: React.FC = () => {
               >
                 <span
                   className={`${isActive(nav.path)
-                      ? "menu-item-icon-active"
-                      : "menu-item-icon-inactive"
+                    ? "menu-item-icon-active"
+                    : "menu-item-icon-inactive"
                     }`}
                 >
                   {nav.icon}
@@ -379,8 +377,8 @@ const AppSidebar: React.FC = () => {
             <div>
               <h2
                 className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${!isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
+                  ? "lg:justify-center"
+                  : "justify-start"
                   }`}
               >
 

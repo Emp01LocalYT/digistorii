@@ -28,53 +28,53 @@ export const MENU_PERMISSION_MAP: Array<{ name: string; permission: Responsibili
 ];
 
 const FIRST_ACCESSIBLE_PATHS: Array<{ permission: ResponsibilityAccessKey; path: string }> = [
-  { permission: "dashboard_access", path: "/" },
-  { permission: "purchase_access", path: "/purchase/supplier" },
-  { permission: "inventory_access", path: "/inventory/products" },
-  { permission: "sales_access", path: "/sales/customer" },
-  { permission: "sales_billing_access", path: "/transactions/sales" },
-  { permission: "reports_access", path: "/reports/stock-ledger-report" },
-  { permission: "settings_access", path: "/settings/user-responsibilities" },
+  { permission: "dashboard_access", path: "/workspace" },
+  { permission: "purchase_access", path: "/workspace/purchase/supplier" },
+  { permission: "inventory_access", path: "/workspace/inventory/products" },
+  { permission: "sales_access", path: "/workspace/sales/customer" },
+  { permission: "sales_billing_access", path: "/workspace/transactions/sales" },
+  { permission: "reports_access", path: "/workspace/reports/stock-ledger-report" },
+  { permission: "settings_access", path: "/workspace/settings/user-responsibilities" },
 ];
 
 const ROUTE_RULES: ProtectedRouteRule[] = [
   {
-    prefixes: ["/purchase", "/transactions/purchase", "/transactions/purchase-approval", "/transactions/grn"],
+    prefixes: ["/workspace/purchase", "/workspace/transactions/purchase", "/workspace/transactions/purchase-approval", "/workspace/transactions/grn"],
     permission: "purchase_access",
   },
   {
-    prefixes: ["/inventory/products", "/inventory/opening-stock", "/inventory/image-master", "/inventory/image-master-v2"],
+    prefixes: ["/workspace/inventory/products", "/workspace/inventory/opening-stock", "/workspace/inventory/image-master", "/workspace/inventory/image-master-v2"],
     permission: "inventory_access",
   },
   {
-    prefixes: ["/sales", "/inventory/pricing", "/inventory/discounts"],
+    prefixes: ["/workspace/sales", "/workspace/inventory/pricing", "/workspace/inventory/discounts"],
     permission: "sales_access",
   },
   {
-    prefixes: ["/transactions/sales"],
+    prefixes: ["/workspace/transactions/sales"],
     permission: "sales_billing_access",
   },
   {
-    prefixes: ["/reports"],
+    prefixes: ["/workspace/reports"],
     permission: "reports_access",
   },
   {
     prefixes: [
-      "/inventory/categories",
-      "/inventory/materials",
-      "/inventory/uom",
-      "/inventory/tax",
-      "/inventory/payment-mode",
-      "/inventory/payment-terms",
-      "/inventory/currency-rate",
-      "/inventory/currencies",
-      "/inventory/location",
-      "/inventory/warehouse",
-      "/inventory/locator",
-      "/inventory/despatch-terms",
-      "/inventory/company-settings",
-      "/inventory/user-settings",
-      "/settings/user-responsibilities",
+      "/workspace/inventory/categories",
+      "/workspace/inventory/materials",
+      "/workspace/inventory/uom",
+      "/workspace/inventory/tax",
+      "/workspace/inventory/payment-mode",
+      "/workspace/inventory/payment-terms",
+      "/workspace/inventory/currency-rate",
+      "/workspace/inventory/currencies",
+      "/workspace/inventory/location",
+      "/workspace/inventory/warehouse",
+      "/workspace/inventory/locator",
+      "/workspace/inventory/despatch-terms",
+      "/workspace/inventory/company-settings",
+      "/workspace/inventory/user-settings",
+      "/workspace/settings/user-responsibilities",
       "/admin",
     ],
     permission: "settings_access",
@@ -93,7 +93,7 @@ export function canAccess(permissionSet: Partial<ResponsibilityPermissions> | nu
 }
 
 export function getRequiredPermissionForPath(pathname: string): ResponsibilityAccessKey | null {
-  if (!pathname || pathname === "/" || pathname === "") {
+  if (!pathname || pathname === "/workspace" || pathname === "/workspace/") {
     return "dashboard_access";
   }
 

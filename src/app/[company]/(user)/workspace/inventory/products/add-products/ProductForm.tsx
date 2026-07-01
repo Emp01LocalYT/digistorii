@@ -15,8 +15,8 @@ import { normalizeBarcode, validateBarcodeOrThrow } from "@/lib/product-barcode"
 import '@ant-design/v5-patch-for-react-19';
 // import CategoryModal from "../components/CategoryModal";
 const CategoryModal = dynamic(() => import("../components/CategoryModal"));
-const MaterialModal = dynamic(()=> import ("../components/MaterialModal"));
-const UomModal = dynamic(()=> import ("../components/UomModal"));
+const MaterialModal = dynamic(() => import("../components/MaterialModal"));
+const UomModal = dynamic(() => import("../components/UomModal"));
 const CategorySelect = dynamic(() => import("../components/CategorySelect"));
 const VariantBarcodePrintModal = dynamic(
   () => import("../components/VariantBarcodePrintModal")
@@ -24,7 +24,7 @@ const VariantBarcodePrintModal = dynamic(
 
 // import CategorySelect from "../components/CategorySelect";
 type Variant = {
-  id:number;
+  id: number;
   color: string;
   size: string;
   sku: string;
@@ -36,7 +36,7 @@ type Variant = {
 };
 
 type ProductImage = {
-  id:number;
+  id: number;
   image_url: string;
   alt_text: string;
   level: "product" | "variant";
@@ -121,7 +121,7 @@ type ProductFormProps = {
 };
 
 const EMPTY_VARIANT: Variant = {
-  id:0,
+  id: 0,
   color: "",
   size: "",
   sku: "",
@@ -132,7 +132,7 @@ const EMPTY_VARIANT: Variant = {
   barcode: "",
 };
 const EMPTY_IMAGE: ProductImage = {
-  id:0,
+  id: 0,
   image_url: "",
   alt_text: "",
   level: "product",
@@ -209,7 +209,7 @@ export function ProductForm({
   };
 
   function normalizeVariantStatus(value: any): VariantStatus {
-    if (value === "active" || value === "inactive" ||  value === "draft") {
+    if (value === "active" || value === "inactive" || value === "draft") {
       return value;
     }
     if (Number(value) === 2) return "inactive";
@@ -277,7 +277,7 @@ export function ProductForm({
       setDescription(data.product.description || "");
       setSource(data.product.source === "vendor" ? "vendor" : "own");
       setStatus(String(data.product.status || 1));
-      console.log("data variants",data.variants)
+      console.log("data variants", data.variants)
       const loadedVariants = (data.variants || []).map((v: any) => ({
         id: v.id,
         color: v.color || "",
@@ -293,13 +293,13 @@ export function ProductForm({
         loadedVariants.length
           ? loadedVariants
           : loadedType === "finished_good"
-          ? [{ ...EMPTY_VARIANT }]
-          : []
+            ? [{ ...EMPTY_VARIANT }]
+            : []
       );
 
       const variantIdToIndex = new Map<number, number>();
       (data.variants || []).forEach((v: any, index: number) => variantIdToIndex.set(v.id, index));
-      console.log("data images",data.images);
+      console.log("data images", data.images);
       const loadedImages = (data.images || []).map((img: any) => ({
         id: img.id,
         image_url: normalizeImageUrl(img.image_url || ""),
@@ -358,8 +358,8 @@ export function ProductForm({
       const rows = Array.isArray(data?.data)
         ? data.data
         : Array.isArray(data?.files)
-        ? data.files
-        : [];
+          ? data.files
+          : [];
       setImageMasterFiles(res.ok ? rows : []);
     } catch {
       setImageMasterFiles([]);
@@ -368,50 +368,50 @@ export function ProductForm({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-async function handleImageUpload(
-  e: React.ChangeEvent<HTMLInputElement>,
-  index: number
-) {
-  if (!company) return;
+  async function handleImageUpload(
+    e: React.ChangeEvent<HTMLInputElement>,
+    index: number
+  ) {
+    if (!company) return;
 
-  const file = e.target.files?.[0];
-  if (!file) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const formData = new FormData();
-  formData.append("files", file);
+    const formData = new FormData();
+    formData.append("files", file);
 
-  try {
-    const res = await apiFetch("/api/image-master-v2/upload", company, {
-      method: "POST",
-      body: formData,
-    });
+    try {
+      const res = await apiFetch("/api/image-master-v2/upload", company, {
+        method: "POST",
+        body: formData,
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok || !data.success) {
-      throw new Error(data.message || "Upload failed");
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || "Upload failed");
+      }
+
+      const uploaded = data.data?.[0];
+      if (!uploaded) return;
+
+      // 🔥 update master list (so dropdown refreshes)
+      await loadImageMaster();
+
+      // 🔥 auto-select uploaded image
+      const imageUrl = normalizeImageUrl(`${uploaded.file_path}` || "");
+      console.log("uploaded image url", imageUrl);
+      updateImage(index, "image_url", imageUrl);
+      console.log("updated image url", imageUrl);
+
+      // notify("Image uploaded successfully", { severity: "success" });
+
+    } catch (err: any) {
+      notify(err.message || "Upload failed", { severity: "error" });
+    } finally {
+      e.target.value = ""; // reset input
     }
-
-    const uploaded = data.data?.[0];
-    if (!uploaded) return;
-
-    // 🔥 update master list (so dropdown refreshes)
-    await loadImageMaster();
-
-    // 🔥 auto-select uploaded image
-    const imageUrl =  normalizeImageUrl(`${uploaded.file_path}` || "");
-    console.log("uploaded image url", imageUrl);
-    updateImage(index, "image_url", imageUrl);
-    console.log("updated image url", imageUrl);
-
-    // notify("Image uploaded successfully", { severity: "success" });
-
-  } catch (err: any) {
-    notify(err.message || "Upload failed", { severity: "error" });
-  } finally {
-    e.target.value = ""; // reset input
   }
-}
 
   useEffect(() => {
     hasLoadedRef.current = false;
@@ -492,13 +492,13 @@ async function handleImageUpload(
     return imageMasterFiles.map((file) => ({
       value: file.file_path
         ? (() => {
-            const rawPath = String(file.file_path || "").trim();
-            if (!rawPath) return "";
-            if (/^https?:\/\//i.test(rawPath)) return rawPath;
-            if (rawPath.startsWith("/uploads/")) return encodeURI(rawPath);
-            if (rawPath.startsWith("uploads/")) return encodeURI(`/${rawPath}`);
-            return encodeURI(`/uploads/${rawPath.replace(/^\/+/, "")}`);
-          })()
+          const rawPath = String(file.file_path || "").trim();
+          if (!rawPath) return "";
+          if (/^https?:\/\//i.test(rawPath)) return rawPath;
+          if (rawPath.startsWith("/uploads/")) return encodeURI(rawPath);
+          if (rawPath.startsWith("uploads/")) return encodeURI(`/${rawPath}`);
+          return encodeURI(`/uploads/${rawPath.replace(/^\/+/, "")}`);
+        })()
         : normalizeImageUrl(file.name || file.filename || ""),
       label: file.name || file.filename || "",
     }));
@@ -631,13 +631,13 @@ async function handleImageUpload(
   async function handleSave(action: "save" | "save_add_new") {
     if (readOnly) return;
     if (!name.trim()) {
-      notify("Product name is required",{severity:"warning"});
+      notify("Product name is required", { severity: "warning" });
       return;
     }
 
     const cleanedVariants = variants
       .map((v) => ({
-        id:v.id,
+        id: v.id,
         color: v.color.trim(),
         size: v.size.trim(),
         sku: v.sku.trim(),
@@ -683,7 +683,7 @@ async function handleImageUpload(
         productPayload.images = images
           .filter((img) => img.image_url.trim())
           .map((img) => ({
-            id:img.id,
+            id: img.id,
             image_url: img.image_url.trim(),
             alt_text: img.alt_text.trim(),
             level: img.level,
@@ -736,7 +736,7 @@ async function handleImageUpload(
           product_name: String(variant.product_name || name),
           product_code: String(variant.product_code || savedProductCode),
         }))
-        .filter((variant:any) => Number.isFinite(variant.variant_id) && variant.variant_id > 0);
+        .filter((variant: any) => Number.isFinite(variant.variant_id) && variant.variant_id > 0);
 
       const savedPayload: ProductSavedPayload = {
         product_id: savedProductId,
@@ -765,13 +765,13 @@ async function handleImageUpload(
           onSaved?.(savedPayload, { action });
         }
         if (!embedded) {
-          router.push(`/${company}/inventory/products`);
+          router.push(`/${company}/workspace/inventory/products`);
         }
       } else if (embedded) {
         onSaved?.(savedPayload, { action });
       } else if (action === "save") {
         if (!embedded) {
-          router.push(`/${company}/inventory/products`);
+          router.push(`/${company}/workspace/inventory/products`);
         }
       }
 
@@ -814,7 +814,7 @@ async function handleImageUpload(
         </div>
         {!embedded ? (
           <Link
-            href={`/${company}/inventory/products`}
+            href={`/${company}/workspace/inventory/products`}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
             Back to Products
@@ -902,7 +902,7 @@ async function handleImageUpload(
                       .includes(input.toLowerCase())
                   }
                   className="w-full font-sans"
-                
+
                 />
                 <Button
                   icon={<PlusOutlined />}
@@ -937,7 +937,7 @@ async function handleImageUpload(
                 />
               </div>
             </div>
-             <div>
+            <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Source</label>
               <select
                 value={source}
@@ -958,7 +958,7 @@ async function handleImageUpload(
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
               />
             </div>
-           
+
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
               <textarea
@@ -1197,11 +1197,10 @@ async function handleImageUpload(
                               onClick={() => removeVariant(index)}
                               disabled={Boolean(variant.id)}
                               title={variant.id ? "Cannot delete a saved variant" : undefined}
-                              className={`rounded border px-2 py-1 text-xs ${
-                                variant.id
-                                  ? "cursor-not-allowed border-gray-200 text-gray-400"
-                                  : "border-red-200 text-red-600 hover:bg-red-50"
-                              }`}
+                              className={`rounded border px-2 py-1 text-xs ${variant.id
+                                ? "cursor-not-allowed border-gray-200 text-gray-400"
+                                : "border-red-200 text-red-600 hover:bg-red-50"
+                                }`}
                             >
                               Remove
                             </button>
@@ -1259,30 +1258,30 @@ async function handleImageUpload(
               {images.map((image, index) => (
                 <div key={index} className="rounded-lg border border-gray-200 p-3">
                   <div className="grid gap-4 md:grid-cols-4">
-                   <div className="md:col-span-2 space-y-1">
+                    <div className="md:col-span-2 space-y-1">
                       <label className="mb-1 block text-sm font-medium text-gray-700">
                         Image From Master
                       </label>
                       <div className="flex items-center gap-2">
-                      <Select
-                        showSearch
-                        allowClear
-                        placeholder="Select image"
-                        value={image.image_url || undefined}
-                        onChange={(value) =>
-                          updateImage(index, "image_url", String(value || ""))
-                        }
-                        options={imageMasterOptions}
-                        optionLabelProp="label"
-                        disabled={readOnly}
-                        filterOption={(input, option) =>
-                          String(option?.label ?? "")
-                            .toLowerCase()
-                            .includes(input.toLowerCase())
-                        }
-                        className="w-full font-sans"
-                      />
-                      <Button icon={<PlusOutlined />}  type="default" onClick={() => fileInputRef.current?.click()} /> 
+                        <Select
+                          showSearch
+                          allowClear
+                          placeholder="Select image"
+                          value={image.image_url || undefined}
+                          onChange={(value) =>
+                            updateImage(index, "image_url", String(value || ""))
+                          }
+                          options={imageMasterOptions}
+                          optionLabelProp="label"
+                          disabled={readOnly}
+                          filterOption={(input, option) =>
+                            String(option?.label ?? "")
+                              .toLowerCase()
+                              .includes(input.toLowerCase())
+                          }
+                          className="w-full font-sans"
+                        />
+                        <Button icon={<PlusOutlined />} type="default" onClick={() => fileInputRef.current?.click()} />
                       </div>
                       <input
                         type="file"
@@ -1291,7 +1290,7 @@ async function handleImageUpload(
                         accept="image/*"
                         onChange={(e) => handleImageUpload(e, index)}
                       />
-                   </div>
+                    </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">
                         Alt Text
@@ -1370,25 +1369,25 @@ async function handleImageUpload(
         ) : null}
 
         {!readOnly ? (
-<div className="flex justify-between pt-6 border-t border-gray-100">
-  <div className="flex gap-4">
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {loading ? "Saving..." : buttonLabel || (isEdit ? "Update Product" : "Save Product")}
-            </button>
-            {!isEdit ? (
+          <div className="flex justify-between pt-6 border-t border-gray-100">
+            <div className="flex gap-4">
               <button
-                type="button"
-                onClick={() => handleSave("save_add_new")}
+                type="submit"
                 disabled={loading}
-                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {buttonLabel ? `${buttonLabel} & Add Another` : "Save & Add New"}
+                {loading ? "Saving..." : buttonLabel || (isEdit ? "Update Product" : "Save Product")}
               </button>
-            ) : null}
+              {!isEdit ? (
+                <button
+                  type="button"
+                  onClick={() => handleSave("save_add_new")}
+                  disabled={loading}
+                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {buttonLabel ? `${buttonLabel} & Add Another` : "Save & Add New"}
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}

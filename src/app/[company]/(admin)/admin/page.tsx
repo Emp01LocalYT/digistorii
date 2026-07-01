@@ -2,7 +2,7 @@
 
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
-
+import { PencilSquareIcon } from "@heroicons/react/24/outline";
 type User = {
   id: string;
   name: string;
@@ -73,14 +73,22 @@ export default function AdminPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <h1 className="text-3xl font-bold text-gray-800">
-          Admin Dashboard ({company})
+          Admin Console
         </h1>
-        <button
-          onClick={() => router.push(`/${company}/admin/users`)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow"
-        >
-          + Create User
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => router.push(`/${company}/admin/user-responsibilities`)}
+            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition shadow"
+          >
+            Edit Responsibility
+          </button>
+          <button
+            onClick={() => router.push(`/${company}/admin/users`)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition shadow"
+          >
+            + Create User
+          </button>
+        </div>
       </div>
 
       {/* Metrics Cards */}
@@ -113,32 +121,40 @@ export default function AdminPage() {
                 <th className="p-3 text-left">Email</th>
                 <th className="p-3 text-left">Phone</th>
                 <th className="p-3 text-left">Status</th>
-                <th className="p-3 text-left">Create At</th>
+                <th className="p-3 text-left">Created At</th>
+                <th className="p-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u, idx) => (
                 <tr
                   key={u.id}
-                  className={`border-t hover:bg-blue-50 transition ${
-                    idx % 2 === 0 ? "bg-white" : "bg-gray-50"
-                  }`}
+                  className={`border-t hover:bg-blue-50 transition ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    }`}
                 >
                   <td className="p-3 font-medium">{u.name}</td>
                   <td className="p-3">{u.email}</td>
                   <td className="p-3">{u.phone}</td>
                   <td className="p-3">
                     <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        u.is_active
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${u.is_active
                           ? "bg-green-100 text-green-800"
                           : "bg-red-100 text-red-800"
-                      }`}
+                        }`}
                     >
                       {u.is_active ? "Active" : "Inactive"}
                     </span>
                   </td>
                   <td className="p-3">{formatDate(u.created_at)}</td>
+                  <td className="p-3 text-center">
+                    <button
+                      onClick={() => router.push(`/${company}/admin/users?userId=${u.id}`)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-gray-300 text-gray-700 rounded-md text-xs font-medium bg-white hover:bg-gray-50 hover:text-blue-600 transition shadow-xs"
+                    >
+                      <PencilSquareIcon className="w-3.5 h-3.5" />
+                      Edit
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

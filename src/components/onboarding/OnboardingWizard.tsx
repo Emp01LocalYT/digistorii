@@ -3,11 +3,13 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { City, Country, State } from "country-state-city";
 import Pricing from "@/components/landing/Pricing";
+import { TrashIcon } from "@heroicons/react/24/outline";
 import {
   persistSelectedPlan,
   readPersistedSelectedPlan,
   type PlanOption,
 } from "@/components/landing/Pricing";
+import { HiEye, HiEyeOff, HiMail } from "react-icons/hi";
 import {
   BillingInterval,
   ONBOARDING_STEPS,
@@ -35,8 +37,10 @@ type WizardProps = {
 
 type StaffMember = {
   name: string;
+  username:string;
   email: string;
   phone: string;
+  password: string;
   responsibility_id: string;
   location_id: string;
   warehouse_id: string;
@@ -400,6 +404,7 @@ export default function OnboardingWizard({
   const [companyName, setCompanyName] = useState(company);
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
+
 
   const planLimits = useMemo(() => {
     if (subscription) {
@@ -1066,8 +1071,10 @@ export default function OnboardingWizard({
       ...prev,
       {
         name: "",
+        username: "",
         email: "",
         phone: "",
+        password: "",
         responsibility_id: defaultResponsibilityId,
         location_id: defaultLocationId,
         warehouse_id: defaultWarehouseId,
@@ -1080,7 +1087,14 @@ export default function OnboardingWizard({
       prev.map((member, i) => (i === index ? { ...member, ...patch } : member))
     );
   };
-
+const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
+  const togglePassword = (index: number) => {
+  setShowPasswords((prev) => {
+    const updated = [...prev];
+    updated[index] = !updated[index];
+    return updated;
+  });
+};
   const removeStaffRow = (index: number) => {
     setStaffUsers((prev) => prev.filter((_, i) => i !== index));
   };
@@ -1116,7 +1130,7 @@ export default function OnboardingWizard({
             <h2 className="text-2xl font-bold text-gray-900">Step 2: Phone Verification</h2>
             <div className="rounded-xl border border-blue-100 bg-blue-50 p-5 space-y-4 text-sm">
               <div>
-                <p className="font-semibold text-gray-900">Verify Your Phone Number</p>
+                <p className="font-semibold text-gray-900">Get OTP to your Phone Number</p>
                 <p className="mt-1 text-gray-700">
                   Phone Number: <span className="font-semibold">+91 {ownerPhone || "-"}</span>
                 </p>
@@ -1136,13 +1150,13 @@ export default function OnboardingWizard({
                     >
                       {otpSent ? "Resend OTP" : "Send OTP"}
                     </button>
-                    <button
+                    {/* <button
                       type="button"
                       disabled
                       className="rounded-lg border border-gray-200 bg-white px-4 py-2 font-semibold text-gray-400"
                     >
                       Change Number
-                    </button>
+                    </button> */}
                     {otpCooldown > 0 && (
                       <span className="self-center text-gray-600">Resend available in {otpCooldown}s</span>
                     )}
@@ -2078,10 +2092,20 @@ export default function OnboardingWizard({
             >
               Add Staff
             </button>
-            <div className="space-y-3">
+            <div className="space-y-4">
               {staffUsers.map((user, index) => (
-                <div key={index} className="rounded-xl border border-gray-200 p-4">
-                  <div className="grid md:grid-cols-3 gap-6">
+
+                <div key={index} className="relative rounded-xl border border-gray-200 p-5 bg-gray-50/50">
+                      <button 
+                        type="button" 
+                        onClick={() => removeStaffRow(index)} 
+            className="absolute top-4 right-4 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 z-10"
+                        title="Remove Staff"
+                      >
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                   
+                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pr-0 md:pr-8">
                     <div>
                       <label className={formLabelClass}>
                         Name <span className="text-red-500">*</span>
@@ -2089,6 +2113,16 @@ export default function OnboardingWizard({
                       <input
                         value={user.name}
                         onChange={(e) => updateStaffRow(index, { name: e.target.value })}
+                        className={formFieldClass}
+                      />
+                    </div>
+                    <div>
+                      <label className={formLabelClass}>
+                        Username <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        value={user.username || ""}
+                        onChange={(e) => updateStaffRow(index, { username: e.target.value })}
                         className={formFieldClass}
                       />
                     </div>
@@ -2102,6 +2136,34 @@ export default function OnboardingWizard({
                         className={formFieldClass}
                       />
                     </div>
+                    <div>
+  <label className={formLabelClass}>
+    Password <span className="text-red-500">*</span>
+  </label>
+
+  <div className="relative">
+    <input
+      type={showPasswords[index] ? "text" : "password"}
+      value={user.password || ""}
+      onChange={(e) =>
+        updateStaffRow(index, { password: e.target.value })
+      }
+      className={`${formFieldClass} pr-10`}
+    />
+
+    <button
+      type="button"
+      onClick={() => togglePassword(index)}
+      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+    >
+      {showPasswords[index] ? (
+        <HiEyeOff size={18} />
+      ) : (
+        <HiEye size={18} />
+      )}
+    </button>
+  </div>
+</div>
                     <div>
                       <label className={formLabelClass}>
                         Phone <span className="text-red-500">*</span>
@@ -2186,15 +2248,7 @@ export default function OnboardingWizard({
                           ))}
                       </select>
                     </div>
-                    <div className="md:col-span-2 flex items-end">
-                      <button
-                        type="button"
-                        onClick={() => removeStaffRow(index)}
-                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-red-600 font-semibold w-full md:w-auto"
-                      >
-                        Remove Staff
-                      </button>
-                    </div>
+                    
                   </div>
                 </div>
               ))}
@@ -2235,12 +2289,12 @@ export default function OnboardingWizard({
                   </div>
                   <div className="grid md:grid-cols-2 gap-3 text-sm">
                     <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
-                      <span className="text-gray-500">Admin Dashboard</span>
-                      <p className="font-semibold text-blue-700 mt-0.5">{`admin.getyourwebsite.com/${company}`}</p>
+                      <span className="text-gray-500">Admin Console</span>
+                      <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}/admin`}</p>
                     </div>
                     <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
-                      <span className="text-gray-500">Public Store URL</span>
-                      <p className="font-semibold text-blue-700 mt-0.5">{`getyourwebsite.com/${company}`}</p>
+                      <span className="text-gray-500">Operations Portal URL</span>
+                      <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}`}</p>
                     </div>
                     <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
                       <span className="text-gray-500">E-Commerce</span>

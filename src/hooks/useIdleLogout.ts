@@ -12,7 +12,7 @@ export default function useIdleLogout(company: string,type: string) {
         const logout = async () => {
             await fetch(`/api/auth/logout?type=${type}`, { method: "POST" });
  
-            const path = type === "admin" ? "admin/login" : "login";
+            const path = type === "admin" ? "admin/login" : "workspace/login";
             router.replace(`/${company}/${path}`);
         };
  

@@ -1,14 +1,13 @@
 "use client";
 
 import { createPortal } from "react-dom";
-import ProductFilters from "@/app/[company]/(user)/inventory/products/components/ProductFilters";
+import ProductFilters from "@/app/[company]/(user)/workspace/inventory/products/components/ProductFilters";
 import {
   PRODUCT_LOOKUP_COLUMNS,
   PRODUCT_LOOKUP_COLUMN_LABELS,
   ProductLookupItem,
 } from "@/lib/product-lookup";
 import type { ProductLookupFilters } from "@/hooks/useProductLookup";
-import { CurrencyBangladeshiIcon } from "@heroicons/react/24/outline";
 
 type ProductLookupModalProps = {
   open: boolean;
@@ -244,11 +243,10 @@ export default function ProductLookupModal({
               <button
                 key={p}
                 onClick={() => onPageChange(p)}
-                className={`px-3 py-1 text-sm border rounded transition-colors ${
-                  page === p
-                    ? "bg-[var(--color-blue-600)] text-white border-indigo-600"
-                    : "bg-white text-gray-600 hover:bg-gray-100"
-                }`}
+                className={`px-3 py-1 text-sm border rounded transition-colors ${page === p
+                  ? "bg-[var(--color-blue-600)] text-white border-indigo-600"
+                  : "bg-white text-gray-600 hover:bg-gray-100"
+                  }`}
               >
                 {p}
               </button>
@@ -285,9 +283,8 @@ export default function ProductLookupModal({
               if (!isEditable) return;
               onAddSelected();
             }}
-            className={`px-4 py-2 rounded-md text-white ${
-              !isEditable ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
-            }`}
+            className={`px-4 py-2 rounded-md text-white ${!isEditable ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
+              }`}
           >
             Add Selected
           </button>

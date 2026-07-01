@@ -7,6 +7,7 @@ import { usePathname, useParams, useRouter } from "next/navigation";
 import useIdleLogout from "@/hooks/useIdleLogout";
 import { useUser } from "@/context/CurrentUserContext";
 import AdminHeader from "@/components/admin/AdminHeader";
+import { TenantProvider } from "@/context/TenantContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -41,7 +42,6 @@ export default function AdminLayout({
           return;
         }
 
-        // If user context is empty, fetch from cookie via API
         if (!user) {
           const res = await fetch(`/api/admin/current-user`);
            if (!res.ok) {
@@ -94,13 +94,19 @@ export default function AdminLayout({
 
   // LOGIN PAGE ALLOWED
   if (pathname?.endsWith("/admin/login")) {
-    return <div className={inter.className}>{children}</div>;
+    return (
+      <TenantProvider value={{ company: tenant }}>
+        <div className={inter.className}>{children}</div>
+      </TenantProvider>
+    );
   }
 
   return (
-    <div className={`${inter.className} min-h-screen bg-gray-100`}>
-      <AdminHeader company={tenant} />
-      <div className="p-6">{children}</div>
-    </div>
+    <TenantProvider value={{ company: tenant }}>
+      <div className={`${inter.className} min-h-screen bg-gray-100`}>
+        <AdminHeader company={tenant} />
+        <div className="p-6">{children}</div>
+      </div>
+    </TenantProvider>
   );
 }

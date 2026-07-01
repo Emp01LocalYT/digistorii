@@ -4,12 +4,12 @@
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 // 1. Fix the type import path
-import type { ProductSavedPayload } from "../../../inventory/products/add-products/ProductForm";
+import type { ProductSavedPayload } from "../../../../workspace/inventory/products/add-products/ProductForm";
 
 // 2. Fix the dynamic import path
 const ProductForm = dynamic(
   () =>
-    import("../../../inventory/products/add-products/ProductForm").then(
+    import("../../../../workspace/inventory/products/add-products/ProductForm").then(
       (mod) => mod.ProductForm
     ),
   { ssr: false }

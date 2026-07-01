@@ -12,12 +12,12 @@ import { useUser } from "@/context/CurrentUserContext";
 const AdminLayout = dynamic(() => import("@/layout/AdminLayout"), {
   ssr: false,
 });
- 
+
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
 });
- 
+
 export default function CompanyLayout({
   children,
 }: {
@@ -26,56 +26,33 @@ export default function CompanyLayout({
   const pathname = usePathname();
   const params = useParams();
   const router = useRouter();
- 
+
   const companyParam = params.company;
- 
+
   // Ensure tenant is always a string
   const tenant =
     Array.isArray(companyParam)
       ? companyParam[0]
       : companyParam || "default-tenant"; // fallback if undefined
- 
+
   // Idle logout after 20 minutes
-  useIdleLogout(tenant,"/login");
- 
+  useIdleLogout(tenant, "/workspace/login");
+
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [hasError, setHasError] = useState(false);
- 
-  //  Auth check runs inside useEffect
-  // useEffect(() => {
-  //   try {
-  //     if (pathname?.endsWith("/login")) {
-  //       // On login page, skip auth check
-  //       setCheckingAuth(false);
-  //       return;
-  //     }
- 
-  //     const user = localStorage.getItem("user");
- 
-  //     if (!user) {
-  //       router.replace(`/${tenant}/login`);
-  //     } else {
-  //       setCheckingAuth(false);
-  //     }
-  //   } catch (err) {
-  //     console.error("Auth check failed", err);
-  //     setHasError(true);
-  //     router.replace(`/${tenant}/login`); // force logout on error
-  //   }
-  // }, [pathname, tenant, router]);
- 
+
   const { user } = useUser();
- 
+
   useEffect(() => {
     const checkAuthAndOnboarding = async () => {
       try {
-        if (pathname?.endsWith("/login")) {
+        if (pathname?.endsWith("/workspace/login")) {
           setCheckingAuth(false);
           return;
         }
 
         if (!user) {
-          router.replace(`/${tenant}/login`);
+          router.replace(`/${tenant}/workspace/login`);
           return;
         }
 
@@ -97,14 +74,13 @@ export default function CompanyLayout({
         setCheckingAuth(false);
       } catch (err) {
         console.error("Auth check failed", err);
-        setHasError(true);
-        router.replace(`/${tenant}/login`); // force logout on error
+        router.replace(`/${tenant}/workspace/login`); // force logout on error
       }
     };
 
     checkAuthAndOnboarding();
   }, [user, pathname, tenant, router]);
- 
+
   // Prevent UI flash before auth check
   if (checkingAuth) {
     return (
@@ -113,14 +89,14 @@ export default function CompanyLayout({
       </div>
     );
   }
- 
+
   // LOGIN PAGE ALLOWED
-  if (pathname?.endsWith("/login")) {
+  if (pathname?.endsWith("/workspace/login")) {
     return <div className={inter.className}>{children}</div>;
   }
 
-  const isLiveBilling = pathname?.includes("/transactions/sales/add");
- 
+  const isLiveBilling = pathname?.includes("/workspace/transactions/sales/add");
+
   return (
     <TenantProvider value={{ company: tenant }}>
       {/* <CurrentUserProvider> */}
@@ -132,7 +108,7 @@ export default function CompanyLayout({
             {isLiveBilling ? children : <AdminLayout>{children}</AdminLayout>}
           </div>
         </SidebarProvider>
-        
+
       </ThemeProvider>
       {/* </CurrentUserProvider> */}
     </TenantProvider>

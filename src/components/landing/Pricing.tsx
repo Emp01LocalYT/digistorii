@@ -154,45 +154,44 @@ export function PlanCards({
           Selected plan is not available. Please choose a plan from pricing.
         </div>
       ) : (
-        <div className={onlySelectedPlan ? "grid gap-8" : "grid md:grid-cols-4 gap-8 items-stretch"}>
-          {visiblePlans.map((plan) => {
-            const isSelected = Number(selectedPlanId) === Number(plan.plan_id);
-            const isPopular = plan.plan_name.toUpperCase() === "GROWTH";
-            const isEnterprise = plan.plan_name.toUpperCase() === "ENTERPRISE";
+        <div className={onlySelectedPlan ? "grid gap-8" : "grid grid-cols-1 md:grid-cols-6 gap-8 items-stretch"}>
+  {visiblePlans.map((plan, index) => {
+    const isSelected = Number(selectedPlanId) === Number(plan.plan_id);
+    const isPopular = plan.plan_name.toUpperCase() === "GROWTH";
+    const isEnterprise = plan.plan_name.toUpperCase() === "ENTERPRISE";
 
-            // Calculate yearly savings
-            const monthlyPrice = plan.price_monthly || 0;
-            const yearlyPrice = plan.price_yearly || 0;
-            const isYearly = plan.billing_cycle === "yearly";
-            const savings = (monthlyPrice * 12) - yearlyPrice;
-            const monthsFree = monthlyPrice > 0 ? Math.round((savings / monthlyPrice) * 10) / 10 : 0;
+    const monthlyPrice = plan.price_monthly || 0;
+    const yearlyPrice = plan.price_yearly || 0;
+    const isYearly = plan.billing_cycle === "yearly";
+    const savings = (monthlyPrice * 12) - yearlyPrice;
+    const monthsFree = monthlyPrice > 0 ? Math.round((savings / monthlyPrice) * 10) / 10 : 0;
 
-            return (
-              <div
-                key={`${plan.plan_id}-${plan.billing_cycle}`}
-                className={`relative flex flex-col justify-between rounded-3xl border p-8 transition-all duration-300 transform hover:-translate-y-1.5 ${isSelected
-                  ? "border-blue-600 bg-gradient-to-b from-blue-50/50 to-white shadow-xl ring-2 ring-blue-500/20"
-                  : isPopular
-                    ? "border-indigo-300 bg-white shadow-lg hover:border-indigo-400 hover:shadow-2xl ring-1 ring-indigo-100"
-                    : "border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:shadow-xl"
-                  }`}
-              >
-                {/* Visual Accent top border */}
-                <div
-                  className={`absolute top-0 left-0 h-1.5 w-full rounded-t-3xl ${isSelected
-                    ? "bg-gradient-to-r from-blue-600 to-indigo-600"
-                    : isPopular
-                      ? "bg-gradient-to-r from-indigo-500 to-purple-600"
-                      : "bg-transparent"
-                    }`}
-                />
+    const cardSpan = index === 0 ? "md:col-start-2 md:col-span-2" : "md:col-span-2";
 
-                {/* Top Badges */}
-                {isPopular && (
-                  <span className="absolute -top-3.5 right-6 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white shadow-md ">
-                    Best Value
-                  </span>
-                )}
+    return (
+      <div
+        key={`${plan.plan_id}-${plan.billing_cycle}`}
+        className={`relative flex flex-col justify-between rounded-3xl border p-8 transition-all duration-300 transform hover:-translate-y-1.5 ${onlySelectedPlan ? "" : cardSpan} ${isSelected
+          ? "border-blue-600 bg-gradient-to-b from-blue-50/50 to-white shadow-xl ring-2 ring-blue-500/20"
+          : isPopular
+            ? "border-indigo-300 bg-white shadow-lg hover:border-indigo-400 hover:shadow-2xl ring-1 ring-indigo-100"
+            : "border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:shadow-xl"
+          }`}
+      >
+        <div
+          className={`absolute top-0 left-0 h-1.5 w-full rounded-t-3xl ${isSelected
+            ? "bg-gradient-to-r from-blue-600 to-indigo-600"
+            : isPopular
+              ? "bg-gradient-to-r from-indigo-500 to-purple-600"
+              : "bg-transparent"
+            }`}
+        />
+
+        {isPopular && (
+          <span className="absolute -top-3.5 right-6 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white shadow-md ">
+            Best Value
+          </span>
+        )}
                 {/* {isEnterprise && (
                   <span className="absolute -top-3.5 right-6 rounded-full bg-gray-800 px-3.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white shadow-md">
                     Enterprise
@@ -232,7 +231,7 @@ export function PlanCards({
                     )}
                   </div>
                   <div className="mt-8 flex gap-3">
-                    {onSelectPlan && (
+                    {/* {onSelectPlan && (
                       <button
                         type="button"
                         onClick={() => onSelectPlan(plan)}
@@ -243,7 +242,7 @@ export function PlanCards({
                       >
                         {isSelected ? "Selected" : "Select Plan"}
                       </button>
-                    )}
+                    )} */}
 
                     {onContinue ? (
                       <button
@@ -305,7 +304,8 @@ export function PlanCards({
         </div>
       )}
     </div>
-  );
+  
+);
 }
 
 export default function Pricing({

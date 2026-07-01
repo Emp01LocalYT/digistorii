@@ -18,7 +18,7 @@ export default function Features() {
       icon: IconShoppingCartCheck
     },
     {
-      title: "Admin Dashboard for Owners",
+      title: "Operational Dashboard for Owners",
       description: "Manage products, pricing, customers, invoices, and sales — from a single dashboard.",
       icon: IconLayoutDashboard
     },

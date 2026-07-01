@@ -806,7 +806,9 @@ export async function POST(req: NextRequest) {
       const users: Array<{
         name: string;
         email: string;
+        username: string;
         phone: string;
+        password: string;
         responsibility_id?: string | number;
         location_id?: string | number;
         warehouse_id?: string | number;
@@ -833,6 +835,8 @@ export async function POST(req: NextRequest) {
         const name = String(user?.name || "").trim();
         const email = String(user?.email || "").trim().toLowerCase();
         const phone = String(user?.phone || "").trim();
+        const username = String(user?.username || "").trim();
+        const password = String(user?.password || "").trim();
         const responsibilityId = Number(user?.responsibility_id || 0);
         const locationId = Number(user?.location_id || 0);
         const warehouseId = Number(user?.warehouse_id || 0);
@@ -840,6 +844,8 @@ export async function POST(req: NextRequest) {
           !name ||
           !email ||
           !phone ||
+          !username ||
+          !password ||
           !Number.isInteger(responsibilityId) ||
           responsibilityId <= 0 ||
           !responsibilities.some((entry) => entry.id === responsibilityId) ||
@@ -889,15 +895,15 @@ export async function POST(req: NextRequest) {
           throw new Error(`Phone already exists for ${phone}`);
         }
 
-        const tempPassword = `${randomBytes(6).toString("hex")}Aa1!`;
-        const passwordHash = await hashPassword(tempPassword);
+        // const tempPassword = `${randomBytes(6).toString("hex")}Aa1!`;
+        const passwordHash = await hashPassword(password);
 
         const newUser = await client.query(
           `INSERT INTO public.users
-           (company_id, name, email, phone, password_hash, responsibility_id, is_active)
-           VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+           (company_id, name,username, email, phone, password_hash, responsibility_id, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6,$7, TRUE)
            RETURNING id`,
-          [context.id, name, email, phone, passwordHash, responsibilityId]
+          [context.id, name,username, email, phone, passwordHash, responsibilityId]
         );
         const userId = Number(newUser.rows[0].id);
 

@@ -395,10 +395,10 @@ export default function ProductsPage() {
       if (data.variant?.barcode) {
         params.set("barcode", String(data.variant.barcode));
       }
-      window.location.href = `/${company}/inventory/products/add-products?${params.toString()}`;
+      window.location.href = `/${company}/workspace/inventory/products/add-products?${params.toString()}`;
       return;
     }
-    window.location.href = `/${company}/inventory/products/add-products?mode=add&barcode=${encodeURIComponent(input)}`;
+    window.location.href = `/${company}/workspace/inventory/products/add-products?mode=add&barcode=${encodeURIComponent(input)}`;
   }
 
   const filteredData = useMemo(() => products, [products]);
@@ -443,7 +443,7 @@ export default function ProductsPage() {
         <div className="flex items-center gap-2">
 
           <Link
-            href={`/${company}/inventory/products/add-products`}
+            href={`/${company}/workspace/inventory/products/add-products`}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
           >
             + Add Product
@@ -530,8 +530,8 @@ export default function ProductsPage() {
                     <td className="px-4 py-3">
                       <span
                         className={`rounded-full px-2 py-1 text-xs font-medium ${item.status === 1
-                            ? "bg-green-200 text-black"
-                            : "bg-gray-300 text-black"
+                          ? "bg-green-200 text-black"
+                          : "bg-gray-300 text-black"
                           }`}
                       >
                         {item.status === 1 ? "Active" : "Archived"}
@@ -540,12 +540,12 @@ export default function ProductsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Link
-                          href={`/${company}/inventory/products/add-products?id=${item.id}&mode=view`}
+                          href={`/${company}/workspace/inventory/products/add-products?id=${item.id}&mode=view`}
                           className="text-indigo-600" title="View Details"    >
                           <EyeIcon className="w-5 h-5" />                        </Link>
                         <Link
                           href={
-                            `/${company}/inventory/products/add-products?id=${item.id}&mode=edit`}
+                            `/${company}/workspace/inventory/products/add-products?id=${item.id}&mode=edit`}
                           className="text-indigo-600" title="Edit Product"
                         >
                           <PencilSquareIcon className="w-5 h-5" />
@@ -636,8 +636,8 @@ export default function ProductsPage() {
                       onClick={() => goToPage(page)}
                       aria-current={currentPage === page ? "page" : undefined}
                       className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${currentPage === page
-                          ? "z-10 bg-indigo-600 text-white"
-                          : "text-gray-900 hover:bg-gray-50"
+                        ? "z-10 bg-indigo-600 text-white"
+                        : "text-gray-900 hover:bg-gray-50"
                         }`}
                     >
                       {page}

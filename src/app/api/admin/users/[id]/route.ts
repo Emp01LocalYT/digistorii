@@ -82,7 +82,6 @@ export async function GET(
   }
 }
 
-/* ---------------- UPDATE USER BY ID ---------------- */
 export async function PUT(
   req: NextRequest,
   context: { params: Promise<{ id: string }> }

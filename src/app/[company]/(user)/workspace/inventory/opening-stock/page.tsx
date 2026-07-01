@@ -651,7 +651,7 @@ export default function OpeningStockPage() {
           <button
             onClick={openForm}
             className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"
-          >
+          > 
             Add Opening Stock
           </button>
         )}
@@ -846,7 +846,7 @@ export default function OpeningStockPage() {
             </div>
             <div>
               <label className="text-sm font-semibold mb-1 block">
-                Store Locator <span className="text-red-500">*</span>
+                 Locator <span className="text-red-500">*</span>
               </label>
               <select
                 value={form.locator_id}

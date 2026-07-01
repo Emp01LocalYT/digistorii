@@ -32,7 +32,6 @@
 //   ],
 //   "exclude": ["node_modules"]
 // }
-
 {
   "compilerOptions": {
     "target": "ES2017",
@@ -74,4 +73,3 @@
     "node_modules"
   ]
 }
-

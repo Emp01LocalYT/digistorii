@@ -757,7 +757,6 @@ useEffect(() => {
       details.forEach((d, index) => {
         if (!d.product_code) newErrors[`product_code_${index}`] = "Product Code required";
         if (!d.product_name) newErrors[`product_name_${index}`] = "Product Name required";
-        if (!d.description) newErrors[`description_${index}`] = "Description required";
 
         if (Number(d.rate || 0) <= 0) newErrors[`rate_${index}`] = "Unit price must be > 0";
         if (Number(d.qty || 0) <= 0) newErrors[`qty_${index}`] = "Qty must be > 0";
@@ -777,14 +776,29 @@ useEffect(() => {
     return Object.keys(newErrors).length === 0;
   };
 
+ const checking = () => {
+  console.log("to check button clicked");
+ }
+
   const handleCreatePurchase = async (e: any) => {
+    console.log("===== Create PO Started =====");
+    console.log("Header:", header);
+    console.log("Details:", details);
+    console.log("Temp Products:", tempProducts);
     e.preventDefault();
     setErrorMessage("");
-    if (!validate()) return;
+    const isValid = validate();
+      console.log("Validation Result:", isValid);
+      if (!isValid) {
+        console.log("Exiting early due to failed validation!");
+        return;
+      }
+      
 
     setLoading(true);
     try {
       let attachmentUrl = header.attachment_url;
+      console.log("Uploading attachment...", attachmentFile);
       if (attachmentFile && company) {
         const formData = new FormData();
         formData.append("file", attachmentFile);
@@ -804,16 +818,19 @@ useEffect(() => {
             filename
           )}`;
         }
+              console.log("Attachment uploaded:", uploadData);
       }
+
 
       const tempProductMap = new Map<string, TempProductCatalogItem>(
         tempProducts.map((item) => [item.temp_variant_id, item])
       );
       const createdProductRefs: Array<{ temp_id: string; product_id: number; variant_id: number }> = [];
-
+     
       for (const detail of details) {
         const tempKey = String(detail.temp_id || detail.product_id || "");
         const tempItem = tempProductMap.get(tempKey);
+        console.log("Creating product:", tempItem);
         if (!tempItem) continue;
 
         const productPayload = {
@@ -859,9 +876,11 @@ useEffect(() => {
           product_id: Number(productData?.product?.id || createdVariant?.product_id || 0),
           variant_id: Number(createdVariant?.variant_id || 0),
         });
+        console.log("Created Product Refs:", createdProductRefs);
       }
 
       const persistedProductMap = new Map(createdProductRefs.map((item) => [item.temp_id, item]));
+      console.log("Created Product Refs:", createdProductRefs);
       const payloadDetails = details.map((detail) => {
         const tempKey = String(detail.temp_id || detail.product_id || "");
         const createdRef = persistedProductMap.get(tempKey);
@@ -887,6 +906,7 @@ useEffect(() => {
         details: payloadDetails,
         createdProducts: createdProductRefs,
       };
+      console.log("final payload",payload);
       const url = isEdit ? `/api/purchase/${purchaseId}` : "/api/purchase";
       const method = isEdit ? "PUT" : "POST";
       const res = await fetch(url, {
@@ -898,6 +918,7 @@ useEffect(() => {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+      console.log("Purchase Response:", data);
       if (!res.ok || !data.success) {
         const debugInfo = data?.debug ? ` | debug: ${JSON.stringify(data.debug)}` : "";
         notify(`${data.message || data.error || "Failed to save purchase"}${debugInfo}`, {
@@ -932,6 +953,7 @@ useEffect(() => {
     if (!purchaseId || !company) return;
     router.push(`/${company}/transactions/purchase/add?renewFrom=${purchaseId}`);
   };
+
 
   const billToSupplier = allSuppliers.find((s) => String(s.id) === String(computedHeader.bill_to));
   const shipToSupplier = allSuppliers.find((s) => String(s.id) === String(computedHeader.ship_to));

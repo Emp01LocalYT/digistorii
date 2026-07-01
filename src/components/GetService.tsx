@@ -9,10 +9,12 @@ import {
   readPersistedSelectedPlan,
   type PlanOption,
 } from "@/components/landing/Pricing";
+import { HiEye, HiEyeOff, HiMail } from "react-icons/hi";
 
 export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption | null }) {
   const router = useRouter();
   const [storedPlan, setStoredPlan] = useState<PlanOption | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen]= useState(false);
 
   useEffect(() => {
     setStoredPlan(selectedPlan || readPersistedSelectedPlan());
@@ -38,10 +40,14 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleOpenPreview = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setError("");
+    setIsPreviewOpen(true);
+  }
+  const handleSubmit = async () => {
+    setIsPreviewOpen(false);
+    setIsSubmitting(true);
 
     try {
       const company = formData.slug;
@@ -103,7 +109,7 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
         </div>
 
         <div className="bg-white rounded-2xl shadow-xl p-8 md:p-12">
-          <form onSubmit={handleSubmit} className="space-y-8">
+          <form onSubmit={handleOpenPreview} className="space-y-8">
             {error && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
                 {error}
@@ -155,7 +161,7 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                   </label>
                   <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
                     <span className="bg-gray-100 px-4 py-3 text-gray-600 text-sm">
-                      getyourwebsite.com/
+                      digistorii/
                     </span>
                     <input
                       type="text"
@@ -234,7 +240,9 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                       onClick={() => setShowPassword((prev) => !prev)}
                       className="px-4 py-3 text-sm font-semibold text-blue-600 hover:text-blue-700"
                     >
-                      {showPassword ? "Hide" : "Show"}
+                   
+                        {showPassword ? <HiEyeOff size={20} /> : <HiEye size={20} />}
+                      
                     </button>
                   </div>
                 </div>
@@ -253,8 +261,6 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                 </svg>
                 {storedPlan ? "Cancel Plan & Return" : "Back to Pricing"}
               </button>
-
-              {/* Right Side: Big, high-contrast primary call-to-action */}
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -266,6 +272,64 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
           </form>
         </div>
       </div>
+    {/* --- PREVIEW DIALOG MODAL --- */}
+      {isPreviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-6 md:p-8 shadow-2xl border border-gray-100 transform transition-all scale-100">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Workspace Details</h3>
+            <p className="text-sm text-gray-500 mb-6">
+              Please double check your account information before we construct your environment setup.
+            </p>
+
+            <div className="space-y-4 bg-gray-50 rounded-xl p-5 border border-gray-100 text-sm">
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-gray-500 font-medium">Company Name:</span>
+                <span className="col-span-2 text-gray-900 font-semibold break-words">{formData.businessName}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-gray-500 font-medium">Workspace URL:</span>
+                <span className="col-span-2 text-blue-600 font-semibold break-all">
+                  digistorii/{formData.slug}
+                </span>
+              </div>
+              <hr className="border-gray-200" />
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-gray-500 font-medium">Owner Name:</span>
+                <span className="col-span-2 text-gray-900 font-semibold break-words">{formData.ownerName}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-gray-500 font-medium">Email Address:</span>
+                <span className="col-span-2 text-gray-900 font-semibold break-all">{formData.ownerEmail}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <span className="text-gray-500 font-medium">Phone Number:</span>
+                <span className="col-span-2 text-gray-900 font-semibold">{formData.ownerPhone || "—"}</span>
+              </div>
+            </div>
+
+            <p className="mt-6 text-xs text-gray-500 text-center">
+              Are these details correct? You can go back to make changes if necessary.
+            </p>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPreviewOpen(false)}
+                className="w-full sm:flex-1 px-5 py-3 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+              >
+                Go Back & Edit
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                className="w-full sm:flex-1 px-5 py-3 bg-blue-600 rounded-lg text-sm font-bold text-white hover:bg-blue-700 transition-colors shadow-md text-center"
+              >
+                Confirm & Proceed to Setup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

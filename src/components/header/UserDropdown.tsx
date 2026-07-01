@@ -32,8 +32,8 @@ export default function UserDropdown() {
     localStorage.removeItem("user");
     localStorage.removeItem("schema");
     localStorage.removeItem("company");
-    // router.push(`/${company}/login`); // Redirect to login page
-    router.replace(`/${company}/login`);
+    // router.push(`/${company}/workspace/login`); // Redirect to login page
+    router.replace(`/${company}/workspace/login`);
   };
  
 function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {

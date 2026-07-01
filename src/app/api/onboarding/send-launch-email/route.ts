@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
     );
     const sub = subResult.rows[0] || null;
 
-    const adminUrl = `admin.getyourwebsite.com/${company}`;
-    const shopUrl = `getyourwebsite.com/${company}`;
+    const adminUrl = `digistorii/${company}/admin`;
+    const shopUrl = `digistorii/${company}`;
 
     // Build email HTML
     const htmlBody = `
@@ -113,11 +113,11 @@ export async function POST(req: NextRequest) {
               <td style="padding: 10px 0; color: #1e293b; font-weight: 600; font-size: 14px;">${sub?.plan_code || "N/A"} (${sub?.billing_interval || "monthly"})</td>
             </tr>
             <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Admin Dashboard</td>
+              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Admin Console</td>
               <td style="padding: 10px 0; font-size: 14px;"><a href="https://${adminUrl}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${adminUrl}</a></td>
             </tr>
             <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Public Store</td>
+              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Operations Portal</td>
               <td style="padding: 10px 0; font-size: 14px;"><a href="https://${shopUrl}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${shopUrl}</a></td>
             </tr>
           </table>

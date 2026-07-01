@@ -1,10 +1,18 @@
 "use client";
- 
+
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { PlusIcon } from "@heroicons/react/24/outline";
- 
-const FloatingInput = ({
+import { 
+  PlusIcon, 
+  TrashIcon,
+  PencilSquareIcon, 
+  UserCircleIcon,
+  ArrowLeftIcon,EyeIcon, EyeSlashIcon 
+} from "@heroicons/react/24/outline";
+import { useNotify } from "@/hooks/useNotify";
+
+
+const FormField = ({
   label,
   name,
   type = "text",
@@ -13,43 +21,61 @@ const FloatingInput = ({
   required = false,
   onChange,
   readOnly = false,
+  isSelect = false,
+  children
 }: any) => {
+  // Local state to toggle showing the password text string
+  const [showPassword, setShowPassword] = useState(false);
+
+  const baseInputStyles = `w-full px-3 py-2 border rounded-md text-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
+    error ? "border-red-500 focus:ring-red-500/20 focus:border-red-500" : "border-gray-300"
+  } ${readOnly ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-white text-gray-900"}`;
+
+  const isPassword = type === "password";
+  const computedType = isPassword && showPassword ? "text" : type;
+
   return (
-    <div className="w-full">
-      <div className="relative">
-        <input
-          type={type}
-          name={name}
+    <div className="flex flex-col gap-1.5 w-full">
+      <label className="text-xs font-semibold text-gray-700 tracking-wide uppercase">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      
+      {isSelect ? (
+        <select
           value={value ?? ""}
-          placeholder=" "
           onChange={readOnly ? undefined : onChange}
-          readOnly={readOnly}
-          className={`floating-input peer ${
-            error
-              ? "border-red-500 focus:ring-red-500 focus:border-red-500"
-              : ""
-          } ${
-            readOnly
-              ? "bg-gray-100 cursor-not-allowed pointer-events-none"
-              : ""
-          }`}
-        />
-        <label
-          className="
-            floating-label
-            peer-placeholder-shown:top-4
-            peer-placeholder-shown:text-sm
-            peer-placeholder-shown:text-gray-400
-            peer-focus:top-2
-            peer-focus:text-xs
-            peer-focus:text-blue-600
-          "
+          disabled={readOnly}
+          className={baseInputStyles}
         >
-          {label} {required && <span className="text-red-500">*</span>}
-        </label>
-      </div>
+          {children}
+        </select>
+      ) : (
+        <div className="relative w-full">
+          <input
+            type={computedType}
+            name={name}
+            value={value ?? ""}
+            onChange={readOnly ? undefined : onChange}
+            readOnly={readOnly}
+            className={`${baseInputStyles} ${isPassword ? "pr-10" : ""}`}
+          />
+          {isPassword && (
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              {showPassword ? (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+              )}
+            </button>
+          )}
+        </div>
+      )}
  
-      {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
+      {error && <p className="text-xs text-red-500 font-medium mt-0.5">{error}</p>}
     </div>
   );
 };
@@ -96,9 +122,6 @@ function getDefaultResponsibilityId(options: ResponsibilityOption[]) {
  
 export default function CreateUserForm({ company, userId }: Props) {
   const router = useRouter();
-  // const params = useParams();
-  // const params = pageParams || useParams();
-  // const tenant = Array.isArray(params.company) ? params.company[0]: params.company;
   const tenant = Array.isArray(company) ? company[0] : company;
   const [errors, setErrors]: any = useState([]);
   const [apiError, setApiError] = useState("");
@@ -107,9 +130,10 @@ export default function CreateUserForm({ company, userId }: Props) {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [responsibilities, setResponsibilities] = useState<ResponsibilityOption[]>([]);
-  // const userId = params.id;
   const hasFetched = useRef(false);
-  const [users, setUsers] = useState([
+    const notify = useNotify();
+  
+  const [users, setUsers] = useState<User[]>([
     {
       id: "",
       full_name: "",
@@ -123,7 +147,7 @@ export default function CreateUserForm({ company, userId }: Props) {
       warehouse_id: "",
     },
   ]);
-  /* ---------------- Add Row ---------------- */
+
   const addRow = () => {
     const defaultLocationId = locations[0] ? String(locations[0].id) : "";
     const defaultWarehouse =
@@ -131,6 +155,7 @@ export default function CreateUserForm({ company, userId }: Props) {
       warehouses[0];
     const defaultWarehouseId = defaultWarehouse ? String(defaultWarehouse.id) : "";
     const defaultResponsibilityId = getDefaultResponsibilityId(responsibilities);
+    
     setUsers([
       ...users,
       {
@@ -148,19 +173,18 @@ export default function CreateUserForm({ company, userId }: Props) {
     ]);
     setErrors([]);
   };
+
   const removeRow = (index: number) => {
-    // Don't allow removing last row
     if (users.length === 1) return;
- 
     const updated = users.filter((_, i) => i !== index);
     setUsers(updated);
+    const updatedErrors = errors.filter((_: any, i: number) => i !== index);
+    setErrors(updatedErrors);
   };
  
   // Fetch user data for edit
   useEffect(() => {
-    if (!tenant || !userId || hasFetched.current) return;
-    hasFetched.current = true;
- 
+    if (!tenant || !userId) return;
     const fetchUser = async () => {
       try {
         const res = await fetch(`/api/admin/users/${userId}`, {
@@ -200,31 +224,19 @@ export default function CreateUserForm({ company, userId }: Props) {
     const loadMasterOptions = async () => {
       try {
         const [locationRes, warehouseRes, responsibilityRes] = await Promise.all([
-          fetch("/api/locations", {
-            headers: { "x-tenant": tenant },
-          }),
-          fetch("/api/warehouses", {
-            headers: { "x-tenant": tenant },
-          }),
-          fetch("/api/user-responsibilities", {
-            headers: { "x-tenant": tenant },
-          }),
+          fetch("/api/locations", { headers: { "x-tenant": tenant } }),
+          fetch("/api/warehouses", { headers: { "x-tenant": tenant } }),
+          fetch("/api/user-responsibilities", { headers: { "x-tenant": tenant } }),
         ]);
         const locationData = await locationRes.json();
         const warehouseData = await warehouseRes.json();
         const responsibilityData = await responsibilityRes.json();
 
-        if (locationRes.ok && locationData?.success) {
-          setLocations(locationData.data || []);
-        }
-        if (warehouseRes.ok && warehouseData?.success) {
-          setWarehouses(warehouseData.data || []);
-        }
-        if (responsibilityData?.success) {
-          setResponsibilities(responsibilityData.data || []);
-        }
+        if (locationRes.ok && locationData?.success) setLocations(locationData.data || []);
+        if (warehouseRes.ok && warehouseData?.success) setWarehouses(warehouseData.data || []);
+        if (responsibilityData?.success) setResponsibilities(responsibilityData.data || []);
       } catch (err) {
-        console.error("Failed to load location/warehouse/responsibility options", err);
+        console.error("Failed to load options", err);
       }
     };
     loadMasterOptions();
@@ -264,14 +276,9 @@ export default function CreateUserForm({ company, userId }: Props) {
     );
   }, [locations, warehouses, responsibilities]);
  
-  /* ---------------- Handle Change ---------------- */
-  const handleChange = (
-    index: number,
-    field: Exclude<keyof User, "status">,
-    value: string
-  ) => {
+  const handleChange = (index: number, field: keyof User, value: any) => {
     const updated = [...users];
-    updated[index][field] = value;
+    (updated[index] as any)[field] = value;
     setUsers(updated);
  
     const updatedErrors = [...errors];
@@ -281,13 +288,6 @@ export default function CreateUserForm({ company, userId }: Props) {
     setErrors(updatedErrors);
   };
  
-  const handleStatusChange = (index: number, checked: boolean) => {
-    const updated = [...users];
-    updated[index].status = checked;
-    setUsers(updated);
-  };
- 
-  /* ---------------- Validation ---------------- */
   const validate = () => {
     let newErrors = users.map(() => ({}));
     const emailCount: any = {};
@@ -296,76 +296,46 @@ export default function CreateUserForm({ company, userId }: Props) {
     const nameCount: any = {};
  
     users.forEach((user) => {
-      if (user.full_name)
-        nameCount[user.full_name] = (nameCount[user.full_name] || 0) + 1;
- 
-      if (user.username)
-        usernameCount[user.username] =
-          (usernameCount[user.username] || 0) + 1;
- 
-      if (user.email)
-        emailCount[user.email] = (emailCount[user.email] || 0) + 1;
- 
-      if (user.phone)
-        phoneCount[user.phone] = (phoneCount[user.phone] || 0) + 1;
+      if (user.full_name) nameCount[user.full_name] = (nameCount[user.full_name] || 0) + 1;
+      if (user.username) usernameCount[user.username] = (usernameCount[user.username] || 0) + 1;
+      if (user.email) emailCount[user.email] = (emailCount[user.email] || 0) + 1;
+      if (user.phone) phoneCount[user.phone] = (phoneCount[user.phone] || 0) + 1;
     });
  
     users.forEach((user, index) => {
       let err: any = {};
  
-      if (!user.full_name) {
-        err.full_name = "Full name Required";
-      } else if (nameCount[user.full_name] > 1) {
-        err.full_name = "Duplicate full name";
-      }
-      if (!user.username) {
-        err.username = "User name Required";
-      } else if (usernameCount[user.username] > 1) {
-        err.username = "Duplicate username";
-      }
- 
- 
-      if (!user.email) {
-        err.email = "Email is Required";
-      }
-      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
-        err.email = "Invalid email format";
-      } else if (emailCount[user.email] > 1) {
-        err.email = "Duplicate email";
-      }
- 
-      if (!user.phone) {
-        err.phone = "Phone number is required";
-      } else if (!/^[0-9]{10}$/.test(user.phone)) {
-        err.phone = "Phone must be 10 digits";
-      }
-      else if (phoneCount[user.phone] > 1) {
-        err.phone = "Duplicate phone";
-      }
+      if (!user.full_name) err.full_name = "Required";
+      else if (nameCount[user.full_name] > 1) err.full_name = "Duplicate name";
 
-      if (!user.responsibility_id) {
-        err.responsibility_id = "Responsibility is required";
-      }
-      if (!user.location_id) {
-        err.location_id = "Location is required";
-      }
+      if (!user.username) err.username = "Required";
+      else if (usernameCount[user.username] > 1) err.username = "Duplicate username";
+ 
+      if (!user.email) err.email = "Required";
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) err.email = "Invalid format";
+      else if (emailCount[user.email] > 1) err.email = "Duplicate email";
+ 
+      if (!user.phone) err.phone = "Required";
+      else if (!/^[0-9]{10}$/.test(user.phone)) err.phone = "Must be 10 digits";
+      else if (phoneCount[user.phone] > 1) err.phone = "Duplicate phone";
+
+      if (!user.responsibility_id) err.responsibility_id = "Required";
+      if (!user.location_id) err.location_id = "Required";
+      
       if (!user.warehouse_id) {
-        err.warehouse_id = "Warehouse is required";
+        err.warehouse_id = "Required";
       } else if (user.location_id) {
         const warehouse = warehouses.find((w) => String(w.id) === String(user.warehouse_id));
         if (!warehouse || String(warehouse.location_id) !== String(user.location_id)) {
-          err.warehouse_id = "Warehouse must belong to selected location";
+          err.warehouse_id = "Mismatch";
         }
       }
 
       if (!userId) {
-        if (!user.password) { err.password = "Password is required"; }
-        else if (user.password.length < 6) { err.password = "Password must be at least 6 characters"; }
-      } else {
-        // EDIT
-        if (user.password && user.password.length < 6) {
-          err.password = "Password must be at least 6 characters";
-        }
+        if (!user.password) err.password = "Required";
+        else if (user.password.length < 6) err.password = "Min 6 chars";
+      } else if (user.password && user.password.length < 6) {
+        err.password = "Min 6 chars";
       }
  
       newErrors[index] = err;
@@ -376,7 +346,7 @@ export default function CreateUserForm({ company, userId }: Props) {
  
   const handleSubmit = async () => {
     if (!tenant) {
-      setErrors("Tenant/company is required");
+      setApiError("Tenant/company is required");
       return;
     }
  
@@ -385,22 +355,16 @@ export default function CreateUserForm({ company, userId }: Props) {
     setApiError("");
     setSuccess("");
  
-    const hasError = validationErrors.some(
-      (e) => Object.keys(e).length > 0
-    );
- 
+    const hasError = validationErrors.some((e) => Object.keys(e).length > 0);
     if (hasError) return;
  
     try {
       setLoading(true);
-      const url = users[0].id
-        ? `/api/admin/users/${users[0].id}`   // edit
-        : "/api/admin/users";                 // create
- 
+      const url = users[0].id ? `/api/admin/users/${users[0].id}` : "/api/admin/users";
       const method = users[0].id ? "PUT" : "POST";
  
       const res = await fetch(url, {
-        method: method,
+        method,
         headers: {
           "Content-Type": "application/json",
           "x-tenant": tenant,
@@ -411,273 +375,252 @@ export default function CreateUserForm({ company, userId }: Props) {
       const data = await res.json();
  
       if (!res.ok) {
-        console.log("data.message : ", data.message);
         if (data.index !== undefined && data.field) {
           const newErrors = [...validationErrors];
- 
           newErrors[data.index] = {
             ...newErrors[data.index],
             [data.field]: data.message,
           };
- 
           setErrors(newErrors);
         } else {
           setApiError(data.message);
         }
         return;
-      } else {
-        setSuccess("Users created successfully!");
-        setUsers([
-          {
-            id: "",
-            full_name: "",
-            username: "",
-            email: "",
-            phone: "",
-            password: "",
-            status: true,
-            responsibility_id: getDefaultResponsibilityId(responsibilities),
-            location_id: locations[0] ? String(locations[0].id) : "",
-            warehouse_id:
-              warehouses.find(
-                (warehouse) =>
-                  String(warehouse.location_id) === String(locations[0]?.id || "")
-              )?.id?.toString() || (warehouses[0] ? String(warehouses[0].id) : ""),
-          },
-        ]);
-        router.push(`/${tenant}/admin`);
       }
-    } catch (err) {
+      
+      setSuccess(userId ? "User updated successfully!" : "Users created successfully!");
+      router.push(`/${tenant}/admin`);
+    } catch (err: any) {
       console.error(err);
+      console.log("error here")
+      notify(err?.message || "Save  failed", { severity: "warning" });
       setApiError("Server error. Please try again.");
     } finally {
       setLoading(false);
     }
   };
  
- 
-  /* ---------------- UI ---------------- */
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">
-        {/* 👥 Create Users ({tenant}) */}
-        {userId ? `✏️ Edit User (${tenant})` : `👥 Create Users (${tenant})`}
-      </h2>
- 
-      {apiError && (
-        <div className="bg-red-100 text-red-700 p-3 mb-4 rounded">
-          {apiError}
-        </div>
-      )}
-      {success && (
-        <div className="bg-green-100 text-green-700 p-3 mb-4 rounded">
-          {success}
-        </div>
-      )}
- 
-      {users.map((user, index) => (
-        <div key={index} className="relative mb-6 border p-4 rounded bg-white shadow-sm">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-sm font-semibold text-gray-600">
-              {/* User {index + 1} */}
-              {userId ? "User Details" : `User ${index + 1}`}
-            </h3>
- 
-            {!userId && users.length > 1 && (
-              <button
-                type="button"
-                onClick={() => removeRow(index)}
-                className="text-red-500 text-xs hover:underline"
-              >
-                Remove
-              </button>
+    <div className="p-6 max-w-7xl mx-auto w-full transition-all duration-300">
+      
+      {/* Header Topbar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-6 border-b border-gray-200">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+            {userId ? (
+              <PencilSquareIcon className="w-6 h-6" />
+            ) : (
+              <UserCircleIcon className="w-6 h-6" />
             )}
           </div>
- 
-          <div className="grid grid-cols-2 gap-4">
-            <FloatingInput
-              label="Full Name"
-              value={user.full_name}
-              readOnly={!!userId}
-              error={errors[index]?.full_name}
-              onChange={(e: any) =>
-                handleChange(index, "full_name", e.target.value)
-              }
-            />
- 
-            <FloatingInput
-              label="Username"
-              value={user.username}
-              readOnly={!!userId}
-              error={errors[index]?.username}
-              onChange={(e: any) =>
-                handleChange(index, "username", e.target.value)
-              }
-            />
- 
-            <FloatingInput
-              label="Email"
-              value={user.email}
-              readOnly={!!userId}
-              error={errors[index]?.email}
-              onChange={(e: any) =>
-                handleChange(index, "email", e.target.value)
-              }
-            />
- 
-            <FloatingInput
-              label="Phone"
-              value={user.phone}
-              readOnly={!!userId}
-              error={errors[index]?.phone}
-              onChange={(e: any) =>
-                handleChange(index, "phone", e.target.value)
-              }
-            />
-
-            <div className="w-full">
-              <label className="text-sm font-semibold mb-1 block">
-                Responsibility <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={user.responsibility_id}
-                onChange={(e) => handleChange(index, "responsibility_id", e.target.value)}
-                className="floating-input"
-                required
-              >
-                <option value="">Select Responsibility</option>
-                {responsibilities.map((responsibility) => (
-                  <option key={responsibility.id} value={String(responsibility.id)}>
-                    {responsibility.responsibility_name}
-                  </option>
-                ))}
-              </select>
-              {errors[index]?.responsibility_id && (
-                <p className="text-sm text-red-500 mt-1">{errors[index]?.responsibility_id}</p>
-              )}
-            </div>
-
-            <div className="w-full">
-              <label className="text-sm font-semibold mb-1 block">
-                Location <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={user.location_id}
-                onChange={(e) => {
-                  const nextLocationId = e.target.value;
-                  const nextWarehouses = warehouses.filter(
-                    (warehouse) => String(warehouse.location_id) === nextLocationId
-                  );
-                  const currentWarehouseMatches = nextWarehouses.some(
-                    (warehouse) => String(warehouse.id) === user.warehouse_id
-                  );
-                  const nextWarehouseId = currentWarehouseMatches
-                    ? user.warehouse_id
-                    : nextWarehouses[0]
-                    ? String(nextWarehouses[0].id)
-                    : "";
-                  const updated = [...users];
-                  updated[index] = {
-                    ...updated[index],
-                    location_id: nextLocationId,
-                    warehouse_id: nextWarehouseId,
-                  };
-                  setUsers(updated);
-                }}
-                className="floating-input"
-                required
-              >
-                <option value="">Select Location</option>
-                {locations.map((location) => (
-                  <option key={location.id} value={String(location.id)}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-              {errors[index]?.location_id && (
-                <p className="text-sm text-red-500 mt-1">{errors[index]?.location_id}</p>
-              )}
-            </div>
-
-            <div className="w-full">
-              <label className="text-sm font-semibold mb-1 block">
-                Warehouse <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={user.warehouse_id}
-                onChange={(e) => handleChange(index, "warehouse_id", e.target.value)}
-                className="floating-input"
-                required
-              >
-                <option value="">Select Warehouse</option>
-                {warehouses
-                  .filter(
-                    (warehouse) =>
-                      !user.location_id || String(warehouse.location_id) === String(user.location_id)
-                  )
-                  .map((warehouse) => (
-                    <option key={warehouse.id} value={String(warehouse.id)}>
-                      {warehouse.name}
-                    </option>
-                  ))}
-              </select>
-              {errors[index]?.warehouse_id && (
-                <p className="text-sm text-red-500 mt-1">{errors[index]?.warehouse_id}</p>
-              )}
-            </div>
-
-            <FloatingInput
-              label="Password"
-              type="password"
-              value={user.password}
-              error={errors[index]?.password}
-              onChange={(e: any) =>
-                handleChange(index, "password", e.target.value)
-              }
-            />
-            <div className="flex items-center gap-2 mt-2">
-              <input
-                type="checkbox"
-                id={`status-${index}`}
-                checked={user.status}
-                onChange={(e) => handleStatusChange(index, e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <label htmlFor={`status-${index}`} className="text-gray-700">
-                Active
-              </label>
-            </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">
+              {userId ? "Edit System User" : "Create Enterprise Users"}
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">Tenant Organization: <span className="font-semibold text-gray-700">{tenant}</span></p>
           </div>
         </div>
-      ))}
+        
+        <button 
+          type="button" 
+          onClick={() => router.push(`/${tenant}/admin`)} 
+          className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 bg-white shadow-sm font-medium self-start md:self-auto"
+        >
+          <ArrowLeftIcon className="w-4 h-4" /> Back to Directory
+        </button>
+      </div>
  
-      {/* BUTTONS */}
-      <div className="flex gap-4">
-        <button type="button" onClick={() => router.push(`/${tenant}/admin`)} className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400">Back</button>
+      {/* Messages */}
+      {apiError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in">{apiError}</div>}
+      {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in">{success}</div>}
+ 
+      {/* Dynamic Grid Layout Wrapper */}
+      <div className="flex flex-col gap-6">
+        {users.map((user, index) => (
+          <div key={index} className="relative border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
+            
+            {/* Inner Block Title Bar */}
+            <div className="bg-gray-50 border-b border-gray-100 px-4 py-3 flex justify-between items-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                {userId ? "Configuration Profile" : `User Identity Entry #${index + 1}`}
+              </span>
+              
+              {!userId && users.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeRow(index)}
+                  className="flex items-center gap-1.5 text-red-600 text-xs font-semibold hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-all"
+                >
+                  <TrashIcon className="w-3.5 h-3.5" /> Remove Record
+                </button>
+              )}
+            </div>
+ 
+            {/* Fully Uniform Fields Grid Layout */}
+            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-5 items-start">
+              
+              <FormField
+                label="Full Name"
+                value={user.full_name}
+                readOnly={false}
+                required
+                error={errors[index]?.full_name}
+                onChange={(e: any) => handleChange(index, "full_name", e.target.value)}
+              />
+ 
+              <FormField
+                label="Username"
+                value={user.username}
+                readOnly={false}
+                required
+                error={errors[index]?.username}
+                onChange={(e: any) => handleChange(index, "username", e.target.value)}
+              />
+ 
+              <FormField
+                label="Email Address"
+                value={user.email}
+                readOnly={false}
+                required
+                error={errors[index]?.email}
+                onChange={(e: any) => handleChange(index, "email", e.target.value)}
+              />
+ 
+              <FormField
+                label="Phone Number"
+                value={user.phone}
+                readOnly={false}
+                required
+                error={errors[index]?.phone}
+                onChange={(e: any) => handleChange(index, "phone", e.target.value)}
+              />
+
+              <FormField
+                label="Responsibility"
+                value={user.responsibility_id}
+                isSelect
+                required
+                error={errors[index]?.responsibility_id}
+                onChange={(e: any) => handleChange(index, "responsibility_id", e.target.value)}
+              >
+                <option value="">Select...</option>
+                {responsibilities.map((r) => (
+                  <option key={r.id} value={String(r.id)}>{r.responsibility_name}</option>
+                ))}
+              </FormField>
+
+              <FormField
+                label="Assigned Location"
+                value={user.location_id}
+                isSelect
+                required
+                error={errors[index]?.location_id}
+                onChange={(e: any) => {
+                  const nextLoc = e.target.value;
+                  const filteredWh = warehouses.filter((w) => String(w.location_id) === nextLoc);
+                  const match = filteredWh.some((w) => String(w.id) === user.warehouse_id);
+                  const nextWhId = match ? user.warehouse_id : filteredWh[0] ? String(filteredWh[0].id) : "";
+                  
+                  const updated = [...users];
+                  updated[index] = { ...updated[index], location_id: nextLoc, warehouse_id: nextWhId };
+                  setUsers(updated);
+                }}
+              >
+                <option value="">Select...</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={String(l.id)}>{l.name}</option>
+                ))}
+              </FormField>
+
+              <FormField
+                label="Inventory Warehouse"
+                value={user.warehouse_id}
+                isSelect
+                required
+                error={errors[index]?.warehouse_id}
+                onChange={(e: any) => handleChange(index, "warehouse_id", e.target.value)}
+              >
+                <option value="">Select...</option>
+                {warehouses
+                  .filter((w) => !user.location_id || String(w.location_id) === String(user.location_id))
+                  .map((w) => (
+                    <option key={w.id} value={String(w.id)}>{w.name}</option>
+                  ))}
+              </FormField>
+
+              <FormField
+                label={userId ? "Change Password" : "Account Password"}
+                type="password"
+                value={user.password}
+                required={!userId}
+                error={errors[index]?.password}
+                onChange={(e: any) => handleChange(index, "password", e.target.value)}
+              />
+
+              {/* Status Toggles aligned in uniform grid blocks */}
+              <div className="flex flex-col gap-2 pt-5">
+                <label className="inline-flex items-center gap-2.5 cursor-pointer mt-1 select-none">
+                  <input
+                    type="checkbox"
+                    checked={user.status}
+                    onChange={(e) => handleChange(index, "status", e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500/40 focus:outline-none accent-blue-600"
+                  />
+                  <span className="text-sm font-semibold text-gray-700">Account Active</span>
+                </label>
+              </div>
+
+            </div>
+          </div>
+        ))}
+      </div>
+ 
+      {/* Global Control Button Footer */}
+      <div className="flex flex-col sm:flex-row items-center justify-end gap-3 mt-8 pt-5 border-t border-gray-200">
         {!userId && (
           <button
+            type="button"
             onClick={addRow}
-            className="bg-[var(--color-blue-600)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"
+            className="w-full sm:w-auto bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold px-5 py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 shadow-sm transition-colors"
           >
-            <PlusIcon className="w-4 h-4" /> Add Another User
+            <PlusIcon className="w-4 h-4 text-gray-500" /> Add Another Row
           </button>
         )}
         <button
+          type="button"
           onClick={handleSubmit}
           disabled={loading}
-          className="bg-[var(--color-blue-600)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"
+          className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold px-6 py-2.5 rounded-lg text-sm flex items-center justify-center gap-2 shadow-sm transition-all"
         >
-          {/* {loading ? "Creating Users..." : "Create Users"} */}
-          {loading ? (userId ? "Updating..." : "Creating...") : userId ? "Update User" : "Create Users"}
+          {loading ? (
+            <>
+              <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span>Processing...</span>
+            </>
+          ) : userId ? (
+            "Save Changes"
+          ) : (
+            "Register Users"
+          )}
         </button>
       </div>
+
+      {/* Global Processing Loader Mask */}
       {loading && (
-        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
-          <div className="text-white text-lg font-semibold animate-pulse">
-            Loading...
+        <div className="fixed inset-0 bg-gray-900/20 backdrop-blur-xs z-50 flex items-center justify-center transition-all duration-200">
+          <div className="bg-white px-6 py-4 rounded-xl shadow-xl border border-gray-100 flex items-center gap-3">
+            <svg className="animate-spin h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-sm font-bold text-gray-700 tracking-wide">Syncing entries...</span>
           </div>
         </div>
       )}
+
     </div>
   );
 }
