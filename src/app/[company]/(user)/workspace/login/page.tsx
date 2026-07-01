@@ -3,7 +3,7 @@ import LoginForm from "./LoginForm";
 interface Props {
   params: Promise<{
     company: string;
-  }> | { company: string };
+  }>;
 }
 
 export default async function LoginPage({ params }: Props) {
