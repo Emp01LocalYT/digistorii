@@ -2294,7 +2294,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </div>
                     <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
                       <span className="text-gray-500">Operations Portal URL</span>
-                      <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}`}</p>
+                      <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}/workspace`}</p>
                     </div>
                     <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
                       <span className="text-gray-500">E-Commerce</span>

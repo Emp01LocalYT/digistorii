@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
        FROM "${schema}".payment_modes
        ORDER BY id DESC`
     );
+    console.log("payment mode opened")
 
     return NextResponse.json({ success: true, data: result.rows });
   } catch (error: any) {

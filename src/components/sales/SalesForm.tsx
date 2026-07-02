@@ -78,6 +78,10 @@ const formatTimeLabel = (value?: string) => {
   });
 };
 
+const getPaymentModeName = (mode: any) => {
+  return String(mode?.payment_mode_name || mode?.name || mode?.payment_mode || "").trim();
+};
+
 type ThermalPrintHeader = {
   sales_no: string;
   customer_name?: string;
@@ -458,6 +462,10 @@ export default function SalesForm() {
   const balanceAmount = useMemo(
     () => roundMoney(Math.max(Number(billingTotals.total || 0) - totalPaidAmount, 0)),
     [billingTotals.total, totalPaidAmount]
+  );
+  const balanceAmountstore = useMemo(
+    () => roundMoney(Math.max(Number (totalPaidAmount)- (billingTotals.total || 0), 0)),
+    [ totalPaidAmount,billingTotals.total,]
   );
   const resolvedActiveLineIndex = useMemo(() => {
     if (details.length === 0) return null;
@@ -940,7 +948,7 @@ console.log("RESPONSE JSON", data);
           .map((mode: any) => ({
             ...mode,
             id: Number(mode.id),
-            payment_mode_name: String(mode.payment_mode_name || mode.name || ""),
+            payment_mode_name: getPaymentModeName(mode),
           }));
 
        
@@ -1684,7 +1692,7 @@ console.log("RESPONSE JSON", data);
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => router.push(`/${company}`)}
+            onClick={() => router.push(`/${company}/workspace/transactions/sales`)}
             className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
           >
             Back
@@ -1910,7 +1918,7 @@ console.log("RESPONSE JSON", data);
                                   onChange={(e) => togglePaymentMode(mode, e.target.checked)}
                                   className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                 />
-                                <span className="flex-1">{mode.payment_mode_name}</span>
+                                <span className="flex-1">{getPaymentModeName(mode)}</span>
                               </label>
                             );
                           })}
@@ -1960,8 +1968,12 @@ console.log("RESPONSE JSON", data);
                     <span>{totalPaidAmount.toFixed(2)}</span>
                   </div>
                   <div className="mt-1 flex justify-between">
-                    <span>Balance</span>
+                    <span>Balance Due</span>
                     <span>{balanceAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between">
+                    <span>Extra Paid</span>
+                    <span>{balanceAmountstore.toFixed(2)}</span>
                   </div>
                 </div>
               </div>

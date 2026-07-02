@@ -1127,7 +1127,7 @@ useEffect(() => {
       <ProductLookupModal
         open={showProductPopup}
         onClose={closePopup}
-        onAddNew={() => setShowAddProductModal(true)}
+        // onAddNew={() => setShowAddProductModal(true)}
         onAddSelected={addSelectedProducts}
         isEditable={isEditable}
         errorMessage={popupError}

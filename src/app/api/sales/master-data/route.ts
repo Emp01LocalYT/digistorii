@@ -105,7 +105,7 @@ export async function GET(req: NextRequest) {
           is_default,
           is_active
         FROM "${schema}".payment_modes
-        WHERE is_active = TRUE
+        WHERE COALESCE(is_active, TRUE) = TRUE
         ORDER BY is_default DESC, name ASC
         `
       ),

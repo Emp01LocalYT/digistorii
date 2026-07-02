@@ -120,7 +120,7 @@ async function validatePaymentModes(
 ) {
   if (!paymentModeIds.length) return;
   const res = await client.query(
-    `SELECT id FROM "${schema}".payment_modes WHERE id = ANY($1::int[]) AND is_active = TRUE`,
+    `SELECT id FROM "${schema}".payment_modes WHERE id = ANY($1::int[])`,
     [paymentModeIds]
   );
   if (res.rowCount !== paymentModeIds.length) {

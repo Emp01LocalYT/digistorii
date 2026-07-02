@@ -99,7 +99,7 @@ export default function ProductLookupModal({
                 onClick={onAddNew}
                 className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
-                + Add New Item
+                + Add New ItemPO
               </button>
             ) : null}
             <button onClick={onClose} className="text-gray-500 hover:text-black text-xl">
