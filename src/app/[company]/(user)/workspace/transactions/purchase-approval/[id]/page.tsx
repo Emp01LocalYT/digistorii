@@ -106,7 +106,7 @@ const hasFetched = useRef(false);
     const json = await res.json();
 
     if (json.success) {
-      router.push(`/${company}/transactions/purchase-approval`);
+      router.push(`/${company}/workspace/transactions/purchase-approval`);
     }
 
     setLoading(false);
@@ -139,7 +139,7 @@ const hasFetched = useRef(false);
     const json = await res.json();
 
     if (json.success) {
-      router.push(`/${company}/transactions/purchase-approval`);
+      router.push(`/${company}/workspace/transactions/purchase-approval`);
     }
     setLoading(false);
   };
@@ -211,7 +211,7 @@ const hasFetched = useRef(false);
          <div className="flex gap-3">
 
         <button
-          onClick={() => router.push(`/${company}/transactions/purchase-approval`)}
+          onClick={() => router.push(`/${company}/workspace/transactions/purchase-approval`)}
           className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400"
         >
           Cancel

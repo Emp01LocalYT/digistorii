@@ -136,7 +136,7 @@ export default function GRNView() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => router.push(`/${company}/transactions/grn`)}
+            onClick={() => router.push(`/${company}/workspace/transactions/grn`)}
             className="bg-[var(--color-blue-600)] text-white px-5 py-2 rounded-lg shadow hover:opacity-90 transition"
           >
             Back

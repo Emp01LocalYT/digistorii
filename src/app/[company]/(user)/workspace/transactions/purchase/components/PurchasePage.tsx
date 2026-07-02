@@ -673,7 +673,7 @@ useEffect(() => {
             notify("Only rejected purchase orders can be renewed", {
               severity: "error",
             });
-            router.push(`/${company}/transactions/purchase`);
+            router.push(`/${company}/workspace/transactions/purchase`);
             return;
           }
 
@@ -938,7 +938,7 @@ useEffect(() => {
         setBarcodeMessage("");
       }
       setShowAddProductModal(false);
-      router.push(`/${company}/transactions/purchase`);
+      router.push(`/${company}/workspace/transactions/purchase`);
     } catch (err: any) {
       console.error("Save Purchase Error:", err);
       notify(err.message || "Something went wrong", {
@@ -951,7 +951,7 @@ useEffect(() => {
 
   const handleRenew = () => {
     if (!purchaseId || !company) return;
-    router.push(`/${company}/transactions/purchase/add?renewFrom=${purchaseId}`);
+    router.push(`/${company}/workspace/transactions/purchase/add?renewFrom=${purchaseId}`);
   };
 
 
@@ -1108,7 +1108,7 @@ useEffect(() => {
         <div className="flex justify-end gap-4">
           <button
             type="button"
-            onClick={() => router.push(`/${company}/transactions/purchase`)}
+            onClick={() => router.push(`/${company}/workspace/transactions/purchase`)}
             className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400"
           >
             Back

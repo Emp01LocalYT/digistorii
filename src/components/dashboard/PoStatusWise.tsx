@@ -58,7 +58,7 @@ export default function PoStatusWise() {
 
     const handleClick = (status: string) => {
         router.push(
-            `/${company}/transactions/purchase?status=${encodeURIComponent(status)}`
+            `/${company}/workspace/transactions/purchase?status=${encodeURIComponent(status)}`
         );
     };
 

@@ -803,7 +803,7 @@ export default function PricingPage() {
                     <td className="sticky right-0 bg-white px-4 py-3">
                       <div className="flex items-center justify-center gap-2">
                         <Link
-                          href={`/${company}/inventory/pricing/${row.id}`}
+                          href={`/${company}/workspace/inventory/pricing/${row.id}`}
                           className="text-indigo-600"
                           aria-label="View pricing"
                         >

@@ -394,7 +394,7 @@ export default function SalesForm() {
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || "Failed to save sales");
-      router.push(`/${company}/transactions/sales`);
+      router.push(`/${company}/workspace/transactions/sales`);
     } catch (err: any) {
       console.error("Save Sales Error:", err);
       setErrorMessage(err.message);
@@ -610,7 +610,7 @@ export default function SalesForm() {
 
         {/* Buttons */}
         <div className="flex justify-end gap-4">
-          <button type="button" onClick={() => router.push(`/${company}/transactions/sales`)} className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400">Cancel</button>
+          <button type="button" onClick={() => router.push(`/${company}/workspace/transactions/sales`)} className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400">Cancel</button>
           <button className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded hover:opacity-90">{isEdit ? "Update Billing" : "Save Billing"}</button>
         </div>
 

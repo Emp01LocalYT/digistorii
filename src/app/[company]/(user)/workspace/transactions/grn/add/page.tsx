@@ -530,7 +530,7 @@ export default function GRNForm() {
             });
             const data = await res.json();
             if (!data.success) throw new Error(data.error || "Failed to save grn");
-            router.push(`/${company}/transactions/grn`);
+            router.push(`/${company}/workspace/transactions/grn`);
         } catch (err: any) {
             console.error("Save GRN Error:", err);
             setErrorMessage(err.message);
@@ -824,7 +824,7 @@ export default function GRNForm() {
 
                 {/* Buttons */}
                 <div className="flex justify-end gap-4">
-                    <button type="button" onClick={() => router.push(`/${company}/transactions/grn`)} className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400">Back</button>
+                    <button type="button" onClick={() => router.push(`/${company}/workspace/transactions/grn`)} className="bg-gray-300 px-6 py-2 rounded hover:bg-gray-400">Back</button>
                     <button className="bg-[var(--color-blue-600)] text-white px-6 py-2 rounded hover:opacity-90">{isEdit ? "Update GRN" : "Save GRN"}</button>
                 </div>
 

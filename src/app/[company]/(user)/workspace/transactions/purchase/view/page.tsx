@@ -123,7 +123,7 @@ export default function PurchaseView() {
 
   const handleRenew = () => {
     if (!purchaseId || !company) return;
-    router.push(`/${company}/transactions/purchase/add?renewFrom=${purchaseId}`);
+    router.push(`/${company}/workspace/transactions/purchase/add?renewFrom=${purchaseId}`);
   };
 
   const formatDate = (date: string) => {
@@ -170,7 +170,7 @@ export default function PurchaseView() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => router.push(`/${company}/transactions/purchase`)}
+            onClick={() => router.push(`/${company}/workspace/transactions/purchase`)}
             className="bg-[var(--color-blue-500)] text-white px-5 py-2 rounded-lg shadow hover:opacity-90 transition"
           >
             Back

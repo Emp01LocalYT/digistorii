@@ -173,7 +173,7 @@ const convertedAmount = isOverseas
         </div>
         <div className="flex gap-3">
           <button
-            onClick={() => router.push(`/${company}/transactions/sales`)}
+            onClick={() => router.push(`/${company}/workspace/transactions/sales`)}
             className="bg-blue-600 text-white px-5 py-2 rounded-lg shadow hover:bg-blue-700 transition"
           >
             Back

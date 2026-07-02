@@ -1301,7 +1301,7 @@ console.log("RESPONSE JSON", data);
   const handleSelectBill = (bill: SalesIndexRow) => {
     updateUiState({ showBillsPanel: false });
     if (!bill?.id) return;
-    router.push(`/${company}/transactions/sales/add?id=${bill.id}`);
+    router.push(`/${company}/workspace/transactions/sales/add?id=${bill.id}`);
   };
 
 
@@ -1500,7 +1500,7 @@ console.log("RESPONSE JSON", data);
       };
 
       if (redirect && company) {
-        router.replace(`/${company}/transactions/sales/add`);
+        router.replace(`/${company}/workspace/transactions/sales/add`);
       }
 
       if (reset) {
@@ -1573,7 +1573,7 @@ console.log("RESPONSE JSON", data);
     if (savedBill?.id) {
       await printBill(savedBill.id);
       if (company) {
-        router.replace(`/${company}/transactions/sales/add`);
+        router.replace(`/${company}/workspace/transactions/sales/add`);
       }
       await resetFormAfterSave();
     }

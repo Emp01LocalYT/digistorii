@@ -1,5 +1,5 @@
 "use client";
- 
+
 import { useEffect, useMemo, useState, useRef } from "react";
 import Link from "next/link";
 import { PlusIcon } from "@/icons";
@@ -187,7 +187,7 @@ export default function PurchaseList() {
 
   const handleRenew = (purchaseId: number) => {
     if (!company) return;
-    router.push(`/${company}/transactions/purchase/add?renewFrom=${purchaseId}`);
+    router.push(`/${company}/workspace/transactions/purchase/add?renewFrom=${purchaseId}`);
   };
  
   return (
@@ -209,7 +209,7 @@ export default function PurchaseList() {
         <h1 className="text-2xl font-bold">Purchase List</h1>
  
         <Link
-          href={`/${company}/transactions/purchase/add`}
+          href={`/${company}/workspace/transactions/purchase/add`}
           className="bg-[var(--color-blue-600)] flex items-center gap-2  text-white px-4 py-2 rounded-lg"
         >
           <PlusIcon className="w-4 h-4" />
@@ -363,7 +363,7 @@ export default function PurchaseList() {
                       {/* VIEW */}
  
                        <Link 
-                       href={`/${company}/transactions/purchase/view?id=${row.id}`}
+                       href={`/${company}/workspace/transactions/purchase/view?id=${row.id}`}
                         className="text-indigo-600"
                       >
                         <EyeIcon className="w-5 h-5" />
@@ -372,7 +372,7 @@ export default function PurchaseList() {
                       {/* EDIT */}
  
                        <Link
-                          href={`/${company}/transactions/purchase/add?id=${row.id}`}
+                          href={`/${company}/workspace/transactions/purchase/add?id=${row.id}`}
                           className="text-indigo-600"
                         >
                           <PencilSquareIcon className="w-5 h-5" />

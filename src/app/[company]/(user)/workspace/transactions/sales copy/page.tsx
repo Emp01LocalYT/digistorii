@@ -128,7 +128,7 @@ export default function BillingList() {
         <h1 className="text-2xl font-bold">Billing List</h1>
 
         <button
-          onClick={() => router.push(`/${company}/transactions/sales/add`)}
+          onClick={() => router.push(`/${company}/workspace/transactions/sales/add`)}
           className="bg-[var(--color-blue-500)] flex items-center gap-2  text-white px-4 py-2 rounded-lg"
         >
           <PlusIcon className="w-4 h-4" />
@@ -230,7 +230,7 @@ export default function BillingList() {
 
                       <button
                         onClick={() =>
-                          router.push(`/${company}/transactions/sales/view?id=${row.id}`)
+                          router.push(`/${company}/workspace/transactions/sales/view?id=${row.id}`)
                         }
                         className="text-indigo-600"
                       >
@@ -242,7 +242,7 @@ export default function BillingList() {
 
                       <button
                         onClick={() =>
-                          router.push(`/${company}/transactions/sales/add?id=${row.id}`)
+                          router.push(`/${company}/workspace/transactions/sales/add?id=${row.id}`)
                         }
                         className="text-indigo-600"
                       >

@@ -55,7 +55,7 @@ export default function PoGrnPendingTable() {
     // Row Click → Navigate to GRN
     const handleRowClick = (row: any) => {
         router.push(
-            `/${company}/transactions/grn/add?po_id=${row.purchase_id}&po_no=${row.purchase_no}`
+            `/${company}/workspace/transactions/grn/add?po_id=${row.purchase_id}&po_no=${row.purchase_no}`
         );
     };
 

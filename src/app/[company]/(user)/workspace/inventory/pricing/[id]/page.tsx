@@ -116,7 +116,7 @@ export default function PricingViewPage() {
           <p className="text-sm text-gray-500">Complete pricing timeline for selected variant</p>
         </div>
         <button
-          onClick={() => router.push(`/${company}/inventory/pricing`)}
+          onClick={() => router.push(`/${company}/workspace/inventory/pricing`)}
           className="rounded-lg bg-[var(--color-blue-500)] px-5 py-2 text-white shadow hover:opacity-90"
         >
           Back

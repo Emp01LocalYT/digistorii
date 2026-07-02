@@ -45,7 +45,7 @@ export default function TopSellingProducts() {
 
   const handleClick = (productId: number) => {
     router.push(
-      `/${company}/transactions/sales?product_id=${productId}`
+      `/${company}/workspace/transactions/sales?product_id=${productId}`
     );
   };
 

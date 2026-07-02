@@ -114,7 +114,7 @@ export default function PurchaseApprovalList() {
   );
  
   const handlePONavigate = (id: number) => {
-    router.push(`/${company}/transactions/purchase-approval/${id}`);
+    router.push(`/${company}/workspace/transactions/purchase-approval/${id}`);
   };
  
   const getStatusBadge = (status: string) => {

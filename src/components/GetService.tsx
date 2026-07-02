@@ -289,7 +289,7 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
               <div className="grid grid-cols-3 gap-2">
                 <span className="text-gray-500 font-medium">Workspace URL:</span>
                 <span className="col-span-2 text-blue-600 font-semibold break-all">
-                  digistorii/{formData.slug}
+                  digistorii/{formData.slug}/workspace
                 </span>
               </div>
               <hr className="border-gray-200" />

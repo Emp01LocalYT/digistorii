@@ -57,7 +57,7 @@ export default function GrnStatusWise() {
 
     const handleClick = (status: string) => {
         router.push(
-            `/${company}/transactions/grn?status=${encodeURIComponent(status)}`
+            `/${company}/workspace/transactions/grn?status=${encodeURIComponent(status)}`
         );
     };
 

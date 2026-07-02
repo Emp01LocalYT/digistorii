@@ -180,7 +180,7 @@ export default function GRNList() {
         <h1 className="text-2xl font-bold">GRN (Goods Receipt Node) List</h1>
 
         <button
-          onClick={() => router.push(`/${company}/transactions/grn/add`)}
+          onClick={() => router.push(`/${company}/workspace/transactions/grn/add`)}
           className="bg-[var(--color-blue-600)] flex items-center gap-2  text-white px-4 py-2 rounded-lg"
         >
           <PlusIcon className="w-4 h-4" />
@@ -307,7 +307,7 @@ export default function GRNList() {
 
                     <button
                       onClick={() =>
-                        router.push(`/${company}/transactions/grn/view?id=${row.id}`)
+                        router.push(`/${company}/workspace/transactions/grn/view?id=${row.id}`)
                       }
                       className="text-indigo-600"
                     >
@@ -319,7 +319,7 @@ export default function GRNList() {
 
                     {/* <button
                         onClick={() =>
-                          router.push(`/${company}/transactions/grn/add?id=${row.id}`)
+                          router.push(`/${company}/workspace/transactions/grn/add?id=${row.id}`)
                         }
                         className="text-indigo-600"
                       >
