@@ -21,16 +21,29 @@ export async function GET(
 
         const detailRes = await client.query(
             `SELECT 
-                d.*,
+                 d.*,
+                d.hsn_no AS hsn_code,
+                (COALESCE(d.qty, 0) * COALESCE(d.rate, 0)) AS taxable_value,
                 p.product_code,
                 p.name AS product_name,
-                p.description,u.uom_code,u.uom_name
-            FROM ${schema}.grn_detail d
+                p.description,
+                d.tax_master_id AS tax_id,
+                tr.tax_name,
+                tr.total_percentage AS tax_percent,
+                u.uom_code,
+                u.uom_name,
+                pv.sku
+            FROM ${schema}.purchase_detail d
+            LEFT JOIN ${schema}.product_variants pv
+              ON pv.id = d.product_id
             LEFT JOIN ${schema}.products p
-            ON p.id = d.product_id
+              ON p.id = COALESCE(pv.product_id, d.product_id)
             LEFT JOIN "${schema}".uom u
-            ON u.id::text = d.uom
-            WHERE d.grn_id = $1`,
+              ON u.id::text = p.uom
+            LEFT JOIN ${schema}.tax_master tr
+              ON tr.id = d.tax_master_id
+            WHERE d.grn_id = $1
+            ORDER BY d.id`,
             [grnId]
         );
 
