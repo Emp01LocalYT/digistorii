@@ -117,7 +117,7 @@ const navItems: NavItem[] = [
       { name: "Warehouse", path: "/workspace/inventory/warehouse", pro: false },
       { name: "Locator", path: "/workspace/inventory/locator", pro: false },
       { name: "Despatch Terms", path: "/workspace/inventory/despatch-terms", pro: false },
-      { name: "User Responsibilities", path: "/workspace/settings/user-responsibilities", pro: false },
+
     ],
   }
   // {
