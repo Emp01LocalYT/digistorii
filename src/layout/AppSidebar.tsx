@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
     name: "Dashboard",
     permission: "dashboard_access",
     // subItems: [{ name: "Ecommerce", path: "/", pro: false }],
-    path: "/", // go straight to dashboard
+    path: "/workspace", // go straight to dashboard
   },
 
   {

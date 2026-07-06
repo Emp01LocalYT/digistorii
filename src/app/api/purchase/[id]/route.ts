@@ -203,7 +203,7 @@ export async function GET(
               ON pc.subdomain_url = $2
             LEFT JOIN ${schema}.suppliers s
               ON ph.supplier_id = s.id
-            Left Join tenant_7.currencies c
+            Left Join ${schema}.currencies c
 			  ON ph.currency=c.id
             LEFT JOIN ${schema}.suppliers bt
               ON ph.bill_to = bt.id

@@ -33,7 +33,7 @@ export async function GET(
       FROM ${schema}.purchase_header ph
       LEFT JOIN ${schema}.suppliers s
         ON ph.supplier_id = s.id
-      Left Join tenant_7.currencies c
+      Left Join ${schema}.currencies c
 			  ON ph.currency=c.id
       LEFT JOIN ${schema}.suppliers bt
         ON ph.bill_to = bt.id
