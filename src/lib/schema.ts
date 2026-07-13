@@ -2,7 +2,7 @@ import { PoolClient } from "pg";
 import { createMasterTables } from "./lib";
 import { ensureCurrenciesSeeded } from "./currencySeed";
 import { ensureLocationTableShape } from "./locationSchema";
- 
+
 /**
  * Creates isolated schema + base tables for a new company
  */
@@ -14,10 +14,10 @@ export async function createCompanySchema(
   if (!rawSchema || typeof rawSchema !== "string") {
     throw new Error("Schema name is required.");
   }
- 
+
   // Normalize input
   const schema = rawSchema.trim().toLowerCase();
- 
+
   // Strict validation (PostgreSQL identifier rules)
   // Must start with letter, only lowercase/number/underscore, max 63 chars
   const schemaRegex = /^[a-z][a-z0-9_]{0,62}$/;
@@ -26,7 +26,7 @@ export async function createCompanySchema(
       "Invalid schema name. Use lowercase letters, numbers, underscore only. Must start with a letter. Max 63 characters."
     );
   }
- 
+
   // Block system schemas
   const reservedSchemas = new Set([
     "public",
@@ -34,16 +34,16 @@ export async function createCompanySchema(
     "information_schema",
     "pg_toast"
   ]);
- 
+
   if (reservedSchemas.has(schema)) {
     throw new Error("Reserved schema name is not allowed.");
   }
- 
+
   /* =========================================================
      CREATE SCHEMA
      ========================================================= */
   await client.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
- 
+
   // Security hardening (important for SaaS isolation)
   await client.query(`REVOKE ALL ON SCHEMA "${schema}" FROM PUBLIC`);
 
@@ -200,7 +200,7 @@ export async function createCompanySchema(
     UNIQUE (currency_id)
     );
   `);
- 
+
   await client.query(`
   CREATE TABLE "${schema}".company_settings (
   id SERIAL PRIMARY KEY,
@@ -234,7 +234,7 @@ export async function createCompanySchema(
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
- 
+
   await ensureCurrenciesSeeded(client, schema);
 
   /* =========================================================
@@ -301,13 +301,15 @@ export async function createCompanySchema(
         material_name VARCHAR(150) NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
-
+       `);
+  await client.query(`
       CREATE TABLE IF NOT EXISTS "${schema}".product_fittings (
         id SERIAL PRIMARY KEY,
         fitting_name VARCHAR(150) NOT NULL UNIQUE,
         created_at TIMESTAMP DEFAULT NOW()
       );
-
+       `);
+  await client.query(`
       CREATE TABLE IF NOT EXISTS "${schema}".product_colors (
         id SERIAL PRIMARY KEY,
         color_name VARCHAR(150) NOT NULL UNIQUE,
@@ -332,7 +334,7 @@ export async function createCompanySchema(
   /* =========================================================
      PRODUCTS
      ========================================================= */
-await client.query(`
+  await client.query(`
 CREATE TABLE IF NOT EXISTS "${schema}".products (
   id BIGSERIAL PRIMARY KEY,
   product_code VARCHAR(20) NOT NULL UNIQUE,
@@ -353,8 +355,8 @@ CREATE TABLE IF NOT EXISTS "${schema}".products (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 `);
-   
-await client.query(`
+
+  await client.query(`
 CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   id BIGSERIAL PRIMARY KEY,
   product_id BIGINT NOT NULL REFERENCES "${schema}".products(id) ON DELETE CASCADE,
@@ -377,97 +379,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   UNIQUE (product_id, color_id, size)
 );
 `);
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = '${schema}'
-          AND table_name = 'product_variants'
-          AND column_name = 'status'
-          AND data_type <> 'character varying'
-      ) THEN
-        ALTER TABLE "${schema}".product_variants
-          ALTER COLUMN status DROP DEFAULT;
-        ALTER TABLE "${schema}".product_variants
-          ALTER COLUMN status TYPE VARCHAR(20)
-          USING (
-            CASE
-              WHEN status = 2 THEN 'inactive'
-              WHEN status = 1 THEN 'draft'
-              ELSE 'draft'
-            END
-          );
-        ALTER TABLE "${schema}".product_variants
-          ALTER COLUMN status SET DEFAULT 'draft';
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.conname = 'product_variants_status_chk'
-          AND n.nspname = '${schema}'
-      ) THEN
-        ALTER TABLE "${schema}".product_variants
-          ADD CONSTRAINT product_variants_status_chk
-          CHECK (status IN ('draft', 'active', 'inactive'));
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = '${schema}'
-          AND table_name = 'product_variants'
-          AND column_name = 'barcode'
-      ) THEN
-        ALTER TABLE "${schema}".product_variants
-          ADD COLUMN barcode VARCHAR(40);
-      END IF;
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.conname = 'unique_variant_barcode'
-          AND n.nspname = '${schema}'
-      ) THEN
-        ALTER TABLE "${schema}".product_variants
-          ADD CONSTRAINT unique_variant_barcode UNIQUE (barcode);
-      END IF;
 
-      -- Refactor color and fitting to IDs
-      IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = '${schema}'
-          AND table_name = 'product_variants'
-          AND column_name = 'color'
-      ) THEN
-        ALTER TABLE "${schema}".product_variants DROP CONSTRAINT IF EXISTS unique_variant_combination;
-        ALTER TABLE "${schema}".product_variants DROP COLUMN color;
-        ALTER TABLE "${schema}".product_variants DROP COLUMN fitting;
-        ALTER TABLE "${schema}".product_variants ADD COLUMN color_id BIGINT REFERENCES "${schema}".product_colors(id) ON DELETE SET NULL;
-        ALTER TABLE "${schema}".product_variants ADD COLUMN fitting_id BIGINT REFERENCES "${schema}".product_fittings(id) ON DELETE SET NULL;
-        ALTER TABLE "${schema}".product_variants ADD CONSTRAINT unique_variant_combination UNIQUE (product_id, color_id, size);
-      END IF;
-
-      -- Add CHECK constraint to gender
-      IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint c
-        JOIN pg_class t ON t.oid = c.conrelid
-        JOIN pg_namespace n ON n.oid = t.relnamespace
-        WHERE c.conname = 'product_variants_gender_chk'
-          AND n.nspname = '${schema}'
-      ) THEN
-        UPDATE "${schema}".product_variants SET gender = 'Not Specified' WHERE gender NOT IN ('Male', 'Female', 'Transgender', 'Not Specified') OR gender IS NULL;
-        ALTER TABLE "${schema}".product_variants
-          ADD CONSTRAINT product_variants_gender_chk
-          CHECK (gender IN ('Male', 'Female', 'Transgender', 'Not Specified'));
-      END IF;
-    END $$;
-  `);
   await client.query(`
     UPDATE "${schema}".product_variants v
     SET status = CASE
@@ -483,26 +395,23 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
     SET barcode = CONCAT('INT', LPAD(id::text, 10, '0'))
     WHERE barcode IS NULL OR barcode = '';
   `);
-await client.query(`
+  await client.query(`
 CREATE INDEX IF NOT EXISTS idx_variants_product
 ON "${schema}".product_variants(product_id);
 `);
-await client.query(`
+  await client.query(`
 CREATE INDEX IF NOT EXISTS idx_variants_barcode
 ON "${schema}".product_variants(barcode);
 `);
 
-await client.query(`
-CREATE INDEX IF NOT EXISTS idx_variants_color
-ON "${schema}".product_variants(color);
-`);
 
-await client.query(`
+
+  await client.query(`
 CREATE INDEX IF NOT EXISTS idx_variants_size
 ON "${schema}".product_variants(size);
 `);
 
-await client.query(`
+  await client.query(`
 CREATE INDEX IF NOT EXISTS idx_variants_status
 ON "${schema}".product_variants(status);
 `);
@@ -524,7 +433,7 @@ ON "${schema}".product_variants(status);
     );
   `);
 
-await client.query(`
+  await client.query(`
 CREATE TABLE IF NOT EXISTS "${schema}".product_images (
   id BIGSERIAL PRIMARY KEY,
   product_id BIGINT NOT NULL  REFERENCES "${schema}".products(id) ON DELETE CASCADE,
@@ -715,10 +624,10 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
-/* =========================================================
-   PURCHASES
-   ========================================================= */
-await client.query(`
+  /* =========================================================
+     PURCHASES
+     ========================================================= */
+  await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".purchase_header (
           id SERIAL PRIMARY KEY,
           po_type VARCHAR(20) NOT NULL DEFAULT 'standard'
@@ -755,14 +664,10 @@ await client.query(`
           updated_at TIMESTAMP
         );
       `)
-await client.query(`
-        ALTER TABLE "${schema}".purchase_header
-        ADD COLUMN IF NOT EXISTS renewed_from_po_id INT NULL
-        REFERENCES "${schema}".purchase_header(id) ON DELETE SET NULL;
-      `)
- 
- 
-await client.query(`
+
+
+
+  await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".purchase_detail (
           id SERIAL PRIMARY KEY,
           purchase_id INT NOT NULL REFERENCES "${schema}".purchase_header(id) ON DELETE CASCADE,
@@ -783,8 +688,8 @@ await client.query(`
           updated_at TIMESTAMP
         );
       `)
- 
- 
+
+
   await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".grn_header (
           id SERIAL PRIMARY KEY,
@@ -801,7 +706,7 @@ await client.query(`
           updated_date TIMESTAMP
         );
       `);
- 
+
   await client.query(`
         CREATE TABLE IF NOT EXISTS "${schema}".grn_detail (
           id SERIAL PRIMARY KEY,
@@ -845,7 +750,7 @@ await client.query(`
         );
       `);
 
- 
+
   await client.query(`
     UPDATE "${schema}".sales_header sh
     SET location_id = w.location_id
@@ -951,31 +856,6 @@ await client.query(`
     ON "${schema}".sales_payments(sales_id);
   `);
 
-  await client.query(`
-    DO $$
-    BEGIN
-      IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = '${schema}'
-          AND table_name = 'sales_detail'
-          AND column_name = 'warehouse_id'
-      ) THEN
-        ALTER TABLE "${schema}".sales_detail
-          DROP COLUMN warehouse_id;
-      END IF;
-      IF EXISTS (
-        SELECT 1
-        FROM information_schema.columns
-        WHERE table_schema = '${schema}'
-          AND table_name = 'sales_detail'
-          AND column_name = 'locator_id'
-      ) THEN
-        ALTER TABLE "${schema}".sales_detail
-          DROP COLUMN locator_id;
-      END IF;
-    END $$;
-  `);
   /* =========================================================
  SALES / BILLING
 
@@ -1222,5 +1102,4 @@ await client.query(`
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
- 
 }

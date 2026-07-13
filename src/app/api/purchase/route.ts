@@ -124,7 +124,7 @@ async function createVariantForNewProduct(
   const variantRes = await client.query(
     `
       INSERT INTO "${schema}".product_variants
-        (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status)
+        (product_id, color_id, size, sku, qty, low_stock_threshold, backorders_allowed, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
       RETURNING id
     `,
@@ -156,20 +156,20 @@ function isNewPurchaseItem(detail: any) {
 function getTempKey(detail: any) {
   return String(
     detail?.temp_id ||
-      detail?.product_id ||
-      detail?.newProduct?.temp_id ||
-      detail?.newProduct?.sku ||
-      detail?.newProduct?.name ||
-      ""
+    detail?.product_id ||
+    detail?.newProduct?.temp_id ||
+    detail?.newProduct?.sku ||
+    detail?.newProduct?.name ||
+    ""
   ).trim();
 }
- 
+
 // ---------------- GET: fetch all purchases with details ----------------
 // export async function GET(req: NextRequest) {
 //   try {
- 
+
 //     const { tenant, schema } = await getTenantSchema(req);
- 
+
 //     const res = await pool.query(`
 //       SELECT
 //         h.id as purchase_id,
@@ -220,11 +220,11 @@ function getTempKey(detail: any) {
 //         ON tr.id = d.tax_master_id
 //       ORDER BY h.id DESC
 //     `);
- 
+
 //     const dataMap: Record<string, any> = {};
- 
+
 //     for (const row of res.rows) {
- 
+
 //       if (!dataMap[row.purchase_id]) {
 //         dataMap[row.purchase_id] = {
 //           id: row.purchase_id,
@@ -249,7 +249,7 @@ function getTempKey(detail: any) {
 //           details: []
 //         };
 //       }
- 
+
 //       if (row.detail_id) {
 //         dataMap[row.purchase_id].details.push({
 //           id: row.detail_id,
@@ -271,25 +271,25 @@ function getTempKey(detail: any) {
 //       success: true,
 //       data: Object.values(dataMap)
 //     });
- 
+
 //   } catch (err: any) {
- 
+
 //     console.error("Purchase Fetch DB Error:", err);
- 
+
 //     if (err.code === "42P01") {
 //       return NextResponse.json(
 //         { success: false, error: "Table purchase_header or purchase_detail does not exist" },
 //         { status: 500 }
 //       );
 //     }
- 
+
 //     if (err.code === "28P01") {
 //       return NextResponse.json(
 //         { success: false, error: "Database authentication failed" },
 //         { status: 500 }
 //       );
 //     }
- 
+
 //     return NextResponse.json(
 //       {
 //         success: false,
@@ -299,12 +299,12 @@ function getTempKey(detail: any) {
 //     );
 //   }
 // }
- 
+
 export async function GET(req: NextRequest) {
   try {
- 
+
     const { company, schema } = await getTenantSchema(req);
- 
+
     const res = await pool.query(`
       SELECT
         h.*,
@@ -325,28 +325,28 @@ export async function GET(req: NextRequest) {
         ON h.supplier_id = s.id
       ORDER BY h.id DESC
     `);
- 
+
     // console.log("Fetched Purchases:", res.rows);
     return NextResponse.json({ success: true, data: res.rows });
- 
+
   } catch (err: any) {
- 
+
     console.error("Purchase Fetch DB Error:", err);
- 
+
     if (err.code === "42P01") {
       return NextResponse.json(
         { success: false, error: "Table purchase_header or purchase_detail does not exist" },
         { status: 500 }
       );
     }
- 
+
     if (err.code === "28P01") {
       return NextResponse.json(
         { success: false, error: "Database authentication failed" },
         { status: 500 }
       );
     }
- 
+
     return NextResponse.json(
       {
         success: false,
@@ -356,7 +356,7 @@ export async function GET(req: NextRequest) {
     );
   }
 }
- 
+
 export async function POST(req: NextRequest) {
   const client = await pool.connect();
   let failedItem: any = null;
@@ -372,26 +372,26 @@ export async function POST(req: NextRequest) {
       detailCount: Array.isArray(details) ? details.length : 0,
       detailSummaries: Array.isArray(details)
         ? details.map((d: any) => ({
-            product_id: d.product_id,
-            temp_id: d.temp_id,
-            product_code: d.product_code,
-            is_new: d.is_new,
-            hasNewProduct: !!d.newProduct,
-          }))
+          product_id: d.product_id,
+          temp_id: d.temp_id,
+          product_code: d.product_code,
+          is_new: d.is_new,
+          hasNewProduct: !!d.newProduct,
+        }))
         : [],
     });
 
     const supplierRes = await client.query(
-  `SELECT purchase_hold FROM ${schema}.suppliers WHERE id = $1`,
-  [header.supplier_id]
-);
+      `SELECT purchase_hold FROM ${schema}.suppliers WHERE id = $1`,
+      [header.supplier_id]
+    );
 
-if (supplierRes.rows[0]?.purchase_hold) {
-  return NextResponse.json(
-    { success: false, message: "Supplier is on purchase hold" },
-    { status: 400 }
-  );
-}
+    if (supplierRes.rows[0]?.purchase_hold) {
+      return NextResponse.json(
+        { success: false, message: "Supplier is on purchase hold" },
+        { status: 400 }
+      );
+    }
 
     createdProductRefs = Array.isArray(body?.createdProducts) ? body.createdProducts : [];
     cleanupCreatedProducts = async (refs: Array<{ product_id?: number; variant_id?: number }>) => {
@@ -409,16 +409,16 @@ if (supplierRes.rows[0]?.purchase_hold) {
         await client.query(`DELETE FROM "${schema}".products WHERE id = ANY($1::int[])`, [productIds]);
       }
     };
- 
+
     if (!header || !details?.length) {
       return NextResponse.json(
         { success: false, error: "Header and at least one detail are required" },
         { status: 400 }
       );
     }
- 
+
     await client.query("BEGIN");
- 
+
     const poType = header.po_type || "standard";
     let purchaseNo = String(header.purchase_no || "").trim();
 
@@ -430,7 +430,7 @@ if (supplierRes.rows[0]?.purchase_hold) {
       // Generate purchase_no
       purchaseNo = await generatePurchaseNo(schema);
     }
- 
+
     const toNumber = (value: any) => Number(value || 0);
     const round2 = (value: number) => Number(value.toFixed(2));
     const existingProductIds = new Set<number>();
@@ -558,12 +558,12 @@ if (supplierRes.rows[0]?.purchase_hold) {
       header.renewed_from_po_id ? Number(header.renewed_from_po_id) : null,
       header.user_name
     ];
- 
+
     const headerRes = await client.query(headerQuery, headerValues);
     if (!headerRes.rows.length) throw new Error("Failed to save purchase header");
- 
+
     const purchaseId = headerRes.rows[0].id;
- 
+
     // Insert details
     const detailQuery = `
       INSERT INTO ${schema}.purchase_detail
@@ -596,9 +596,9 @@ if (supplierRes.rows[0]?.purchase_hold) {
         header.user_name
       ]);
     }
- 
+
     await client.query("COMMIT");
- 
+
     return NextResponse.json({
       success: true,
       message: "Purchase saved successfully",
@@ -635,7 +635,7 @@ if (supplierRes.rows[0]?.purchase_hold) {
     let msg = "Internal server error";
     if (err.code === "23505") msg = "Duplicate entry detected";
     else if (err.message) msg = err.message;
- 
+
     return NextResponse.json(
       {
         success: false,

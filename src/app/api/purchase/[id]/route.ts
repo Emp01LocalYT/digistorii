@@ -124,7 +124,7 @@ async function createVariantForNewProduct(
   const variantRes = await client.query(
     `
       INSERT INTO "${schema}".product_variants
-        (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status)
+        (product_id, color_id, size, sku, qty, low_stock_threshold, backorders_allowed, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
       RETURNING id
     `,
@@ -156,28 +156,28 @@ function isNewPurchaseItem(detail: any) {
 function getTempKey(detail: any) {
   return String(
     detail?.temp_id ||
-      detail?.product_id ||
-      detail?.newProduct?.temp_id ||
-      detail?.newProduct?.sku ||
-      detail?.newProduct?.name ||
-      ""
+    detail?.product_id ||
+    detail?.newProduct?.temp_id ||
+    detail?.newProduct?.sku ||
+    detail?.newProduct?.name ||
+    ""
   ).trim();
 }
- 
+
 export async function GET(
-    req: NextRequest,
-    context: { params: Promise<{ id: string }> }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
- 
-    const client = await pool.connect();
- 
-    try {
- 
-        const { schema, company } = await getTenantSchema(req);
-        const { id: purchaseId } = await context.params;
- 
-        const headerRes = await client.query(
-            `SELECT
+
+  const client = await pool.connect();
+
+  try {
+
+    const { schema, company } = await getTenantSchema(req);
+    const { id: purchaseId } = await context.params;
+
+    const headerRes = await client.query(
+      `SELECT
               ph.*,
               pc.company_name,
               pc.gst_number AS company_gstin,
@@ -216,27 +216,27 @@ export async function GET(
             LEFT JOIN "${schema}".currencies cr
               ON cr.id::text = ph.currency::text
             WHERE ph.id=$1`,
-            [purchaseId, company]
-        );
+      [purchaseId, company]
+    );
 
-        let renewedFromPurchaseNo: string | null = null;
-        const headerRow = headerRes.rows[0] || null;
-        const renewedFromPoId = Number(headerRow?.renewed_from_po_id);
-        if (Number.isFinite(renewedFromPoId) && renewedFromPoId > 0) {
-            const renewedFromRes = await client.query(
-                `
+    let renewedFromPurchaseNo: string | null = null;
+    const headerRow = headerRes.rows[0] || null;
+    const renewedFromPoId = Number(headerRow?.renewed_from_po_id);
+    if (Number.isFinite(renewedFromPoId) && renewedFromPoId > 0) {
+      const renewedFromRes = await client.query(
+        `
                   SELECT purchase_no
                   FROM "${schema}".purchase_header
                   WHERE id = $1
                   LIMIT 1
                 `,
-                [renewedFromPoId]
-            );
-            renewedFromPurchaseNo = renewedFromRes.rows[0]?.purchase_no || null;
-        }
- 
-        const detailRes = await client.query(
-            `SELECT
+        [renewedFromPoId]
+      );
+      renewedFromPurchaseNo = renewedFromRes.rows[0]?.purchase_no || null;
+    }
+
+    const detailRes = await client.query(
+      `SELECT
                 d.*,
                 d.hsn_no AS hsn_code,
                 (COALESCE(d.qty, 0) * COALESCE(d.rate, 0)) AS taxable_value,
@@ -260,26 +260,26 @@ export async function GET(
               ON tr.id = d.tax_master_id
             WHERE d.purchase_id = $1
             ORDER BY d.id`,
-            [purchaseId]
-        );
+      [purchaseId]
+    );
 
-        const detailRows = detailRes.rows || [];
-        const taxIds = Array.from(
-            new Set(
-                detailRows
-                    .map((row: any) => Number(row.tax_id))
-                    .filter((value) => Number.isFinite(value) && value > 0)
-            )
-        );
+    const detailRows = detailRes.rows || [];
+    const taxIds = Array.from(
+      new Set(
+        detailRows
+          .map((row: any) => Number(row.tax_id))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      )
+    );
 
-        let taxComponentsById = new Map<
-            number,
-            Array<{ component_name: string; component_percentage: number }>
-        >();
+    let taxComponentsById = new Map<
+      number,
+      Array<{ component_name: string; component_percentage: number }>
+    >();
 
-        if (taxIds.length) {
-            const componentsRes = await client.query(
-                `
+    if (taxIds.length) {
+      const componentsRes = await client.query(
+        `
                   SELECT
                     tax_master_id,
                     component_name,
@@ -288,203 +288,203 @@ export async function GET(
                   WHERE tax_master_id = ANY($1::int[])
                   ORDER BY id
                 `,
-                [taxIds]
-            );
+        [taxIds]
+      );
 
-            taxComponentsById = componentsRes.rows.reduce((map, row) => {
-                const taxId = Number(row.tax_master_id);
-                if (!map.has(taxId)) map.set(taxId, []);
-                map.get(taxId)!.push({
-                    component_name: row.component_name,
-                    component_percentage: Number(row.component_percentage || 0)
-                });
-                return map;
-            }, new Map<number, Array<{ component_name: string; component_percentage: number }>>());
-        }
-
-        const details = detailRows.map((row: any) => ({
-            ...row,
-            tax_components: taxComponentsById.get(Number(row.tax_id)) || []
-        }));
-
-        const toNumber = (value: any) => Number(value || 0);
-        const taxComponentTotals: Record<string, number> = {};
-
-        details.forEach((row: any) => {
-            const taxComponents = row.tax_components || [];
-            const lineTaxAmount = toNumber(row.tax_amount);
-            if (!taxComponents.length || lineTaxAmount <= 0) return;
-
-            const totalPercent = taxComponents.reduce(
-                (sum: number, comp: any) => sum + toNumber(comp.component_percentage),
-                0
-            );
-            if (totalPercent <= 0) return;
-
-            taxComponents.forEach((comp: any) => {
-                const compName = comp.component_name || "Tax";
-                const compAmount =
-                    (toNumber(comp.component_percentage) / totalPercent) * lineTaxAmount;
-                taxComponentTotals[compName] =
-                    (taxComponentTotals[compName] || 0) + compAmount;
-            });
+      taxComponentsById = componentsRes.rows.reduce((map, row) => {
+        const taxId = Number(row.tax_master_id);
+        if (!map.has(taxId)) map.set(taxId, []);
+        map.get(taxId)!.push({
+          component_name: row.component_name,
+          component_percentage: Number(row.component_percentage || 0)
         });
-
-        const componentTotals = Object.entries(taxComponentTotals).map(
-            ([component_name, amount]) => {
-                const sample = details
-                .flatMap(d => d.tax_components || [])
-                .find(c => c.component_name === component_name);
-
-                return {
-                component_name,
-                component_percentage: Number(sample?.component_percentage || 0),
-                amount: Number(amount.toFixed(2))
-                };
-            }
-            );
-        const componentsTotal = componentTotals.reduce(
-            (sum, comp) => sum + toNumber(comp.amount),
-            0
-        );
-
-        const freightTaxTotal = toNumber(headerRow?.freight_tax_amount);
-        const tax_breakdown = {
-            components: componentTotals,
-            components_total: Number(componentsTotal.toFixed(2)),
-            freight_tax_total: Number(freightTaxTotal.toFixed(2)),
-            total_tax_including_freight: Number(
-                (componentsTotal + freightTaxTotal).toFixed(2)
-            )
-        };
-
-        console.log("Fetched Purchase print data for ID:", purchaseId);
-        return NextResponse.json({
-            success: true,
-            data: {
-                header: headerRow
-                    ? {
-                          ...headerRow,
-                          renewed_from_purchase_no: renewedFromPurchaseNo,
-                          tax_breakdown
-                      }
-                    : null,
-                details
-            }
-        });
- 
-    } catch (error: any) {
- 
-        console.error("Fetch Purchase Error:", error);
- 
-        return NextResponse.json(
-            {
-                success: false,
-                error: error.message
-            },
-            { status: 500 }
-        );
- 
-    } finally {
- 
-        client.release();
- 
+        return map;
+      }, new Map<number, Array<{ component_name: string; component_percentage: number }>>());
     }
+
+    const details = detailRows.map((row: any) => ({
+      ...row,
+      tax_components: taxComponentsById.get(Number(row.tax_id)) || []
+    }));
+
+    const toNumber = (value: any) => Number(value || 0);
+    const taxComponentTotals: Record<string, number> = {};
+
+    details.forEach((row: any) => {
+      const taxComponents = row.tax_components || [];
+      const lineTaxAmount = toNumber(row.tax_amount);
+      if (!taxComponents.length || lineTaxAmount <= 0) return;
+
+      const totalPercent = taxComponents.reduce(
+        (sum: number, comp: any) => sum + toNumber(comp.component_percentage),
+        0
+      );
+      if (totalPercent <= 0) return;
+
+      taxComponents.forEach((comp: any) => {
+        const compName = comp.component_name || "Tax";
+        const compAmount =
+          (toNumber(comp.component_percentage) / totalPercent) * lineTaxAmount;
+        taxComponentTotals[compName] =
+          (taxComponentTotals[compName] || 0) + compAmount;
+      });
+    });
+
+    const componentTotals = Object.entries(taxComponentTotals).map(
+      ([component_name, amount]) => {
+        const sample = details
+          .flatMap(d => d.tax_components || [])
+          .find(c => c.component_name === component_name);
+
+        return {
+          component_name,
+          component_percentage: Number(sample?.component_percentage || 0),
+          amount: Number(amount.toFixed(2))
+        };
+      }
+    );
+    const componentsTotal = componentTotals.reduce(
+      (sum, comp) => sum + toNumber(comp.amount),
+      0
+    );
+
+    const freightTaxTotal = toNumber(headerRow?.freight_tax_amount);
+    const tax_breakdown = {
+      components: componentTotals,
+      components_total: Number(componentsTotal.toFixed(2)),
+      freight_tax_total: Number(freightTaxTotal.toFixed(2)),
+      total_tax_including_freight: Number(
+        (componentsTotal + freightTaxTotal).toFixed(2)
+      )
+    };
+
+    console.log("Fetched Purchase print data for ID:", purchaseId);
+    return NextResponse.json({
+      success: true,
+      data: {
+        header: headerRow
+          ? {
+            ...headerRow,
+            renewed_from_purchase_no: renewedFromPurchaseNo,
+            tax_breakdown
+          }
+          : null,
+        details
+      }
+    });
+
+  } catch (error: any) {
+
+    console.error("Fetch Purchase Error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message
+      },
+      { status: 500 }
+    );
+
+  } finally {
+
+    client.release();
+
+  }
 }
- 
+
 export async function PUT(
-    req: NextRequest,
-    context: { params: Promise<{ id: string }> }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
- 
-    const client = await pool.connect();
-    let failedItem: any = null;
- 
-    try {
- 
-        const { schema } = await getTenantSchema(req);
-        const { id: purchaseId } = await context.params;
- 
-        const body = await req.json();
- 
-        const { header, details } = body;
-        console.log("RECEIVED PO PAYLOAD", {
-          purchaseId,
-          header: { po_type: header?.po_type, purchase_no: header?.purchase_no, supplier_id: header?.supplier_id },
-          detailCount: Array.isArray(details) ? details.length : 0,
-          detailSummaries: Array.isArray(details)
-            ? details.map((d: any) => ({
-                product_id: d.product_id,
-                temp_id: d.temp_id,
-                product_code: d.product_code,
-                is_new: d.is_new,
-                hasNewProduct: !!d.newProduct,
-              }))
-            : [],
-        });
- 
-        const {
-            po_type,
-            purchase_no,
-            ref_no,
-            bill_to,
-            ship_to,
-            despatch_terms,
-            payment_terms,
-            freight_charges,
-            freight_tax,
-            freight_tax_amount,
-            packaging_amount,
-            notes,
-            attachment_url,
-            supplier_id,
-            purchase_date,
-            req_date,
-            currency,
-            conversion_rate,
-            status,
-            user_name
-        } = header;
-        const supplierRes = await client.query(
-            `SELECT purchase_hold FROM ${schema}.suppliers WHERE id = $1`,
-            [supplier_id]
-            );
 
-            if (supplierRes.rows[0]?.purchase_hold) {
-            return NextResponse.json(
-                { success: false, message: "Supplier is on purchase hold" },
-                { status: 400 }
-            );
-            }
-     
+  const client = await pool.connect();
+  let failedItem: any = null;
 
-        await client.query("BEGIN");
+  try {
 
-        const poType = po_type || "standard";
-        const purchaseNo = String(purchase_no || "").trim();
-        if (poType === "manual" && !purchaseNo) {
-            throw new Error("PO number is required for manual type");
-        }
+    const { schema } = await getTenantSchema(req);
+    const { id: purchaseId } = await context.params;
 
-        const toNumber = (value: any) => Number(value || 0);
-        const round2 = (value: number) => Number(value.toFixed(2));
-        const subtotal = details.reduce(
-            (sum: number, d: any) => sum + toNumber(d.qty) * toNumber(d.rate),
-            0
-        );
-        const productTax = details.reduce(
-            (sum: number, d: any) => sum + toNumber(d.tax_amount),
-            0
-        );
-        const freightBase = toNumber(freight_charges);
-        const freightTaxAmount = toNumber(freight_tax_amount);
-        const packagingAmount = toNumber(packaging_amount);
-        const extraChargesTotal = freightBase + freightTaxAmount + packagingAmount;
-        const grandTotal = subtotal + productTax + extraChargesTotal;
+    const body = await req.json();
 
-        // UPDATE HEADER
-        await client.query(
-    `UPDATE ${schema}.purchase_header
+    const { header, details } = body;
+    console.log("RECEIVED PO PAYLOAD", {
+      purchaseId,
+      header: { po_type: header?.po_type, purchase_no: header?.purchase_no, supplier_id: header?.supplier_id },
+      detailCount: Array.isArray(details) ? details.length : 0,
+      detailSummaries: Array.isArray(details)
+        ? details.map((d: any) => ({
+          product_id: d.product_id,
+          temp_id: d.temp_id,
+          product_code: d.product_code,
+          is_new: d.is_new,
+          hasNewProduct: !!d.newProduct,
+        }))
+        : [],
+    });
+
+    const {
+      po_type,
+      purchase_no,
+      ref_no,
+      bill_to,
+      ship_to,
+      despatch_terms,
+      payment_terms,
+      freight_charges,
+      freight_tax,
+      freight_tax_amount,
+      packaging_amount,
+      notes,
+      attachment_url,
+      supplier_id,
+      purchase_date,
+      req_date,
+      currency,
+      conversion_rate,
+      status,
+      user_name
+    } = header;
+    const supplierRes = await client.query(
+      `SELECT purchase_hold FROM ${schema}.suppliers WHERE id = $1`,
+      [supplier_id]
+    );
+
+    if (supplierRes.rows[0]?.purchase_hold) {
+      return NextResponse.json(
+        { success: false, message: "Supplier is on purchase hold" },
+        { status: 400 }
+      );
+    }
+
+
+    await client.query("BEGIN");
+
+    const poType = po_type || "standard";
+    const purchaseNo = String(purchase_no || "").trim();
+    if (poType === "manual" && !purchaseNo) {
+      throw new Error("PO number is required for manual type");
+    }
+
+    const toNumber = (value: any) => Number(value || 0);
+    const round2 = (value: number) => Number(value.toFixed(2));
+    const subtotal = details.reduce(
+      (sum: number, d: any) => sum + toNumber(d.qty) * toNumber(d.rate),
+      0
+    );
+    const productTax = details.reduce(
+      (sum: number, d: any) => sum + toNumber(d.tax_amount),
+      0
+    );
+    const freightBase = toNumber(freight_charges);
+    const freightTaxAmount = toNumber(freight_tax_amount);
+    const packagingAmount = toNumber(packaging_amount);
+    const extraChargesTotal = freightBase + freightTaxAmount + packagingAmount;
+    const grandTotal = subtotal + productTax + extraChargesTotal;
+
+    // UPDATE HEADER
+    await client.query(
+      `UPDATE ${schema}.purchase_header
       SET po_type=$1,
           purchase_no=$2,
           ref_no=$3,
@@ -511,119 +511,119 @@ export async function PUT(
           updated_at=NOW()
       WHERE id=$24
       `,
-            [
-                poType,
-                purchaseNo || null,
-                ref_no || null,
-                bill_to ? Number(bill_to) : null,
-                ship_to ? Number(ship_to) : null,
-                despatch_terms ? Number(despatch_terms) : null,
-                payment_terms ? Number(payment_terms) : null,
-                Number(freight_charges || 0),
-                Number(freight_tax || 0),
-                Number(freight_tax_amount || 0),
-                Number(packaging_amount || 0),
-                notes || null,
-                attachment_url || null,
-                supplier_id,
-                purchase_date,
-                req_date,
-                currency,
-                conversion_rate,
-                status || "Awaiting for approval",
-                round2(subtotal),
-                round2(productTax),
-                round2(grandTotal),
-                user_name,
-                purchaseId
-            ]
-        );
- 
-        // FETCH existing detail ids from DB
-        const existingRes = await client.query(
-            `SELECT id FROM ${schema}.purchase_detail WHERE purchase_id=$1`,
-            [purchaseId]
-        );
- 
-        const existingIds = existingRes.rows.map((r) => r.id);
- 
-        const incomingIds = details
-            .filter((d: any) => d.id)
-            .map((d: any) => d.id);
- 
-        // FIND deleted rows
-        const deletedIds = existingIds.filter(
-            (id: number) => !incomingIds.includes(id)
-        );
- 
-        if (deletedIds.length > 0) {
-            await client.query(
-                `DELETE FROM ${schema}.purchase_detail
+      [
+        poType,
+        purchaseNo || null,
+        ref_no || null,
+        bill_to ? Number(bill_to) : null,
+        ship_to ? Number(ship_to) : null,
+        despatch_terms ? Number(despatch_terms) : null,
+        payment_terms ? Number(payment_terms) : null,
+        Number(freight_charges || 0),
+        Number(freight_tax || 0),
+        Number(freight_tax_amount || 0),
+        Number(packaging_amount || 0),
+        notes || null,
+        attachment_url || null,
+        supplier_id,
+        purchase_date,
+        req_date,
+        currency,
+        conversion_rate,
+        status || "Awaiting for approval",
+        round2(subtotal),
+        round2(productTax),
+        round2(grandTotal),
+        user_name,
+        purchaseId
+      ]
+    );
+
+    // FETCH existing detail ids from DB
+    const existingRes = await client.query(
+      `SELECT id FROM ${schema}.purchase_detail WHERE purchase_id=$1`,
+      [purchaseId]
+    );
+
+    const existingIds = existingRes.rows.map((r) => r.id);
+
+    const incomingIds = details
+      .filter((d: any) => d.id)
+      .map((d: any) => d.id);
+
+    // FIND deleted rows
+    const deletedIds = existingIds.filter(
+      (id: number) => !incomingIds.includes(id)
+    );
+
+    if (deletedIds.length > 0) {
+      await client.query(
+        `DELETE FROM ${schema}.purchase_detail
          WHERE id = ANY($1::int[])`,
-                [deletedIds]
-            );
+        [deletedIds]
+      );
+    }
+
+    // LOOP details
+    const createdTempVariantMap = new Map<string, number>();
+    const resolvedDetails: Array<any & { resolved_variant_id: number }> = [];
+
+    for (let index = 0; index < details.length; index += 1) {
+      const item = details[index];
+      failedItem = {
+        index,
+        id: item?.id ?? null,
+        product_id: item?.product_id ?? null,
+        temp_id: item?.temp_id ?? null,
+        product_code: item?.product_code ?? null,
+        product_name: item?.product_name ?? null,
+        is_new: item?.is_new ?? false
+      };
+      let variantId: number;
+
+      if (isNewPurchaseItem(item)) {
+        const tempKey = getTempKey(item);
+        if (!tempKey) {
+          throw new Error(`Missing temp_id for new product at row ${index + 1}`);
         }
- 
-        // LOOP details
-        const createdTempVariantMap = new Map<string, number>();
-        const resolvedDetails: Array<any & { resolved_variant_id: number }> = [];
-
-        for (let index = 0; index < details.length; index += 1) {
-            const item = details[index];
-            failedItem = {
-                index,
-                id: item?.id ?? null,
-                product_id: item?.product_id ?? null,
-                temp_id: item?.temp_id ?? null,
-                product_code: item?.product_code ?? null,
-                product_name: item?.product_name ?? null,
-                is_new: item?.is_new ?? false
-            };
-            let variantId: number;
-
-            if (isNewPurchaseItem(item)) {
-                const tempKey = getTempKey(item);
-                if (!tempKey) {
-                    throw new Error(`Missing temp_id for new product at row ${index + 1}`);
-                }
-                variantId = await createVariantForNewProduct(
-                    client,
-                    schema,
-                    item,
-                    item.newProduct || {},
-                    tempKey,
-                    createdTempVariantMap
-                );
-            } else {
-                variantId = await resolveVariantId(client, schema, item.product_id);
-            }
-
-            resolvedDetails.push({
-                ...item,
-                resolved_variant_id: variantId
-            });
-        }
-
-        console.log(
-            "RESOLVED PURCHASE ITEM VARIANTS",
-            resolvedDetails.map((item) => ({
-                id: item.id || null,
-                temp_id: item.temp_id || null,
-                product_id: item.product_id || null,
-                resolved_variant_id: item.resolved_variant_id,
-                is_new: item.is_new === true
-            }))
+        variantId = await createVariantForNewProduct(
+          client,
+          schema,
+          item,
+          item.newProduct || {},
+          tempKey,
+          createdTempVariantMap
         );
+      } else {
+        variantId = await resolveVariantId(client, schema, item.product_id);
+      }
 
-        for (const item of resolvedDetails) {
-            const taxMasterId = item.tax_id && item.tax_id > 0 ? item.tax_id : null;
+      resolvedDetails.push({
+        ...item,
+        resolved_variant_id: variantId
+      });
+    }
 
-            if (item.id) {
-                
-                
-                // UPDATE EXISTING ROW
-                await client.query(
-                    `
+    console.log(
+      "RESOLVED PURCHASE ITEM VARIANTS",
+      resolvedDetails.map((item) => ({
+        id: item.id || null,
+        temp_id: item.temp_id || null,
+        product_id: item.product_id || null,
+        resolved_variant_id: item.resolved_variant_id,
+        is_new: item.is_new === true
+      }))
+    );
+
+    for (const item of resolvedDetails) {
+      const taxMasterId = item.tax_id && item.tax_id > 0 ? item.tax_id : null;
+
+      if (item.id) {
+
+
+        // UPDATE EXISTING ROW
+        await client.query(
+          `
           UPDATE ${schema}.purchase_detail
           SET product_id=$1,
               UOM=$2,
@@ -637,25 +637,25 @@ export async function PUT(
               updated_at=NOW()
           WHERE id=$10
           `,
-                    [
-                        item.resolved_variant_id,
-                        item.uom,
-                        item.hsn_no,
-                        item.rate,
-                        item.qty,
-                        taxMasterId,
-                        item.tax_amount,
-                        item.line_total,
-                        user_name,
-                        item.id
-                    ]
-                );
+          [
+            item.resolved_variant_id,
+            item.uom,
+            item.hsn_no,
+            item.rate,
+            item.qty,
+            taxMasterId,
+            item.tax_amount,
+            item.line_total,
+            user_name,
+            item.id
+          ]
+        );
 
-            } else {
+      } else {
 
-                // INSERT NEW ROW
-                await client.query(
-                    `
+        // INSERT NEW ROW
+        await client.query(
+          `
           INSERT INTO ${schema}.purchase_detail
           (
             purchase_id,
@@ -672,67 +672,67 @@ export async function PUT(
           )
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
           `,
-                    [
-                        purchaseId,
-                        item.resolved_variant_id,
-                        item.uom,
-                        item.hsn_no,
-                        item.rate,
-                        item.qty,
-                        taxMasterId,
-                        item.tax_amount,
-                        item.line_total,
-                        user_name
-                    ]
-                );
-            }
-        }
- 
-        await client.query("COMMIT");
- 
-        return NextResponse.json({
-            success: true,
-            message: "Purchase Updated Successfully",
-            debug: {
-                resolved_items: resolvedDetails.map((item) => ({
-                    id: item.id || null,
-                    temp_id: item.temp_id || null,
-                    product_id: item.product_id || null,
-                    resolved_variant_id: item.resolved_variant_id,
-                    is_new: item.is_new === true
-                }))
-            }
-        });
- 
-    } catch (error: any) {
- 
-        await client.query("ROLLBACK");
- 
-        console.error("Purchase Update Failed, rolling back:", {
-            code: error?.code,
-            message: error?.message,
-            detail: error?.detail,
-            stack: error?.stack
-        });
- 
-        return NextResponse.json(
-            {
-                success: false,
-                error: error.message,
-                debug: {
-                    code: error?.code || null,
-                    detail: error?.detail || null,
-                    hint: error?.hint || null,
-                    failed_item: failedItem
-                }
-            },
-            { status: 400 }
+          [
+            purchaseId,
+            item.resolved_variant_id,
+            item.uom,
+            item.hsn_no,
+            item.rate,
+            item.qty,
+            taxMasterId,
+            item.tax_amount,
+            item.line_total,
+            user_name
+          ]
         );
- 
-    } finally {
- 
-        client.release();
- 
+      }
     }
+
+    await client.query("COMMIT");
+
+    return NextResponse.json({
+      success: true,
+      message: "Purchase Updated Successfully",
+      debug: {
+        resolved_items: resolvedDetails.map((item) => ({
+          id: item.id || null,
+          temp_id: item.temp_id || null,
+          product_id: item.product_id || null,
+          resolved_variant_id: item.resolved_variant_id,
+          is_new: item.is_new === true
+        }))
+      }
+    });
+
+  } catch (error: any) {
+
+    await client.query("ROLLBACK");
+
+    console.error("Purchase Update Failed, rolling back:", {
+      code: error?.code,
+      message: error?.message,
+      detail: error?.detail,
+      stack: error?.stack
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message,
+        debug: {
+          code: error?.code || null,
+          detail: error?.detail || null,
+          hint: error?.hint || null,
+          failed_item: failedItem
+        }
+      },
+      { status: 400 }
+    );
+
+  } finally {
+
+    client.release();
+
+  }
 }
- 
+
