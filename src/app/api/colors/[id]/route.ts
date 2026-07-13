@@ -58,7 +58,7 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
@@ -67,7 +67,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     if (!id || isNaN(Number(id))) {
       return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
     }
