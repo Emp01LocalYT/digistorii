@@ -13,7 +13,7 @@ type FittingInput = z.infer<typeof fittingSchema>;
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
@@ -22,7 +22,7 @@ export async function PUT(
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     if (!id || isNaN(Number(id))) {
       return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
     }
@@ -57,7 +57,7 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
@@ -66,7 +66,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     if (!id || isNaN(Number(id))) {
       return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
     }
