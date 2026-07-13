@@ -14,7 +14,7 @@ type ColorInput = z.infer<typeof colorSchema>;
 
 export async function PUT(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const client = await pool.connect();
   try {
@@ -23,7 +23,7 @@ export async function PUT(
       return NextResponse.json({ success: false, error: "Invalid schema" }, { status: 400 });
     }
 
-    const { id } = await context.params;
+    const { id } = await params;
     if (!id || isNaN(Number(id))) {
       return NextResponse.json({ success: false, error: "Invalid ID" }, { status: 400 });
     }
