@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeftIcon, ChevronRightIcon,  MagnifyingGlassIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { Country, State, City } from "country-state-city";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
+import { useNotify } from "@/hooks/useNotify";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 
 type Address = {
   id?: number;
@@ -23,6 +25,7 @@ type Address = {
 
 type Cust = {
   id?: number;
+  cust_code: string;
   name: string;
   phone: string;
   email: string;
@@ -32,6 +35,7 @@ type Cust = {
 
 function getInitialCust(): Cust {
   return {
+    cust_code: "",
     name: "",
     phone: "",
     email: "",
@@ -51,6 +55,7 @@ function getInitialCust(): Cust {
 function normalizeCust(row: any): Cust {
   return {
     id: Number(row?.id) || undefined,
+    cust_code: String(row?.cust_code || ""),
     name: String(row?.name || ""),
     phone: String(row?.phone || ""),
     email: String(row?.email || ""),
@@ -72,6 +77,7 @@ function normalizeCust(row: any): Cust {
 
 export default function CustPage() {
   const { company } = useTenant();
+  const  notify  = useNotify();
   const [custs, setCusts] = useState<Cust[]>([]);
   const [cust, setCust] = useState<Cust>(getInitialCust());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -113,36 +119,59 @@ export default function CustPage() {
     setCusts(data.success ? (data.data || []).map(normalizeCust) : []);
   };
 
-const validate = () => {
-  const next: Record<string, string> = {};
+  useEffect(() => {
+    if (!showForm) return;
+    const form = document.querySelector("form");
+    if (form) {
+      return attachRuleValidationListeners(form, (fieldName, message) => {
+        setErrors((prev) => ({
+          ...prev,
+          [fieldName]: message || "",
+        }));
+      });
+    }
+  }, [showForm]);
 
-  if (!cust.name.trim()) {
-    next.name = "Name is required";
-  }
+  const validate = () => {
+    const next: Record<string, string> = {};
+    const rulesMap: Record<string, [string, string, boolean]> = {
+      name: [cust.name, "alpha-name", false],
+      phone: [cust.phone, "phone", false],
+      email: [cust.email, "email", true],
+      city: [cust.address.city, "alpha-spaces-hyphens", true],
+      state: [cust.address.state, "alpha-spaces-hyphens", true],
+      country: [cust.address.country, "alpha-spaces-hyphens", true],
+      pincode: [cust.address.pincode, "alphanumeric-spaces-hyphens", true],
+    };
 
-  const phone = cust.phone.trim();
+    for (const [field, [value, rules, isOptional]] of Object.entries(rulesMap)) {
+      const val = value || "";
+      if (!val.trim() && !isOptional) {
+        next[field] = `${field.replace("_", " ").toUpperCase()} is required`;
+        continue;
+      }
+      if (val.trim() && rules) {
+        const error = getRuleValidationError(rules, val);
+        if (error) next[field] = error;
+      }
+    }
+    if (!cust.phone.trim()) {
+      next.phone = "Phone number is required";
+    }
+    else if (cust.phone.length < 10) {
+      next.phone = "Phone number must be at least 10 digits.";
+    }
 
-  if (!phone) {
-    next.phone = "Phone is required";
-  } else if (!/^\d+$/.test(phone)) {
-    next.phone = "Phone must contain only numbers";
-  } else if (phone.length < 10) {
-    next.phone = "Phone number must be at least 10 digits";
-  }
-
-  if (cust.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cust.email)) {
-    next.email = "Invalid email";
-  }
-
-  setErrors(next);
-  return Object.keys(next).length === 0;
-};
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
 
   const saveCustomer = async (keepOpen = false) => {
     if (!validate()) return;
     setFormLoading(true);
     try {
       const payload = {
+        cust_code: cust.cust_code,
         name: cust.name,
         phone: cust.phone,
         email: cust.email || null,
@@ -175,7 +204,7 @@ const validate = () => {
         setShowForm(false);
       }
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message,{severity:"error"});
     } finally {
       setFormLoading(false);
     }
@@ -275,11 +304,11 @@ const validate = () => {
                   </tr>
                 </thead>
                 <tbody >
-                  {tableLoading ? 
+                  {tableLoading ?
                     <tr>
                       <td colSpan={5} className="ui-loading-row">Loading data...</td>
                     </tr>
-                   : paginatedCusts.length > 0 ?  paginatedCusts.map((cus) => 
+                    : paginatedCusts.length > 0 ? paginatedCusts.map((cus) =>
                       <tr key={cus.id} className="ui-table-row">
                         <td className="ui-table-td font-medium text-gray-700">{cus.name || "-"}</td>
                         <td className="ui-table-td">{cus.phone || "-"}</td>
@@ -296,102 +325,101 @@ const validate = () => {
                         </td>
                       </tr>
                     ) :
-                    <tr>
-                      <td colSpan={5} className="ui-empty-row ui-table-td-center">No records found.</td>
-                    </tr>
+                      <tr>
+                        <td colSpan={5} className="ui-empty-row ui-table-td-center">No records found.</td>
+                      </tr>
                   }
                 </tbody>
               </table>
             </div>
             <div className="ui-pagination-wrapper">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="ui-pagination-info">
-                              Showing <span className="font-medium">{showingFrom}</span> to <span className="font-medium">{showingTo}</span> of <span className="font-medium">{totalItems}</span> results
-                            </p>
-                            <div className="ui-table-actions">
-                              <label htmlFor="cust-items-per-page" className="text-sm text-gray-600">Rows per page</label>
-                              <select
-                                id="cust-items-per-page"
-                                value={itemsPerPage}
-                                onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                                className="ui-pagination-select"
-                              >
-                                <option value={10}>10</option>
-                                <option value={20}>20</option>
-                                <option value={50}>50</option>
-                              </select>
-                            </div>
-                          </div>
-            
-                          <div className="mt-4 flex items-center justify-between">
-                            <div className="flex flex-1 justify-between sm:hidden">
-                              <button
-                                type="button"
-                                onClick={goToPreviousPage}
-                                disabled={currentPage === 1}
-                                className="ui-pagination-icon-btn rounded-md"
-                              >
-                                Previous
-                              </button>
-                              <button
-                                type="button"
-                                onClick={goToNextPage}
-                                disabled={currentPage === totalPages}
-                                className="ui-pagination-icon-btn rounded-md ml-3"
-                              >
-                                Next
-                              </button>
-                            </div>
-            
-                            <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-                              <nav aria-label="Pagination" className="ui-pagination-nav">
-                                <button
-                                  type="button"
-                                  onClick={goToPreviousPage}
-                                  disabled={currentPage === 1}
-                                  className="ui-pagination-icon-btn rounded-l-md"
-                                >
-                                  <span className="sr-only">Previous</span>
-                                  <ChevronLeftIcon className="h-5 w-5" />
-                                </button>
-            
-                                {pageNumbers.map((page, idx) =>
-                                  page === "..." ? (
-                                    <span
-                                      key={`ellipsis-${idx}`}
-                                      className="ui-pagination-btn ui-pagination-btn-inactive"
-                                    >
-                                      ...
-                                    </span>
-                                  ) : (
-                                    <button
-                                      key={`page-${page}`}
-                                      type="button"
-                                      onClick={() => goToPage(page)}
-                                      aria-current={currentPage === page ? "page" : undefined}
-                                      className={`ui-pagination-btn ${
-                                        currentPage === page
-                                          ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                                      }`}
-                                    >
-                                      {page}
-                                    </button>
-                                  )
-                                )}
-            
-                                <button
-                                  type="button"
-                                  onClick={goToNextPage}
-                                  disabled={currentPage === totalPages}
-                                  className="ui-pagination-icon-btn rounded-r-md"
-                                >
-                                  <span className="sr-only">Next</span>
-                                  <ChevronRightIcon className="h-5 w-5" />
-                                </button>
-                              </nav>
-                            </div>
-                          </div>
-                        </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="ui-pagination-info">
+                  Showing <span className="font-medium">{showingFrom}</span> to <span className="font-medium">{showingTo}</span> of <span className="font-medium">{totalItems}</span> results
+                </p>
+                <div className="ui-table-actions">
+                  <label htmlFor="cust-items-per-page" className="text-sm text-gray-600">Rows per page</label>
+                  <select
+                    id="cust-items-per-page"
+                    value={itemsPerPage}
+                    onChange={(e) => setItemsPerPage(Number(e.target.value))}
+                    className="ui-pagination-select"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex flex-1 justify-between sm:hidden">
+                  <button
+                    type="button"
+                    onClick={goToPreviousPage}
+                    disabled={currentPage === 1}
+                    className="ui-pagination-icon-btn rounded-md"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToNextPage}
+                    disabled={currentPage === totalPages}
+                    className="ui-pagination-icon-btn rounded-md ml-3"
+                  >
+                    Next
+                  </button>
+                </div>
+
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
+                  <nav aria-label="Pagination" className="ui-pagination-nav">
+                    <button
+                      type="button"
+                      onClick={goToPreviousPage}
+                      disabled={currentPage === 1}
+                      className="ui-pagination-icon-btn rounded-l-md"
+                    >
+                      <span className="sr-only">Previous</span>
+                      <ChevronLeftIcon className="h-5 w-5" />
+                    </button>
+
+                    {pageNumbers.map((page, idx) =>
+                      page === "..." ? (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="ui-pagination-btn ui-pagination-btn-inactive"
+                        >
+                          ...
+                        </span>
+                      ) : (
+                        <button
+                          key={`page-${page}`}
+                          type="button"
+                          onClick={() => goToPage(page)}
+                          aria-current={currentPage === page ? "page" : undefined}
+                          className={`ui-pagination-btn ${currentPage === page
+                            ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                            }`}
+                        >
+                          {page}
+                        </button>
+                      )
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={goToNextPage}
+                      disabled={currentPage === totalPages}
+                      className="ui-pagination-icon-btn rounded-r-md"
+                    >
+                      <span className="sr-only">Next</span>
+                      <ChevronRightIcon className="h-5 w-5" />
+                    </button>
+                  </nav>
+                </div>
+              </div>
+            </div>
           </div>
         </>
       )}
@@ -401,9 +429,23 @@ const validate = () => {
           <h2 className="text-lg font-semibold">{cust.id ? "Update Customer" : "Create Customer"}</h2>
 
           <div className="grid md:grid-cols-3 gap-6 mt-6">
+            {/*<div>
+              <label className="text-sm font-semibold mb-1 block">Customer Code <span className="text-red-500">*</span></label>
+              <input
+                data-field="cust_code"
+                data-rules="code"
+                value={cust.cust_code}
+                onChange={(e) => setCust({ ...cust, cust_code: e.target.value })}
+                className={inputClass("cust_code")}
+              />
+              {errors.cust_code && <p className="text-red-500 text-sm mt-1">{errors.cust_code}</p>}
+            </div>*/}
+
             <div>
               <label className="text-sm font-semibold mb-1 block">Name <span className="text-red-500">*</span></label>
               <input
+                data-field="name"
+                data-rules="alpha-name"
                 value={cust.name}
                 onChange={(e) => setCust({ ...cust, name: e.target.value })}
                 className={inputClass("name")}
@@ -414,6 +456,8 @@ const validate = () => {
             <div>
               <label className="text-sm font-semibold mb-1 block">Phone <span className="text-red-500">*</span></label>
               <input
+                data-field="phone"
+                data-rules="phone"
                 value={cust.phone}
                 onChange={(e) => setCust({ ...cust, phone: e.target.value })}
                 className={inputClass("phone")}
@@ -424,6 +468,9 @@ const validate = () => {
             <div>
               <label className="text-sm font-semibold mb-1 block">Email</label>
               <input
+                data-field="email"
+                data-rules="email"
+                data-optional="true"
                 value={cust.email}
                 onChange={(e) => setCust({ ...cust, email: e.target.value })}
                 className={inputClass("email")}
@@ -476,6 +523,9 @@ const validate = () => {
             <div>
               <label className="text-sm font-semibold mb-1 block">Country</label>
               <select
+                data-field="country"
+                data-rules="alpha-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.country}
                 onChange={(e) =>
                   setCust({
@@ -492,11 +542,15 @@ const validate = () => {
                   </option>
                 ))}
               </select>
+              {errors.country && <p className="text-red-500 text-sm mt-1">{errors.country}</p>}
             </div>
 
             <div>
               <label className="text-sm font-semibold mb-1 block">State</label>
               <select
+                data-field="state"
+                data-rules="alpha-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.state}
                 onChange={(e) =>
                   setCust({
@@ -513,11 +567,15 @@ const validate = () => {
                   </option>
                 ))}
               </select>
+              {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
             </div>
 
             <div>
               <label className="text-sm font-semibold mb-1 block">City</label>
               <select
+                data-field="city"
+                data-rules="alpha-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.city}
                 onChange={(e) =>
                   setCust({
@@ -537,11 +595,15 @@ const validate = () => {
                   </option>
                 ))}
               </select>
+              {errors.city && <p className="text-red-500 text-sm mt-1">{errors.city}</p>}
             </div>
 
             <div>
               <label className="text-sm font-semibold mb-1 block">Pincode</label>
               <input
+                data-field="pincode"
+                data-rules="alphanumeric-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.pincode}
                 onChange={(e) =>
                   setCust({
@@ -551,27 +613,28 @@ const validate = () => {
                 }
                 className={inputClass("pincode")}
               />
+              {errors.pincode && <p className="text-red-500 text-sm mt-1">{errors.pincode}</p>}
             </div>
           </div>
 
           <div className="ui-form-actions">
-            <button 
-            type="button" 
-            onClick={() => setShowForm(false)} 
-            className="ui-btn ui-btn-secondary ui-btn-responsive">
-              Cancel</button>
-              <div className="ui-btn-group">
-            {!cust.id && (
-              <button 
-              type="button" 
-              onClick={handleSaveAndAddNext} 
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
               className="ui-btn ui-btn-secondary ui-btn-responsive">
-                Create & add Another
+              Cancel</button>
+            <div className="ui-btn-group">
+              {!cust.id && (
+                <button
+                  type="button"
+                  onClick={handleSaveAndAddNext}
+                  className="ui-btn ui-btn-secondary ui-btn-responsive">
+                  Create & add Another
                 </button>
-            )}
-            <button 
-            className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg">
-              {cust.id ? "Update Customer" : "Create Customer"}
+              )}
+              <button
+                className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg">
+                {cust.id ? "Update Customer" : "Create Customer"}
               </button></div>
           </div>
         </form>

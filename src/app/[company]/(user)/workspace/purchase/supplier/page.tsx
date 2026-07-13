@@ -1,16 +1,18 @@
 //C:\Users\yanna\template_tailwind\src\app\[company]\masters\supplier\page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, PencilSquareIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { Country, State, City } from "country-state-city";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
+import { useNotify} from "@/hooks/useNotify";
 import Select from "react-select";
 type Contact = { person: string; phone: string; email: string };
-type SupplierTab = "commercial" | "address" |  "bank" | "contact";
+type SupplierTab = "commercial" | "address" | "bank" | "contact";
 
 type Supplier = {
   id?: number;
@@ -70,7 +72,7 @@ type PaymentTerm = {
 type Currencies = {
   id: number;
   currency_code: string;
-  currency_name:string;
+  currency_name: string;
 };
 const CLASSIFICATION_OPTIONS = [
   { value: 1, label: "Manufacturer" },
@@ -176,6 +178,7 @@ function normalizeSupplier(row: any): Supplier {
 
 export default function SupplierPage() {
   const { company } = useTenant();
+  const notify = useNotify();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [despatchTerms, setDespatchTerms] = useState<DespatchTerm[]>([]);
   const [paymentTerms, setPaymentTerms] = useState<PaymentTerm[]>([]);
@@ -189,6 +192,7 @@ export default function SupplierPage() {
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [activeTab, setActiveTab] = useState<SupplierTab>("commercial");
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   useEffect(() => {
     if (!company) return;
@@ -243,7 +247,7 @@ export default function SupplierPage() {
     }
   };
 
-   const loadCurrencies = async () => {
+  const loadCurrencies = async () => {
     if (!company) return;
     try {
       const res = await apiFetch("/api/currencies", company);
@@ -268,10 +272,33 @@ export default function SupplierPage() {
     loadCurrencies();
   }, [company]);
 
-  const validate = () => {
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) {
+          return { ...prev, [fieldName]: message };
+        }
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
+  function validate(): boolean {
     const next: Record<string, string> = {};
     if (!supplier.short_name.trim()) next.short_name = "Short Name is required";
+    else {
+      const codeMessage = getRuleValidationError("code", supplier.short_name);
+      if (codeMessage) next.short_name = codeMessage;
+    }
     if (!supplier.supplier_name.trim()) next.supplier_name = "Supplier Name is required";
+    else {
+      const codeMessage = getRuleValidationError("alpha-name", supplier.supplier_name);
+      if (codeMessage) next.supplier_name = codeMessage;
+    }
     if (!supplier.currency) next.currency = "Currency is required";
     if (![1, 2, 3].includes(Number(supplier.classification))) next.classification = "Classification is required";
     if (supplier.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier.email)) next.email = "Invalid email";
@@ -280,9 +307,9 @@ export default function SupplierPage() {
     });
     setErrors(next);
     return Object.keys(next).length === 0;
-  };
-const saveSupplier = async (keepOpen = false )=>{ 
-  if (!validate()) return;
+  }
+  const saveSupplier = async (keepOpen = false) => {
+    if (!validate()) return;
     setFormLoading(true);
     try {
       const payload = {
@@ -325,18 +352,18 @@ const saveSupplier = async (keepOpen = false )=>{
         setShowForm(false);
       }
     } catch (err: any) {
-      alert(err.message);
+      notify(err.message || "Save failed", { severity: "error" });
     } finally {
       setFormLoading(false);
     }
-};
+  };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await saveSupplier(false);
   };
-    const handleSaveAndAddNext = async () => {
-      await saveSupplier(true);
-    };
+  const handleSaveAndAddNext = async () => {
+    await saveSupplier(true);
+  };
 
   const updateContact = (idx: number, field: keyof Contact, value: string) => {
     const contacts = [...supplier.contacts];
@@ -383,7 +410,7 @@ const saveSupplier = async (keepOpen = false )=>{
     resetDeps: [search],
   });
 
-  const countryOptions = useMemo(()=> Country.getAllCountries(),[]);
+  const countryOptions = useMemo(() => Country.getAllCountries(), []);
   const selectedCountry = countryOptions.find((c) => c.name === supplier.country);
   const stateOptions = selectedCountry ? State.getStatesOfCountry(selectedCountry.isoCode) : [];
   const selectedState = stateOptions.find((s) => s.name === supplier.state);
@@ -398,15 +425,17 @@ const saveSupplier = async (keepOpen = false )=>{
 
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">{showForm ? "Supplier Master" : "Supplier List"}</h1>
-        {!showForm && <button 
-        onClick={() => { 
-          setSupplier({ 
-            ...getInitialSupplier(), 
-            supplier_code: getNextSupplierCode(suppliers) });
-          setErrors({}); 
-          setActiveTab("commercial"); 
-          setShowForm(true); }} 
-        className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg">
+        {!showForm && <button
+          onClick={() => {
+            setSupplier({
+              ...getInitialSupplier(),
+              supplier_code: getNextSupplierCode(suppliers)
+            });
+            setErrors({});
+            setActiveTab("commercial");
+            setShowForm(true);
+          }}
+          className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg">
           <PlusIcon className="w-4 h-4" />Add Supplier</button>}
       </div>
 
@@ -429,21 +458,21 @@ const saveSupplier = async (keepOpen = false )=>{
                 <thead className="ui-table-head">
                   <tr className="ui-table-row">
                     <th className="ui-table-th" onClick={() => setSortField("supplier_code")}>Code</th><th className="ui-table-th" onClick={() => setSortField("short_name")}>Short Name</th><th className="ui-table-th" onClick={() => setSortField("supplier_name")}>Supplier Name</th>
-             
-                <th className="ui-table-th" onClick={() => setSortField("city")}>City</th><th className="ui-table-th-center">Action</th></tr>
+
+                    <th className="ui-table-th" onClick={() => setSortField("city")}>City</th><th className="ui-table-th-center">Action</th></tr>
                 </thead>
                 <tbody >
                   {tableLoading ? <tr>
                     <td colSpan={6} className="ui-loading-row">Loading data...</td>
-                  </tr> : 
-                  paginatedSuppliers.length > 0 ? paginatedSuppliers.map((sup) => 
-                  <tr key={sup.id} className="ui-table-row">
-                    <td className="ui-table-td">{sup.supplier_code || "-"}</td><td className="ui-table-td">{sup.short_name}</td><td className="ui-table-td">{sup.supplier_name}</td><td className="ui-table-td">{sup.city || "-"}</td><td className="ui-table-td-center">
-                      <div className="ui-table-actions">
-                        <button onClick={() => { setSupplier(normalizeSupplier(sup)); setShowForm(true); }} className="text-indigo-600"><PencilSquareIcon className="w-5 h-5" /></button>
-                      </div>
-                    </td></tr>
-                ) : <tr><td colSpan={6} className="ui-empty-row ui-table-td-center">No records found.</td></tr>}
+                  </tr> :
+                    paginatedSuppliers.length > 0 ? paginatedSuppliers.map((sup) =>
+                      <tr key={sup.id} className="ui-table-row">
+                        <td className="ui-table-td">{sup.supplier_code || "-"}</td><td className="ui-table-td">{sup.short_name}</td><td className="ui-table-td">{sup.supplier_name}</td><td className="ui-table-td">{sup.city || "-"}</td><td className="ui-table-td-center">
+                          <div className="ui-table-actions">
+                            <button onClick={() => { setSupplier(normalizeSupplier(sup)); setShowForm(true); }} className="text-indigo-600"><PencilSquareIcon className="w-5 h-5" /></button>
+                          </div>
+                        </td></tr>
+                    ) : <tr><td colSpan={6} className="ui-empty-row ui-table-td-center">No records found.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -514,10 +543,9 @@ const saveSupplier = async (keepOpen = false )=>{
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
-                              ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                          className={`ui-pagination-btn ${currentPage === page
+                            ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                            }`}
                         >
                           {page}
                         </button>
@@ -547,20 +575,20 @@ const saveSupplier = async (keepOpen = false )=>{
 
           <div className="grid md:grid-cols-4 gap-6">
             <div><label className="text-sm font-semibold mb-1 block">Supplier Code (Auto)</label><input value={supplier.supplier_code} readOnly className="w-full mt-2 border rounded-lg p-3 bg-gray-100 text-gray-600" /></div>
-            <div><label className="text-sm font-semibold mb-1 block">Short Name <span className="text-red-500">*</span></label><input value={supplier.short_name} onChange={(e) => setSupplier({ ...supplier, short_name: e.target.value })} className={inputClass("short_name")} />{errors.short_name && <p className="text-red-500 text-sm mt-1">{errors.short_name}</p>}</div>
-            <div><label className="text-sm font-semibold mb-1 block">Supplier Name <span className="text-red-500">*</span></label><input value={supplier.supplier_name} onChange={(e) => setSupplier({ ...supplier, supplier_name: e.target.value, name: e.target.value })} className={inputClass("supplier_name")} />{errors.supplier_name && <p className="text-red-500 text-sm mt-1">{errors.supplier_name}</p>}</div>
+            <div><label className="text-sm font-semibold mb-1 block">Short Name <span className="text-red-500">*</span></label><input value={supplier.short_name} data-rules="no-symbols" data-field="short_name" onChange={(e) => setSupplier({ ...supplier, short_name: e.target.value })} className={inputClass("short_name")} />{errors.short_name && <p className="text-red-500 text-sm mt-1">{errors.short_name}</p>}</div>
+            <div><label className="text-sm font-semibold mb-1 block">Supplier Name <span className="text-red-500">*</span></label><input value={supplier.supplier_name} data-rules="no-symbols" data-field="supplier_name" onChange={(e) => setSupplier({ ...supplier, supplier_name: e.target.value, name: e.target.value })} className={inputClass("supplier_name")} />{errors.supplier_name && <p className="text-red-500 text-sm mt-1">{errors.supplier_name}</p>}</div>
 
             <div><label className="text-sm font-semibold mb-1 block">Classification</label><select value={supplier.classification} onChange={(e) => setSupplier({ ...supplier, classification: Number(e.target.value) })} className={inputClass("classification")}>{CLASSIFICATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-            <div><label className="text-sm font-semibold mb-1 block">Introduced Date</label><input type="date" value={supplier.introduced_date || ''} onChange={(e) => setSupplier({ ...supplier, introduced_date: e.target.value ?? ""  })} className={inputClass("introduced_date")} /></div>
-            <div><label className="text-sm font-semibold mb-1 block">Introduced By</label><input value={supplier.introduced_by || ''} onChange={(e) => setSupplier({ ...supplier, introduced_by: e.target.value ?? ""})} className={inputClass("introduced_by")} /></div>
+            <div><label className="text-sm font-semibold mb-1 block">Introduced Date</label><input type="date" value={supplier.introduced_date || ''} data-rules="date" data-field="introduced_date" data-optional="true" onChange={(e) => setSupplier({ ...supplier, introduced_date: e.target.value ?? "" })} className={inputClass("introduced_date")} />{errors.introduced_date && <p className="text-red-500 text-sm mt-1">{errors.introduced_date}</p>}</div>
+            <div><label className="text-sm font-semibold mb-1 block">Introduced By</label><input value={supplier.introduced_by || ''} data-rules="alpha-name" data-field="introduced_by" data-optional="true" onChange={(e) => setSupplier({ ...supplier, introduced_by: e.target.value ?? "" })} className={inputClass("introduced_by")} />{errors.introduced_by && <p className="text-red-500 text-sm mt-1">{errors.introduced_by}</p>}</div>
 
-            <div><label className="text-sm font-semibold mb-1 block">Effective From</label><input type="date" value={supplier.effective_from || ''} onChange={(e) => setSupplier({ ...supplier, effective_from: e.target.value ?? ""  })} className={inputClass("effective_from")} /></div>
-            <div><label className="text-sm font-semibold mb-1 block">Effective To</label><input type="date" value={supplier.effective_to || ''} onChange={(e) => setSupplier({ ...supplier, effective_to: e.target.value ?? ""  })} className={inputClass("effective_to")} /></div>
+            <div><label className="text-sm font-semibold mb-1 block">Effective From</label><input type="date" value={supplier.effective_from || ''} data-rules="date" data-field="effective_from" data-optional="true" onChange={(e) => setSupplier({ ...supplier, effective_from: e.target.value ?? "" })} className={inputClass("effective_from")} />{errors.effective_from && <p className="text-red-500 text-sm mt-1">{errors.effective_from}</p>}</div>
+            <div><label className="text-sm font-semibold mb-1 block">Effective To</label><input type="date" value={supplier.effective_to || ''} data-rules="date" data-field="effective_to" data-optional="true" onChange={(e) => setSupplier({ ...supplier, effective_to: e.target.value ?? "" })} className={inputClass("effective_to")} />{errors.effective_to && <p className="text-red-500 text-sm mt-1">{errors.effective_to}</p>}</div>
             <div className="flex items-end gap-6 pb-2"><label className="inline-flex items-center gap-2 text-sm font-medium">
               <input type="checkbox" checked={supplier.purchase_hold} onChange={(e) => setSupplier({ ...supplier, purchase_hold: e.target.checked })} />Purchase Hold</label>
               {/* <label className="inline-flex items-center gap-2 text-sm font-medium">
                 <input type="checkbox" checked={supplier.qc_required} onChange={(e) => setSupplier({ ...supplier, qc_required: e.target.checked })} />QC Required</label> */}
-                </div>
+            </div>
           </div>
 
           <div className="border-t border-gray-100 pt-4">
@@ -568,280 +596,308 @@ const saveSupplier = async (keepOpen = false )=>{
 
             {activeTab === "commercial" && <div className="grid md:grid-cols-3 gap-6 mt-6">
               <div><label className="text-sm font-semibold mb-1 block">Despatch Terms</label>
-            {/* <input value={supplier.dispatch_terms} onChange={(e) => setSupplier({ ...supplier, dispatch_terms: e.target.value })} className={inputClass("dispatch_terms")} /> */}
-            <Select 
-            placeholder="Select Despatch Term"
-            value={despatchTerms
-              .map((dt) => ({ label: dt.despatch_name, value: dt.code }))
-              .find((opt) => opt.value === supplier.dispatch_terms) || null  }
-            onChange={(option) =>
-              setSupplier({ ...supplier, dispatch_terms: option?.value || "" })
-            }
-            options={despatchTerms.map((dt) => ({
-              label: dt.despatch_name,
-              value: dt.code,
-            }))}
-            isSearchable
-            />
-            </div>
-            <div><label className="text-sm font-semibold mb-1 block">Payment Terms</label>
-            <Select
-            placeholder="Select Payment Term"
-            value={paymentTerms
-              .map((pt) => ({label: pt.name, value: pt.name}))
-              .find((opt) => opt.value === supplier.payment_terms) || null  }
-            onChange={(option) =>
-              setSupplier({ ...supplier, payment_terms: option?.value || "" })
-            }
-            options={paymentTerms.map((pt) => ({ 
-              label: pt.name, value: pt.name }))}
-              isSearchable
-            />
-            </div>
-            <div><label className="text-sm font-semibold mb-1 block">Currency<span className="text-red-500">*</span></label>
-           <Select
-              placeholder="Select Currency"
-              value={
-                currenciesOptions.find((opt) => opt.value === supplier.currency) || null}
-              onChange={(option) =>
-                setSupplier({ ...supplier, currency: option?.value || "" })
-              }
-              options={currenciesOptions.map((c) => ({ label: c.label, value: c.value }))}
-              isSearchable
-              />{errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
-                        </div>
-            <div><label className="text-sm font-semibold mb-1 block">GSTIN</label><input value={supplier.gstin || ""} onChange={(e) => setSupplier({ ...supplier, gstin: e.target.value ?? " "})} className={inputClass("gstin")} /></div>
-            <div><label className="text-sm font-semibold mb-1 block">CIN</label><input value={supplier.cin || ""} 
-            onChange={(e) => setSupplier({ ...supplier, cin: e.target.value })} className={inputClass("cin") ?? ""} /></div></div>}
+                {/* <input value={supplier.dispatch_terms} onChange={(e) => setSupplier({ ...supplier, dispatch_terms: e.target.value })} className={inputClass("dispatch_terms")} /> */}
+                <Select
+                  placeholder="Select Despatch Term"
+                  value={despatchTerms
+                    .map((dt) => ({ label: dt.despatch_name, value: dt.code }))
+                    .find((opt) => opt.value === supplier.dispatch_terms) || null}
+                  onChange={(option) =>
+                    setSupplier({ ...supplier, dispatch_terms: option?.value || "" })
+                  }
+                  options={despatchTerms.map((dt) => ({
+                    label: dt.despatch_name,
+                    value: dt.code,
+                  }))}
+                  isSearchable
+                />
+              </div>
+              <div><label className="text-sm font-semibold mb-1 block">Payment Terms</label>
+                <Select
+                  placeholder="Select Payment Term"
+                  value={paymentTerms
+                    .map((pt) => ({ label: pt.name, value: pt.name }))
+                    .find((opt) => opt.value === supplier.payment_terms) || null}
+                  onChange={(option) =>
+                    setSupplier({ ...supplier, payment_terms: option?.value || "" })
+                  }
+                  options={paymentTerms.map((pt) => ({
+                    label: pt.name, value: pt.name
+                  }))}
+                  isSearchable
+                />
+              </div>
+              <div><label className="text-sm font-semibold mb-1 block">Currency<span className="text-red-500">*</span></label>
+                <Select
+                  placeholder="Select Currency"
+                  value={
+                    currenciesOptions.find((opt) => opt.value === supplier.currency) || null}
+                  onChange={(option) =>
+                    setSupplier({ ...supplier, currency: option?.value || "" })
+                  }
+                  options={currenciesOptions.map((c) => ({ label: c.label, value: c.value }))}
+                  isSearchable
+                />{errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
+              </div>
+              <div><label className="text-sm font-semibold mb-1 block">GSTIN</label><input value={supplier.gstin || ""} data-rules="code" data-field="gstin" data-optional="true" onChange={(e) => setSupplier({ ...supplier, gstin: e.target.value ?? " " })} className={inputClass("gstin")} />{errors.gstin && <p className="text-red-500 text-sm mt-1">{errors.gstin}</p>}</div>
+              <div><label className="text-sm font-semibold mb-1 block">CIN</label><input value={supplier.cin || ""} data-rules="code" data-field="cin" data-optional="true"
+                onChange={(e) => setSupplier({ ...supplier, cin: e.target.value })} className={inputClass("cin") ?? ""} />{errors.cin && <p className="text-red-500 text-sm mt-1">{errors.cin}</p>}</div></div>}
 
-           {activeTab === "address" && (
-  <div className="grid md:grid-cols-4 gap-6 mt-6">
+            {activeTab === "address" && (
+              <div className="grid md:grid-cols-4 gap-6 mt-6">
 
-    {/* Row 1 */}
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
-      <input
-        value={supplier.address_line1 || " "}
-        onChange={(e) =>
-          setSupplier({ ...supplier, address_line1: e.target.value ?? "" })
-        }
-        className={inputClass("address_line1")}
-      />
-    </div>
+                {/* Row 1 */}
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
+                  <input
+                    value={supplier.address_line1 || " "}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, address_line1: e.target.value ?? "" })
+                    }
+                    className={inputClass("address_line1")}
+                  />
+                </div>
 
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
-      <input
-        value={supplier.address_line2 || " "}
-        onChange={(e) =>
-          setSupplier({ ...supplier, address_line2: e.target.value ?? ""})
-        }
-        className={inputClass("address_line2")}
-      />
-    </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
+                  <input
+                    value={supplier.address_line2 || " "}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, address_line2: e.target.value ?? "" })
+                    }
+                    className={inputClass("address_line2")}
+                  />
+                </div>
 
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Address Line 3</label>
-      <input
-        value={supplier.address_line3 || " "}
-        onChange={(e) =>
-          setSupplier({ ...supplier, address_line3: e.target.value ?? "" })
-        }
-        className={inputClass("address_line3")}
-      />
-    </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Address Line 3</label>
+                  <input
+                    value={supplier.address_line3 || " "}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, address_line3: e.target.value ?? "" })
+                    }
+                    className={inputClass("address_line3")}
+                  />
+                </div>
 
-    {/* empty space to complete row */}
-    <div></div>
+                {/* empty space to complete row */}
+                <div></div>
 
-    {/* Row 2 */}
-        <div>
-      <label className="text-sm font-semibold mb-1 block">Country</label>
-      <select
-        value={supplier.country}
-        onChange={(e) =>
-          setSupplier({ ...supplier, country: e.target.value, state: "", city: "" })
-        }
-        className={inputClass("country")}
-      >
-        <option value="">Select Country</option>
-        {countryOptions.map((country) => (
-          <option key={country.isoCode} value={country.name}>
-            {country.name}
-          </option>
-        ))}
-      </select>
-    </div>
-    
-
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Province / State</label>
-      <select
-        value={supplier.state}
-        onChange={(e) =>
-          setSupplier({ ...supplier, state: e.target.value, city: "" })
-        }
-        className={inputClass("state")}
-      >
-        <option value="">Select State</option>
-        {stateOptions.map((state) => (
-          <option key={state.isoCode} value={state.name}>
-            {state.name}
-          </option>
-        ))}
-      </select>
-    </div>
-    <div>
-      <label className="text-sm font-semibold mb-1 block">City</label>
-      <select
-        value={supplier.city}
-        onChange={(e) =>
-          setSupplier({ ...supplier, city: e.target.value })
-        }
-        className={inputClass("city")}
-      >
-        <option value="">Select City</option>
-        {cityOptions.map((city) => (
-          <option
-            key={`${city.name}-${city.latitude}-${city.longitude}`}
-            value={city.name}
-          >
-            {city.name}
-          </option>
-        ))}
-      </select>
-    </div>
+                {/* Row 2 */}
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Country</label>
+                  <select
+                    value={supplier.country || ""}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, country: e.target.value ?? "", state: "", city: "" })
+                    }
+                    className={inputClass("country")}
+                  >
+                    <option value="">Select Country</option>
+                    {countryOptions.map((country) => (
+                      <option key={country.isoCode} value={country.name}>
+                        {country.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
 
-
-    <div>
-      <label className="text-sm font-semibold mb-1 block">
-        Zipcode / Pincode
-      </label>
-      <input
-        value={supplier.pincode}
-        onChange={(e) =>
-          setSupplier({ ...supplier, pincode: e.target.value })
-        }
-        className={inputClass("pincode")}
-      />
-    </div>
-
-    {/* Row 3 */}
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Website</label>
-      <input
-        value={supplier.website || ""}
-        onChange={(e) =>
-          setSupplier({ ...supplier, website: e.target.value  ?? "" })
-        }
-        className={inputClass("website")}
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-semibold mb-1 block">LinkedIn</label>
-      <input
-        value={supplier.linkedin || ""}
-        onChange={(e) =>
-          setSupplier({ ...supplier, linkedin: e.target.value  ?? "" })
-        }
-        className={inputClass("linkedin")}
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Mail</label>
-      <input
-        value={supplier.email || ""}
-        onChange={(e) =>
-          setSupplier({ ...supplier, email: e.target.value  ?? "" })
-        }
-        className={inputClass("email")}
-      />
-    </div>
-
-    <div>
-      <label className="text-sm font-semibold mb-1 block">Skype</label>
-      <input
-        value={supplier.skype || ""}
-        onChange={(e) =>
-          setSupplier({ ...supplier, skype: e.target.value  ?? "" })
-        }
-        className={inputClass("skype")}
-      />
-    </div>
-
-  </div>
-)}
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Province / State</label>
+                  <select
+                    value={supplier.state || ""}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, state: e.target.value ?? "", city: "" })
+                    }
+                    className={inputClass("state")}
+                  >
+                    <option value="">Select State</option>
+                    {stateOptions.map((state) => (
+                      <option key={state.isoCode} value={state.name}>
+                        {state.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">City</label>
+                  <select
+                    value={supplier.city || ""}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, city: e.target.value ?? "" })
+                    }
+                    className={inputClass("city")}
+                  >
+                    <option value="">Select City</option>
+                    {cityOptions.map((city) => (
+                      <option
+                        key={`${city.name}-${city.latitude}-${city.longitude}`}
+                        value={city.name}
+                      >
+                        {city.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
 
-            {activeTab === "bank" && <div className="grid md:grid-cols-3 gap-6 mt-6"><div><label className="text-sm font-semibold mb-1 block">Bank Name</label><input value={supplier.bank_name} onChange={(e) => setSupplier({ ...supplier, bank_name: e.target.value })} className={inputClass("bank_name")} /></div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Name</label><input value={supplier.beneficiary_name} onChange={(e) => setSupplier({ ...supplier, beneficiary_name: e.target.value })} className={inputClass("beneficiary_name")} /></div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Code</label><input value={supplier.beneficiary_code} onChange={(e) => setSupplier({ ...supplier, beneficiary_code: e.target.value })} className={inputClass("beneficiary_code")} /></div><div><label className="text-sm font-semibold mb-1 block">Branch</label><input value={supplier.branch} onChange={(e) => setSupplier({ ...supplier, branch: e.target.value })} className={inputClass("branch")} /></div><div><label className="text-sm font-semibold mb-1 block">IFSC Code</label><input value={supplier.ifsc_code} onChange={(e) => setSupplier({ ...supplier, ifsc_code: e.target.value })} className={inputClass("ifsc_code")} /></div><div><label className="text-sm font-semibold mb-1 block">SWIFT Code</label><input value={supplier.swift_code} onChange={(e) => setSupplier({ ...supplier, swift_code: e.target.value })} className={inputClass("swift_code")} /></div></div>}
 
-   {activeTab === "contact" && (
-  <div className="mt-6 space-y-4">
-    {supplier.contacts.map((contact, idx) => (
-      <div key={idx} className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">
+                    Zipcode / Pincode
+                  </label>
+                  <input
+                    value={supplier.pincode || ""}
+                    data-rules="code"
+                    data-field="pincode"
+                    data-optional="true"
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, pincode: e.target.value })
+                    }
+                    className={inputClass("pincode")}
+                  />
+                  {errors.pincode && <p className="text-red-500 text-sm mt-1">{errors.pincode}</p>}
+                </div>
 
-        <div>
-          <label className="text-sm font-semibold mb-1 block">
-            {idx + 1}. Contact Person
-          </label>
-          <input
-            value={contact.person}
-            onChange={(e) => updateContact(idx, "person", e.target.value)}
-            className={inputClass(`contact_person_${idx}`)}
-          />
-        </div>
+                {/* Row 3 */}
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Website</label>
+                  <input
+                    value={supplier.website || ""}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, website: e.target.value ?? "" })
+                    }
+                    className={inputClass("website")}
+                  />
+                </div>
 
-        <div>
-          <label className="text-sm font-semibold mb-1 block">Phone No</label>
-          <input
-            value={contact.phone}
-            onChange={(e) => updateContact(idx, "phone", e.target.value)}
-            className={inputClass(`contact_phone_${idx}`)}
-          />
-        </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">LinkedIn</label>
+                  <input
+                    value={supplier.linkedin || ""}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, linkedin: e.target.value ?? "" })
+                    }
+                    className={inputClass("linkedin")}
+                  />
+                </div>
 
-        <div>
-          <label className="text-sm font-semibold mb-1 block">Mail</label>
-          <input
-            value={contact.email}
-            onChange={(e) => updateContact(idx, "email", e.target.value)}
-            className={inputClass(`contact_email_${idx}`)}
-          />
-          {errors[`contact_email_${idx}`] && (
-            <p className="text-red-500 text-sm mt-1">
-              {errors[`contact_email_${idx}`]}
-            </p>
-          )}
-        </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Mail</label>
+                  <input
+                    value={supplier.email || ""}
+                    data-rules="email"
+                    data-field="email"
+                    data-optional="true"
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, email: e.target.value ?? "" })
+                    }
+                    className={inputClass("email")}
+                  />
+                  {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+                </div>
 
-      </div>
-    ))}
-  </div>
-)}
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Skype</label>
+                  <input
+                    value={supplier.skype || ""}
+                    onChange={(e) =>
+                      setSupplier({ ...supplier, skype: e.target.value ?? "" })
+                    }
+                    className={inputClass("skype")}
+                  />
+                </div>
+
+              </div>
+            )}
+
+
+            {activeTab === "bank" && <div className="grid md:grid-cols-3 gap-6 mt-6"><div><label className="text-sm font-semibold mb-1 block">Bank Name</label><input value={supplier.bank_name} data-rules="alpha-name" data-field="bank_name" data-optional="true" onChange={(e) => setSupplier({ ...supplier, bank_name: e.target.value })} className={inputClass("bank_name")} />{errors.bank_name && <p className="text-red-500 text-sm mt-1">{errors.bank_name}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Name</label><input value={supplier.beneficiary_name} data-rules="alpha-name" data-field="beneficiary_name" data-optional="true" onChange={(e) => setSupplier({ ...supplier, beneficiary_name: e.target.value })} className={inputClass("beneficiary_name")} />{errors.beneficiary_name && <p className="text-red-500 text-sm mt-1">{errors.beneficiary_name}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Code</label><input value={supplier.beneficiary_code} data-rules="code" data-field="beneficiary_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, beneficiary_code: e.target.value })} className={inputClass("beneficiary_code")} />{errors.beneficiary_code && <p className="text-red-500 text-sm mt-1">{errors.beneficiary_code}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Branch</label><input value={supplier.branch} data-rules="no-symbols" data-field="branch" data-optional="true" onChange={(e) => setSupplier({ ...supplier, branch: e.target.value })} className={inputClass("branch")} />{errors.branch && <p className="text-red-500 text-sm mt-1">{errors.branch}</p>}</div><div><label className="text-sm font-semibold mb-1 block">IFSC Code</label><input value={supplier.ifsc_code} data-rules="code" data-field="ifsc_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, ifsc_code: e.target.value })} className={inputClass("ifsc_code")} />{errors.ifsc_code && <p className="text-red-500 text-sm mt-1">{errors.ifsc_code}</p>}</div><div><label className="text-sm font-semibold mb-1 block">SWIFT Code</label><input value={supplier.swift_code} data-rules="code" data-field="swift_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, swift_code: e.target.value })} className={inputClass("swift_code")} />{errors.swift_code && <p className="text-red-500 text-sm mt-1">{errors.swift_code}</p>}</div></div>}
+
+            {activeTab === "contact" && (
+              <div className="mt-6 space-y-4">
+                {supplier.contacts.map((contact, idx) => (
+                  <div key={idx} className="grid md:grid-cols-3 gap-4">
+
+                    <div>
+                      <label className="text-sm font-semibold mb-1 block">
+                        {idx + 1}. Contact Person
+                      </label>
+                      <input
+                        value={contact.person}
+                        data-rules="alpha-name"
+                        data-field={`contact_person_${idx}`}
+                        data-optional="true"
+                        onChange={(e) => updateContact(idx, "person", e.target.value)}
+                        className={inputClass(`contact_person_${idx}`)}
+                      />
+                      {errors[`contact_person_${idx}`] && (
+                        <p className="text-red-500 text-sm mt-1">
+                          {errors[`contact_person_${idx}`]}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold mb-1 block">Phone No</label>
+                      <input
+                        data-rules="phone"
+                        data-field={`contact_phone_${idx}`}
+                        data-optional="true"
+                        value={contact.phone}
+                        onChange={(e) => updateContact(idx, "phone", e.target.value)}
+                        className={inputClass(`contact_phone_${idx}`)}
+                      />
+                      {errors[`contact_phone_${idx}`] && (
+                        <p className="text-red-500 text-sm mt-1">
+                          {errors[`contact_phone_${idx}`]}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-semibold mb-1 block">Mail</label>
+                      <input
+                        value={contact.email}
+                        data-rules="email"
+                        data-field={`contact_email_${idx}`}
+                        data-optional="true"
+                        onChange={(e) => updateContact(idx, "email", e.target.value)}
+                        className={inputClass(`contact_email_${idx}`)}
+                      />
+                      {errors[`contact_email_${idx}`] && (
+                        <p className="text-red-500 text-sm mt-1">
+                          {errors[`contact_email_${idx}`]}
+                        </p>
+                      )}
+                    </div>
+
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="ui-form-actions">
-            <button 
-            type="button" 
-            onClick={() => setShowForm(false)} 
-            className="ui-btn ui-btn-secondary ui-btn-responsive">
-              Cancel
-              </button>
-              <div className="ui-btn-group">
-                 {!supplier.id && (
-              <button 
-              type="button" 
-              onClick={handleSaveAndAddNext} 
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
               className="ui-btn ui-btn-secondary ui-btn-responsive">
-                Save & Next
+              Cancel
+            </button>
+            <div className="ui-btn-group">
+              {!supplier.id && (
+                <button
+                  type="button"
+                  onClick={handleSaveAndAddNext}
+                  className="ui-btn ui-btn-secondary ui-btn-responsive">
+                  Save & Next
                 </button>
-            )}
-            <button 
-            className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg">
-              {supplier.id ? "Update Supplier" : "Save Supplier"}
+              )}
+              <button
+                className="bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg">
+                {supplier.id ? "Update Supplier" : "Save Supplier"}
               </button></div>
           </div>
         </form>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -16,6 +16,7 @@ import { Country, State, City } from "country-state-city";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type LocationTab = "registered" | "bill" | "ship" | "contact";
 type Location = {
   id?: number;
@@ -101,7 +102,8 @@ export default function LocationMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState<LocationTab>("registered");
+  const [activeTab, setActiveTab] = useState<LocationTab>("registered");
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -145,6 +147,19 @@ export default function LocationMasterPage() {
     loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function copyRegisteredToBillForm(next: Location): Location {
     return {
       ...next,
@@ -181,8 +196,20 @@ export default function LocationMasterPage() {
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = "Name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.name);
+      if (nameMessage) next.name = nameMessage;
+    }
     if (!form.type) next.type = "Type is required";
+    else {
+      const typeMessage = getRuleValidationError("enum-global-local", form.type);
+      if (typeMessage) next.type = typeMessage;
+    }
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "Invalid email";
+    else if (form.email) {
+      const emailMessage = getRuleValidationError("email", form.email);
+      if (emailMessage) next.email = emailMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -468,6 +495,7 @@ export default function LocationMasterPage() {
       )}
 
       {showForm && (
+        <div ref={formRef}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -485,6 +513,8 @@ export default function LocationMasterPage() {
                   Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  data-rules="no-symbols"
+                  data-field="name"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className={inputClass("name")}
@@ -496,6 +526,8 @@ export default function LocationMasterPage() {
                   Type <span className="text-red-500">*</span>
                 </label>
                 <select
+                  data-rules="enum-global-local"
+                  data-field="type"
                   value={form.type}
                   onChange={(e) => setForm({ ...form, type: e.target.value as Location["type"] })}
                   className={inputClass("type")}
@@ -826,6 +858,8 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Landline</label>
                 <input
+                  data-rules="phone"
+                  data-field="landline"
                   value={form.landline || ""}
                   onChange={(e) => updateForm((prev) => ({ ...prev, landline: e.target.value ?? "" }))}
                   className={inputClass("landline")}
@@ -834,6 +868,8 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Mobile</label>
                 <input
+                  data-rules="phone"
+                  data-field="mobile"
                   value={form.mobile || ""}
                   onChange={(e) => updateForm((prev) => ({ ...prev, mobile: e.target.value ?? "" }))}
                   className={inputClass("mobile")}
@@ -842,6 +878,8 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Fax</label>
                 <input
+                  data-rules="fax-phone"
+                  data-field="fax"
                   value={form.fax || ""}
                   onChange={(e) => updateForm((prev) => ({ ...prev, fax: e.target.value ?? ""}))}
                   className={inputClass("fax")}
@@ -850,6 +888,8 @@ export default function LocationMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Email</label>
                 <input
+                  data-rules="email"
+                  data-field="email"
                   type="email"
                   value={form.email || ""}
                   onChange={(e) => updateForm((prev) => ({ ...prev, email: e.target.value ?? "" }))}
@@ -901,6 +941,7 @@ export default function LocationMasterPage() {
             </div>
           </div>
         </form>
+        </div>
       )}
     </div>
   );

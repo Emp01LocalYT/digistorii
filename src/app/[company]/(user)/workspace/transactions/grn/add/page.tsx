@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect,useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createPortal } from "react-dom";
 import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
@@ -97,12 +97,12 @@ export default function GRNForm() {
 
 
     const filteredPOs = useMemo(() => {
-    return poList.filter((p) =>
-      `${p.purchase_no}${p.supplier_code} ${p.supplier_name} ${p.po_status}`
-        .toLowerCase()
-        .includes(poSearchTerm.toLowerCase())
-    );
-  }, [poList, poSearchTerm]);
+        return poList.filter((p) =>
+            `${p.purchase_no}${p.supplier_code} ${p.supplier_name} ${p.po_status}`
+                .toLowerCase()
+                .includes(poSearchTerm.toLowerCase())
+        );
+    }, [poList, poSearchTerm]);
 
     // const indexOfLast = poCurrentPage * poItemsPerPage;
     // const indexOfFirst = indexOfLast - poItemsPerPage;
@@ -496,6 +496,8 @@ export default function GRNForm() {
 
                 }
 
+            } else if (qty < 0) {
+                newErrors[`qty_${index}`] = "Qty cannot be negative";
             }
 
         });
@@ -728,7 +730,7 @@ export default function GRNForm() {
                                                     const value = e.target.value;
                                                     const updated = [...details];
                                                     // Allow empty string for backspace
-                                                    updated[index].qty = value === "" ? "" : Number(value);
+                                                    updated[index].qty = value === "" ? "" : Math.max(0, Number(value));
                                                     setDetails(updated);
 
                                                     // clear validation errors for this row

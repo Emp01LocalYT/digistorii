@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -16,6 +16,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type CategoryNode = {
   id: number;
   name: string;
@@ -318,6 +319,8 @@ function CategoryForm({
                 Category Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="category_name"
                 value={form.category_name}
                 onChange={(e) => setForm({ ...form, category_name: e.target.value })}
                 className={inputClass("category_name")}
@@ -385,6 +388,7 @@ export default function CategoryMasterPage() {
   const [tableLoading, setTableLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${
@@ -406,6 +410,19 @@ export default function CategoryMasterPage() {
   useEffect(() => {
     void loadCategories();
   }, [company]);
+
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
 
   const flatCategories = useMemo(() => flattenCategories(tree), [tree]);
   const categoryOptions = useMemo(() => {
@@ -444,6 +461,10 @@ export default function CategoryMasterPage() {
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.category_name.trim()) next.category_name = "Category name is required";
+    else {
+      const categoryMessage = getRuleValidationError("no-symbols", form.category_name);
+      if (categoryMessage) next.category_name = categoryMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -548,6 +569,7 @@ export default function CategoryMasterPage() {
     )}
 
     {showForm && (
+      <div ref={formRef}>
       <CategoryForm
         form={form}
         setForm={setForm}
@@ -558,6 +580,7 @@ export default function CategoryMasterPage() {
         setErrors={setErrors}
         submit={submit}
       />
+      </div>
     )}
 
   </div>

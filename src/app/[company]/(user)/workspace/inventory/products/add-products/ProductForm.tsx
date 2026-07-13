@@ -12,11 +12,14 @@ import { useTenant } from "@/context/TenantContext";
 import { useNotify } from "@/hooks/useNotify";
 import { apiFetch } from "@/lib/apiFetch";
 import { normalizeBarcode, validateBarcodeOrThrow } from "@/lib/product-barcode";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 import '@ant-design/v5-patch-for-react-19';
 // import CategoryModal from "../components/CategoryModal";
 const CategoryModal = dynamic(() => import("../components/CategoryModal"));
 const MaterialModal = dynamic(() => import("../components/MaterialModal"));
 const UomModal = dynamic(() => import("../components/UomModal"));
+const FittingModal = dynamic(() => import("../components/FittingModal"));
+const ColorModal = dynamic(() => import("../components/ColorModal"));
 const CategorySelect = dynamic(() => import("../components/CategorySelect"));
 const VariantBarcodePrintModal = dynamic(
   () => import("../components/VariantBarcodePrintModal")
@@ -67,6 +70,17 @@ type UomOption = {
   id: number;
   uom_code: string;
   uom_name: string;
+};
+
+type FittingOption = {
+  id: number;
+  fitting_name: string;
+};
+
+type ColorOption = {
+  id: number;
+  color_name: string;
+  hex_code: string;
 };
 
 type ImageMasterItem = {
@@ -168,6 +182,8 @@ export function ProductForm({
   const [category, setCategory] = useState("");
   const [material, setMaterial] = useState("");
   const [uom, setUom] = useState("");
+  const [gender, setGender] = useState("");
+  const [fittingId, setFittingId] = useState("");
   const [hsnCode, setHsnCode] = useState("");
   const [weight, setWeight] = useState("");
   const [length, setLength] = useState("");
@@ -181,12 +197,36 @@ export function ProductForm({
   const [loading, setLoading] = useState(false);
   const [pageLoading, setPageLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) {
+          return { ...prev, [fieldName]: message };
+        }
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, []);
+
   const [categoriesTree, setCategoriesTree] = useState<CategoryNode[]>([]);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
   const [materialModalOpen, setMaterialModalOpen] = useState(false);
   const [uoms, setUoms] = useState<UomOption[]>([]);
   const [uomModalOpen, setUomModalOpen] = useState(false);
+  const [fittings, setFittings] = useState<FittingOption[]>([]);
+  const [fittingModalOpen, setFittingModalOpen] = useState(false);
+  const [colors, setColors] = useState<ColorOption[]>([]);
+  const [colorModalOpen, setColorModalOpen] = useState(false);
+  const [activeColorIndex, setActiveColorIndex] = useState<number | null>(null);
+  const [activeColorSearch, setActiveColorSearch] = useState("");
   const [imageMasterFiles, setImageMasterFiles] = useState<ImageMasterItem[]>([]);
   const [categoryRefreshKey, setCategoryRefreshKey] = useState(0);
   const hasLoadedRef = useRef(false);
@@ -253,6 +293,9 @@ export function ProductForm({
       setCategory(data.product.category || "");
       setMaterial(data.product.material || "");
       setUom(data.product.uom || "");
+      const firstVariant = data.variants?.[0];
+      setGender(firstVariant?.gender || "");
+      setFittingId(firstVariant?.fitting_id ? String(firstVariant.fitting_id) : "");
       setHsnCode(data.product.hsn_code || "");
       setWeight(
         data.product.weight === null || data.product.weight === undefined
@@ -280,7 +323,7 @@ export function ProductForm({
       console.log("data variants", data.variants)
       const loadedVariants = (data.variants || []).map((v: any) => ({
         id: v.id,
-        color: v.color || "",
+        color: v.color_id ? String(v.color_id) : "",
         size: v.size || "",
         sku: v.sku || "",
         qty: String(v.qty ?? 0),
@@ -347,6 +390,28 @@ export function ProductForm({
       setUoms(data.success ? data.data || [] : []);
     } catch {
       setUoms([]);
+    }
+  }
+
+  async function loadFittings() {
+    if (!company) return;
+    try {
+      const res = await apiFetch("/api/fittings", company);
+      const data = await res.json();
+      setFittings(data.success ? data.data || [] : []);
+    } catch {
+      setFittings([]);
+    }
+  }
+
+  async function loadColors() {
+    if (!company) return;
+    try {
+      const res = await apiFetch("/api/colors", company);
+      const data = await res.json();
+      setColors(data.success ? data.data || [] : []);
+    } catch {
+      setColors([]);
     }
   }
 
@@ -428,7 +493,7 @@ export function ProductForm({
     const loadAllData = async () => {
       setPageLoading(true);
       try {
-        const tasks = [loadCategories(), loadMaterials(), loadUoms(), loadImageMaster()];
+        const tasks = [loadCategories(), loadMaterials(), loadUoms(), loadFittings(), loadColors(), loadImageMaster()];
         if (productId) {
           tasks.push(loadProduct());
         } else {
@@ -478,6 +543,18 @@ export function ProductForm({
       })
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [materials]);
+
+  const fittingOptions = useMemo(() => {
+    return fittings
+      .map((item) => ({ value: String(item.id), label: item.fitting_name }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [fittings]);
+
+  const colorOptions = useMemo(() => {
+    return colors
+      .map((item) => ({ value: String(item.id), label: item.color_name, hex: item.hex_code }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [colors]);
 
   const uomOptions = useMemo(() => {
     return uoms
@@ -635,10 +712,52 @@ export function ProductForm({
       return;
     }
 
+
+    const currentErrors: Record<string, string> = {};
+    if (hsnCode) {
+      const err = getRuleValidationError("numeric-string", hsnCode);
+      if (err) currentErrors.hsn_code = err;
+    }
+    if (weight) {
+      const err = getRuleValidationError("decimal-number", weight);
+      if (err) currentErrors.weight = err;
+    }
+    if (length) {
+      const err = getRuleValidationError("decimal-number", length);
+      if (err) currentErrors.length = err;
+    }
+    if (width) {
+      const err = getRuleValidationError("decimal-number", width);
+      if (err) currentErrors.width = err;
+    }
+    if (height) {
+      const err = getRuleValidationError("decimal-number", height);
+      if (err) currentErrors.height = err;
+    }
+    variants.forEach((v, idx) => {
+      if (v.color) {
+        const err = getRuleValidationError("alphanumeric", v.color);
+        if (err) currentErrors[`variant_color_${idx}`] = err;
+      }
+      if (v.size) {
+        const err = getRuleValidationError("alphanumeric", v.size);
+        if (err) currentErrors[`variant_size_${idx}`] = err;
+      }
+    });
+
+    if (Object.keys(currentErrors).length > 0) {
+      setErrors((prev) => ({ ...prev, ...currentErrors }));
+      notify("Please fix validation errors before saving", { severity: "warning" });
+      return;
+    }
+
+
     const cleanedVariants = variants
       .map((v) => ({
         id: v.id,
-        color: v.color.trim(),
+        color_id: v.color ? Number(v.color) : null,
+        gender: gender || null,
+        fitting_id: fittingId ? Number(fittingId) : null,
         size: v.size.trim(),
         sku: v.sku.trim(),
         barcode: normalizeBarcode(v.barcode),
@@ -647,7 +766,7 @@ export function ProductForm({
         backorders_allowed: Boolean(v.backorders_allowed),
         status: v.status,
       }))
-      .filter((v) => v.color || v.size || v.sku);
+      .filter((v) => v.color_id || v.size || v.sku);
 
     if (productType === "finished_good" && !cleanedVariants.length) {
       notify("At least one variant is required", { severity: "warning" });
@@ -767,11 +886,14 @@ export function ProductForm({
         if (!embedded) {
           router.push(`/${company}/workspace/inventory/products`);
         }
-      } else if (embedded) {
-        onSaved?.(savedPayload, { action });
-      } else if (action === "save") {
-        if (!embedded) {
-          router.push(`/${company}/workspace/inventory/products`);
+      } else {
+        notify("Product saved successfully", { severity: "success" });
+        if (embedded) {
+          onSaved?.(savedPayload, { action });
+        } else if (action === "save") {
+          if (!embedded) {
+            router.push(`/${company}/workspace/inventory/products`);
+          }
         }
       }
 
@@ -788,7 +910,6 @@ export function ProductForm({
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     await handleSave("save");
-    notify("Product saved successfully", { severity: "success" });
   }
 
   return (
@@ -828,7 +949,7 @@ export function ProductForm({
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} className="space-y-5">
+      <form ref={formRef} onSubmit={onSubmit} className="space-y-5">
         <section className="rounded-xl border border-gray-200 bg-white p-4">
           <h2 className="text-base font-semibold text-gray-900">Section 1 - Basic Info</h2>
           <div className="mt-3 grid gap-3 md:grid-cols-4">
@@ -841,7 +962,7 @@ export function ProductForm({
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Product Name *</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Product Name <span className="text-red-500">*</span></label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -937,6 +1058,50 @@ export function ProductForm({
                 />
               </div>
             </div>
+            {productType === "finished_good" && (
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    disabled={readOnly}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                  >
+                    <option value="">Select Gender</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Transgender">Transgender</option>
+                    <option value="Not Specified">Not Specified</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Fitting</label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      showSearch
+                      placeholder="Select Fitting"
+                      value={fittingId || undefined}
+                      onChange={(value) => setFittingId(String(value))}
+                      options={fittingOptions}
+                      disabled={readOnly}
+                      filterOption={(input, option) =>
+                        String(option?.label ?? "")
+                          .toLowerCase()
+                          .includes(input.toLowerCase())
+                      }
+                      className="w-full font-sans"
+                    />
+                    <Button
+                      icon={<PlusOutlined />}
+                      type="default"
+                      onClick={() => setFittingModalOpen(true)}
+                      disabled={readOnly}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Source</label>
               <select
@@ -952,11 +1117,15 @@ export function ProductForm({
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">HSN Code</label>
               <input
+                data-rules="numeric-string"
+                data-field="hsn_code"
+                data-optional="true"
                 value={hsnCode}
                 onChange={(e) => setHsnCode(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none disabled:bg-gray-100 ${errors.hsn_code ? "border-red-500 focus:border-red-500" : "border-gray-300 focus:border-blue-500"}`}
               />
+              {errors.hsn_code && <p className="text-red-500 text-xs mt-1">{errors.hsn_code}</p>}
             </div>
 
             <div className="md:col-span-2">
@@ -973,41 +1142,57 @@ export function ProductForm({
               <label className="mb-1 block text-sm font-medium text-gray-700">Weight</label>
               <input
                 type="number"
+                data-rules="decimal-number"
+                data-field="weight"
+                data-optional="true"
                 value={weight}
                 onChange={(e) => setWeight(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none disabled:bg-gray-100 ${errors.weight ? "border-red-500 focus:border-red-500" : "border-gray-300 focus:border-blue-500"}`}
               />
+              {errors.weight && <p className="text-red-500 text-xs mt-1">{errors.weight}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Length</label>
               <input
                 type="number"
+                data-rules="decimal-number"
+                data-field="length"
+                data-optional="true"
                 value={length}
                 onChange={(e) => setLength(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none disabled:bg-gray-100 ${errors.length ? "border-red-500 focus:border-red-500" : "border-gray-300 focus:border-blue-500"}`}
               />
+              {errors.length && <p className="text-red-500 text-xs mt-1">{errors.length}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Width</label>
               <input
                 type="number"
+                data-rules="decimal-number"
+                data-field="width"
+                data-optional="true"
                 value={width}
                 onChange={(e) => setWidth(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none disabled:bg-gray-100 ${errors.width ? "border-red-500 focus:border-red-500" : "border-gray-300 focus:border-blue-500"}`}
               />
+              {errors.width && <p className="text-red-500 text-xs mt-1">{errors.width}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Height</label>
               <input
                 type="number"
+                data-rules="decimal-number"
+                data-field="height"
+                data-optional="true"
                 value={height}
                 onChange={(e) => setHeight(e.target.value)}
                 disabled={readOnly}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+                className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none disabled:bg-gray-100 ${errors.height ? "border-red-500 focus:border-red-500" : "border-gray-300 focus:border-blue-500"}`}
               />
+              {errors.height && <p className="text-red-500 text-xs mt-1">{errors.height}</p>}
             </div>
             {isEdit ? (
               <div>
@@ -1085,16 +1270,37 @@ export function ProductForm({
                       <td className="px-3 py-2">
                         {variant.id ? (
                           <span className="block text-sm text-gray-800">
-                            {variant.color || "-"}
+                            {colorOptions.find((c) => c.value === String(variant.color))?.label || variant.color || "-"}
                           </span>
                         ) : (
-                          <input
-                            value={variant.color}
-                            onChange={(e) => updateVariant(index, "color", e.target.value)}
-                            disabled={readOnly}
-                            className="w-full rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
-                          />
+                          <div className="flex items-center gap-1">
+                            <Select
+                              showSearch
+                              placeholder="Select Color"
+                              value={variant.color || undefined}
+                              onChange={(val) => updateVariant(index, "color", String(val))}
+                              options={colorOptions}
+                              disabled={readOnly}
+                              filterOption={(input, option) =>
+                                String(option?.label ?? "")
+                                  .toLowerCase()
+                                  .includes(input.toLowerCase())
+                              }
+                              className={`w-full font-sans ${errors[`variant_color_${index}`] ? "border-red-500 rounded" : ""}`}
+                            />
+                            <Button
+                              icon={<PlusOutlined />}
+                              type="default"
+                              size="small"
+                              onClick={() => {
+                                setActiveColorIndex(index);
+                                setColorModalOpen(true);
+                              }}
+                              disabled={readOnly}
+                            />
+                          </div>
                         )}
+                        {errors[`variant_color_${index}`] && <span className="block text-[11px] text-red-500 mt-1">{errors[`variant_color_${index}`]}</span>}
                       </td>
                       <td className="px-3 py-2">
                         {variant.id ? (
@@ -1102,12 +1308,18 @@ export function ProductForm({
                             {variant.size || "-"}
                           </span>
                         ) : (
-                          <input
-                            value={variant.size}
-                            onChange={(e) => updateVariant(index, "size", e.target.value)}
-                            disabled={readOnly}
-                            className="w-full rounded border border-gray-300 px-2 py-1 disabled:bg-gray-100"
-                          />
+                          <>
+                            <input
+                              data-rules="alphanumeric"
+                              data-field={`variant_size_${index}`}
+                              data-optional="true"
+                              value={variant.size}
+                              onChange={(e) => updateVariant(index, "size", e.target.value)}
+                              disabled={readOnly}
+                              className={`w-full rounded border px-2 py-1 disabled:bg-gray-100 ${errors[`variant_size_${index}`] ? "border-red-500" : "border-gray-300"}`}
+                            />
+                            {errors[`variant_size_${index}`] && <span className="block text-[11px] text-red-500 mt-1">{errors[`variant_size_${index}`]}</span>}
+                          </>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -1395,16 +1607,17 @@ export function ProductForm({
 
       <CategoryModal
         open={categoryModalOpen}
-        categoryOptions={categoryOptions}
         onClose={() => setCategoryModalOpen(false)}
         onSaved={async (id) => {
           await loadCategories();
-          if (id) setCategory(String(id));
-          setCategoryRefreshKey((prev) => prev + 1);
+          if (id) {
+            setCategory(String(id));
+            setCategoryRefreshKey((prev) => prev + 1);
+          }
           setCategoryModalOpen(false);
         }}
+        categoryOptions={categoryOptions}
       />
-
       <MaterialModal
         open={materialModalOpen}
         onClose={() => setMaterialModalOpen(false)}
@@ -1414,7 +1627,6 @@ export function ProductForm({
           setMaterialModalOpen(false);
         }}
       />
-
       <UomModal
         open={uomModalOpen}
         onClose={() => setUomModalOpen(false)}
@@ -1424,7 +1636,36 @@ export function ProductForm({
           setUomModalOpen(false);
         }}
       />
+      <FittingModal
+        open={fittingModalOpen}
+        onClose={() => setFittingModalOpen(false)}
+        onSaved={async (id) => {
+          await loadFittings();
+          if (id) setFittingId(String(id));
+          setFittingModalOpen(false);
+        }}
+      />
+      <ColorModal
+        open={colorModalOpen}
+        onClose={() => {
+          setColorModalOpen(false);
+          setActiveColorIndex(null);
+        }}
+        onSaved={async (id) => {
+          await loadColors();
+          if (id && activeColorIndex !== null) {
+            updateVariant(activeColorIndex, "color", String(id));
+          }
+          setColorModalOpen(false);
+          setActiveColorIndex(null);
+        }}
+      />
+      <VariantBarcodePrintModal
+        open={printModalOpen}
+        onClose={() => setPrintModalOpen(false)}
+        title={printTitle}
+        variants={printVariants}
+      />
     </div>
   );
 }
-

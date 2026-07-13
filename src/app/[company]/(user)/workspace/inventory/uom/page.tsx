@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type Uom = {
   id?: number;
   uom_code: string;
@@ -36,6 +37,7 @@ export default function UomMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -56,10 +58,34 @@ export default function UomMasterPage() {
     loadData();
   }, [company]);
 
+
+
+  useEffect(() => {
+  if (!showForm || !formRef.current) return;
+  const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+    setErrors((prev) => {
+      if (message) {
+        return { ...prev, [fieldName]: message };
+      }
+      const next = { ...prev };
+      delete next[fieldName];
+      return next;
+    });
+  });
+  return cleanup;
+}, [showForm]);
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.uom_code.trim()) next.uom_code = "UOM Code is required";
+    else {
+      const codeMessage = getRuleValidationError("code", form.uom_code);
+      if (codeMessage) next.uom_code = codeMessage;
+    }
     if (!form.uom_name.trim()) next.uom_name = "UOM Name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.uom_name);
+      if (nameMessage) next.uom_name = nameMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -334,6 +360,7 @@ export default function UomMasterPage() {
 
       {showForm && (
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void submit("close");
@@ -347,6 +374,8 @@ export default function UomMasterPage() {
                 UOM Code <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="code"
+                data-field="uom_code"
                 value={form.uom_code}
                 onChange={(e) => setForm({ ...form, uom_code: e.target.value })}
                 className={inputClass("uom_code")}
@@ -358,6 +387,8 @@ export default function UomMasterPage() {
                 UOM Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="uom_name"
                 value={form.uom_name}
                 onChange={(e) => setForm({ ...form, uom_name: e.target.value })}
                 className={inputClass("uom_name")}

@@ -215,7 +215,7 @@ ORDER BY d.id
           p.product_code AS code,
           p.product_code,
           pv.sku,
-          pv.color,
+          pcl.color_name as color,
           p.name,
           p.description,
           COALESCE(pc.category_name, p.category) AS category_name,
@@ -236,6 +236,8 @@ ORDER BY d.id
           ON pc.id::text = p.category::text
         LEFT JOIN "${schema}".uom u
           ON u.id::text = p.uom
+        LEFT JOIN "${schema}".product_colors pcl
+          on pcl.id::text = pv.color_id::text
         LEFT JOIN LATERAL (
           SELECT COALESCE(SUM(cs.current_stock), 0) AS current_stock
           FROM "${schema}".current_stock cs
@@ -256,6 +258,7 @@ ORDER BY d.id
         `
       , [company, salesWarehouseId]);
       return NextResponse.json({ success: true, data: result.rows });
+      
     } else {
       console.log("in else 150");
          result = await client.query(

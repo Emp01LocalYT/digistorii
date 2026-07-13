@@ -9,7 +9,10 @@ import {
   validateBarcodeOrThrow,
 } from "@/lib/product-barcode";
 type VariantInput = {
-  color?: string;
+  color_id?: number | null;
+  color? :string;
+  gender?: string | null;
+  fitting_id?: number | null;
   size?: string;
   sku?: string;
   qty?: number;
@@ -124,7 +127,7 @@ export async function GET(req: NextRequest) {
             p.source,
             p.status,
             pv.id AS variant_id,
-            pv.color,
+            pv.color_id,
             pv.size,
             pv.fitting,
             pv.gender,
@@ -271,7 +274,7 @@ export async function POST(req: NextRequest) {
     const cleanedVariants = Array.isArray(variantsInput)
       ? variantsInput.filter(
           (variant) =>
-            String(variant.color || "").trim() ||
+            variant.color_id ||
             String(variant.size || "").trim() ||
             String(variant.sku || "").trim()
         )
@@ -338,7 +341,9 @@ export async function POST(req: NextRequest) {
     const usedBarcodeKeys = new Set<string>();
 
     for (const row of variantsToInsert) {
-      const color = String(row.color || "").trim();
+      const colorId = row.color_id || null;
+      const gender = row.gender || null;
+      const fittingId = row.fitting_id || null;
       const size = String(row.size || "").trim();
       const qty = Number(row.qty ?? 0);
       if (!Number.isFinite(qty)) {
@@ -359,7 +364,7 @@ export async function POST(req: NextRequest) {
         usedSkuKeys.add(key);
         sku = inputSku;
       } else {
-        const baseSku = buildAutoSku(productCode, color, size);
+        const baseSku = buildAutoSku(productCode, colorId ? String(colorId) : "NA", size);
         sku = await resolveUniqueSku(client, schema, baseSku, usedSkuKeys);
       }
 
@@ -380,14 +385,16 @@ export async function POST(req: NextRequest) {
       const insertedVariant = await client.query(
         `
           INSERT INTO "${schema}".product_variants
-            (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (product_id, color_id, size, gender, fitting_id, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           RETURNING id, sku, barcode
         `,
         [
           productId,
-          color || null,
+          colorId,
           size || null,
+          gender,
+          fittingId,
           sku,
           qty,
           lowStockThreshold,

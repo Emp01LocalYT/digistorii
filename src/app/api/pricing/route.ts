@@ -48,12 +48,14 @@ export async function GET(req: NextRequest) {
           p.description,
           p.category AS category_name,
           pv.sku,
-          pv.color,
+          pv.color_id,pcl.color_name as color,
           pv.barcode,
           pp.active_from AS effective_date
           FROM "${schema}".product_variants pv
           INNER JOIN "${schema}".products p
             ON p.id = pv.product_id
+          LEFT JOIN "${schema}".product_colors pcl
+            ON pcl.id::text = pv.color_id::text
           LEFT JOIN "${schema}".product_pricing pp
             ON pp.tenant_id = $1
             AND pp.variant_id = pv.id
@@ -82,7 +84,8 @@ export async function GET(req: NextRequest) {
           p.description,
           p.category AS category_name,
           pv.sku,
-          pv.color,
+          pv.color_id,
+          pcl.color_name AS color,
           pp.source_type,
           pp.base_cost,
           pp.operational_cost,
@@ -119,6 +122,8 @@ export async function GET(req: NextRequest) {
           ON pv.id = pp.variant_id
         LEFT JOIN "${schema}".products p
           ON p.id = pv.product_id
+        LEFT JOIN "${schema}".product_colors pcl
+          ON pcl.id::text = pv.color_id::text
         LEFT JOIN "${schema}".tax_master tm
           ON tm.total_percentage = pp.tax_percent
           AND tm.is_active = TRUE

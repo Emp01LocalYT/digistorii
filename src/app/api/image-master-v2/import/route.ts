@@ -584,6 +584,43 @@ export async function POST(req: NextRequest) {
     let insertedProducts = 0;
     let insertedVariants = 0;
 
+    const uniqueColors = new Set<string>();
+    const uniqueFittings = new Set<string>();
+    parsed.parents.forEach((p) => p.variants.forEach((v) => {
+      if (v.color) uniqueColors.add(v.color);
+      if (v.fitting) uniqueFittings.add(v.fitting);
+    }));
+    parsed.orphanVariants.forEach((v) => {
+      if (v.color) uniqueColors.add(v.color);
+      if (v.fitting) uniqueFittings.add(v.fitting);
+    });
+
+    for (const c of uniqueColors) {
+      await client.query(`
+        INSERT INTO "${schema}".product_colors (color_name, hex_code)
+        VALUES ($1, '#000000')
+        ON CONFLICT (color_name) DO NOTHING
+      `, [c]);
+    }
+    const colorMapRes = await client.query(`SELECT id, color_name FROM "${schema}".product_colors`);
+    const colorMap = new Map<string, number>();
+    for (const r of colorMapRes.rows) {
+      colorMap.set(String(r.color_name).toLowerCase(), Number(r.id));
+    }
+
+    for (const f of uniqueFittings) {
+      await client.query(`
+        INSERT INTO "${schema}".product_fittings (fitting_name)
+        VALUES ($1)
+        ON CONFLICT (fitting_name) DO NOTHING
+      `, [f]);
+    }
+    const fittingMapRes = await client.query(`SELECT id, fitting_name FROM "${schema}".product_fittings`);
+    const fittingMap = new Map<string, number>();
+    for (const r of fittingMapRes.rows) {
+      fittingMap.set(String(r.fitting_name).toLowerCase(), Number(r.id));
+    }
+
     try {
       for (const group of parsed.parents) {
         const productCode = getNextCode();
@@ -616,15 +653,15 @@ export async function POST(req: NextRequest) {
           const variantInsert = await client.query(
             `
               INSERT INTO "${schema}".product_variants
-                (product_id, color, size, fitting, gender, sku, qty, low_stock_threshold, backorders_allowed, status)
+                (product_id, color_id, size, fitting_id, gender, sku, qty, low_stock_threshold, backorders_allowed, status)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
               RETURNING id
             `,
             [
               productId,
-              variant.color || null,
+              variant.color ? (colorMap.get(variant.color.toLowerCase()) || null) : null,
               variant.size || null,
-              variant.fitting || null,
+              variant.fitting ? (fittingMap.get(variant.fitting.toLowerCase()) || null) : null,
               variant.gender || null,
               variant.sku,
               0,
@@ -667,15 +704,15 @@ export async function POST(req: NextRequest) {
         const variantInsert = await client.query(
           `
             INSERT INTO "${schema}".product_variants
-              (product_id, color, size, fitting, gender, sku, qty, low_stock_threshold, backorders_allowed, status)
+              (product_id, color_id, size, fitting_id, gender, sku, qty, low_stock_threshold, backorders_allowed, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
             RETURNING id
           `,
           [
             productId,
-            variant.color || null,
+            variant.color ? (colorMap.get(variant.color.toLowerCase()) || null) : null,
             variant.size || null,
-            variant.fitting || null,
+            variant.fitting ? (fittingMap.get(variant.fitting.toLowerCase()) || null) : null,
             variant.gender || null,
             variant.sku,
             0,

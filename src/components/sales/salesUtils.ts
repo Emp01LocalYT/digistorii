@@ -64,7 +64,7 @@ export const calculatePaymentStatus = (totalAmount: number, paidAmount: number) 
   const total = roundMoney(totalAmount);
   const paid = roundMoney(paidAmount);
   if (paid <= 0) return "unpaid";
-  if (Math.abs(total - paid) <= 0.01) return "paid";
+  if (Math.abs(total - paid) <= 1.00) return "paid";
   return "partial";
 };
 

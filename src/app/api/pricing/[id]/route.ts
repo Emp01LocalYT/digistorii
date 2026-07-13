@@ -66,7 +66,8 @@ export async function GET(
           p.category,
           pc.path_string AS category_name,
           pv.sku,
-          pv.color,
+          pv.color_id,
+          pcl.color_name AS color,
           pp.source_type,
           pp.base_cost,
           pp.operational_cost,
@@ -109,6 +110,8 @@ export async function GET(
           ON pv.id = pp.variant_id
         LEFT JOIN "${schema}".products p
           ON p.id = pv.product_id
+        LEFT JOIN "${schema}".product_colors pcl
+          ON pcl.id::text = pv.color_id::text
         LEFT JOIN "${schema}".product_categories pc
           ON pc.id::text = p.category::text
         LEFT JOIN "${schema}".tax_master tm

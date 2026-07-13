@@ -1,0 +1,56 @@
+# Refactor Product Attributes (Gender, Fitting, Color)
+
+This plan outlines the structural, API, and UI changes required to migrate Gender, Fitting, and Color from free-text variant-level fields to tightly controlled master-driven inputs, aligning both the frontend form and Excel bulk-upload logic.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Database Schema Changes**
+> *   `fitting` column in `product_variants`: The current schema defines `fitting VARCHAR(30)`. The instructions specify we should store the `fitting_id`. We will add a new column `fitting_id BIGINT REFERENCES product_fittings(id)`.
+> *   `color` column in `product_variants`: You did not explicitly state whether to store the color ID or the color name. For safety and backwards compatibility, we will keep storing the `color` string (e.g., "Midnight Black") but strictly validate it against the `product_colors` master table. Let me know if you prefer to change this to a `color_id` instead.
+> *   `gender` column in `product_variants`: We will keep storing the string value, but strictly validated against `['Male', 'Female', 'Transgender', 'Not Specified']`.
+
+> [!WARNING]
+> **Form Submission Logic**
+> Moving Gender and Fitting to **Section 1 (Basic Info)** means all variants for a single product will share the same Gender and Fitting values. When saving the form, these parent-level selections will be copied to every variant payload row behind the scenes. If you need variants within the *same* product to have *different* genders or fittings, they must remain in Section 2 (Variants Table). Please confirm you want them in Section 1.
+
+## Proposed Changes
+
+---
+
+### 1. Database Schema (`src/lib/schema.ts`)
+*   **[NEW]** `product_fittings` table with `id` and `fitting_name`.
+*   **[NEW]** `product_colors` table with `id`, `color_name`, and `hex_code`.
+*   **[MODIFY]** `product_variants` table: add `fitting_id BIGINT` reference, and add `CHECK` constraint on `gender` (if database allows, or enforce purely via API).
+
+### 2. API Routes
+*   **[NEW]** `/api/fittings/route.ts` & `/api/fittings/[id]/route.ts`: CRUD for fittings.
+*   **[NEW]** `/api/colors/route.ts` & `/api/colors/[id]/route.ts`: CRUD for colors.
+*   **[MODIFY]** `/api/products/import/route.ts`:
+    *   Load lookups for `fittings` and `colors`.
+    *   Validate Excel rows against the strict master sets.
+    *   Map fitting string names to their respective `fitting_id`.
+*   **[MODIFY]** `/api/products/template/route.ts`: Add data validation dropdowns in the generated Excel files for Gender, Fitting, and Color.
+
+### 3. Settings UI (Master Pages)
+*   **[NEW]** `src/app/[company]/(user)/workspace/inventory/fittings/page.tsx`: Sidebar page similar to Materials.
+*   **[NEW]** `src/app/[company]/(user)/workspace/inventory/colors/page.tsx`: Sidebar page with color picker integration.
+
+### 4. Product Form UI (`src/app/[company]/(user)/workspace/inventory/products/add-products/ProductForm.tsx`)
+*   **[MODIFY]** **Section 1**: Add `Gender` (static dropdown) and `Fitting` (searchable dropdown fetching from `/api/fittings` with a quick-add modal).
+*   **[MODIFY]** **Section 2**: Upgrade the `Color` cell from a native `<input>` to a custom searchable dropdown component that renders hex color swatches.
+*   **[NEW]** **Color Picker Modal**: An inline modal triggered from the variant color dropdown to quickly add non-existent colors to the master.
+*   **[MODIFY]** `handleSave`: Map the parent-level Gender and Fitting values into every variant row sent to the API.
+
+## Verification Plan
+
+### Manual Verification
+1.  Navigate to `Inventory -> Settings -> Fittings` and add a new fitting (e.g., "Slim Fit").
+2.  Navigate to `Inventory -> Settings -> Colors` and add a new color using the visual picker.
+3.  Open the **Add Product** form.
+4.  Verify Gender and Fitting are in Section 1.
+5.  Use the `+` button on Fitting to add "Regular Fit" inline.
+6.  In Section 2, open the Color dropdown, verify the color swatch renders, and use the `+` action to add a new color inline.
+7.  Save the product and verify the payload sent to the API contains the correct `fitting_id`, `gender`, and `color` mapped across all variants.
+8.  Download the **Bulk Import Excel Template** and verify that dropdowns exist in the Gender, Fitting, and Color columns.
+9.  Upload a populated Excel sheet and confirm that it strictly validates against the master tables.

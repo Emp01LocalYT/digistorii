@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type LocationOption = { id: number; name: string };
 
 type Warehouse = {
@@ -71,6 +72,7 @@ export default function WarehouseMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -99,15 +101,47 @@ export default function WarehouseMasterPage() {
     void loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.code.trim()) next.code = "Code is required";
+    else {
+      const codeMessage = getRuleValidationError("code", form.code);
+      if (codeMessage) next.code = codeMessage;
+    }
     if (!form.name.trim()) next.name = "Name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.name);
+      if (nameMessage) next.name = nameMessage;
+    }
     if (!form.location_id) next.location_id = "Location is required";
     if (!form.type) next.type = "Type is required";
+    else {
+      const typeMessage = getRuleValidationError("enum-global-local", form.type);
+      if (typeMessage) next.type = typeMessage;
+    }
     if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "Invalid email";
+    else if (form.email) {
+      const emailMessage = getRuleValidationError("email", form.email);
+      if (emailMessage) next.email = emailMessage;
+    }
     if (form.contact_person_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contact_person_email)) {
       next.contact_person_email = "Invalid email";
+    } else if (form.contact_person_email) {
+      const contactEmailMessage = getRuleValidationError("email", form.contact_person_email);
+      if (contactEmailMessage) next.contact_person_email = contactEmailMessage;
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -391,6 +425,7 @@ export default function WarehouseMasterPage() {
       )}
 
       {showForm && (
+        <div ref={formRef}>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -406,6 +441,8 @@ export default function WarehouseMasterPage() {
                 Code <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="code"
+                data-field="code"
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 className={inputClass("code")}
@@ -417,6 +454,8 @@ export default function WarehouseMasterPage() {
                 Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={inputClass("name")}
@@ -446,6 +485,8 @@ export default function WarehouseMasterPage() {
                 Type <span className="text-red-500">*</span>
               </label>
               <select
+                data-rules="enum-global-local"
+                data-field="type"
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value as Warehouse["type"] })}
                 className={inputClass("type")}
@@ -514,6 +555,8 @@ export default function WarehouseMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Email</label>
                 <input
+                  data-rules="email"
+                  data-field="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   className={inputClass("email")}
@@ -545,6 +588,8 @@ export default function WarehouseMasterPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Email</label>
                 <input
+                  data-rules="email"
+                  data-field="contact_person_email"
                   value={form.contact_person_email}
                   onChange={(e) => setForm({ ...form, contact_person_email: e.target.value })}
                   className={inputClass("contact_person_email")}
@@ -585,6 +630,7 @@ export default function WarehouseMasterPage() {
             </div>
           </div>
         </form>
+        </div>
       )}
     </div>
   );

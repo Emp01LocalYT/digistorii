@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type PaymentMode = {
   id?: number;
   payment_mode_name: string;
@@ -35,6 +36,7 @@ export default function PaymentModeMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -55,9 +57,26 @@ export default function PaymentModeMasterPage() {
     loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.payment_mode_name.trim()) next.payment_mode_name = "Payment Mode Name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.payment_mode_name);
+      if (nameMessage) next.payment_mode_name = nameMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -333,6 +352,7 @@ const filtered = useMemo(() => {
 
       {showForm && (
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void submit("close");
@@ -347,6 +367,8 @@ const filtered = useMemo(() => {
                 Payment Mode Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="payment_mode_name"
                 value={form.payment_mode_name ?? ""}
                 onChange={(e) => setForm({ ...form, payment_mode_name: e.target.value })}
                 className={inputClass("payment_mode_name")}

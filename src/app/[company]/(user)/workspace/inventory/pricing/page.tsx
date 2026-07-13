@@ -58,8 +58,8 @@ type EntryRow = {
   base_cost: string;
   operational_cost: string;
   margin_value: string;
-  tax_id?: string;
-  tax_percent?: string;
+  tax_id?: string | number | null;
+  tax_percent?: string | number;
 };
 
 type ApiErrorPayload = {
@@ -111,7 +111,7 @@ function calculatePreviewRow(options: {
   operationalCostText: string;
   marginType: "percentage" | "amount";
   marginValueText: string;
-  taxPercentText: string;
+  taxPercentText?: string;
 }) {
   const base = toNumberOrNull(options.baseCostText);
   const operational = toNumberOrNull(options.operationalCostText || "0");
@@ -231,6 +231,7 @@ export default function PricingPage() {
   const [bulkOperationalCost, setBulkOperationalCost] = useState("");
   const [bulkMarginValue, setBulkMarginValue] = useState("");
   const [bulkTaxPercent, setBulkTaxPercent] = useState("");
+  const [bulkTaxId, setBulkTaxId] = useState("");
   const entryHeaderCheckboxRef = useRef<HTMLInputElement>(null);
 
   async function loadPricing() {
@@ -238,10 +239,10 @@ export default function PricingPage() {
     try {
       const response = await apiFetch("/api/pricing", company);
       const payload = await response.json();
-      if (!response.ok) notify(payload.message || "Failed to fetch pricing",{severity:"error"});
+      if (!response.ok) notify(payload.message || "Failed to fetch pricing", { severity: "error" });
       setRows(payload.pricing || []);
     } catch (error: any) {
-      notify(error.message || "Failed to fetch pricing",{severity:"error"});
+      notify(error.message || "Failed to fetch pricing", { severity: "error" });
     } finally {
       setLoading(false);
     }
@@ -253,11 +254,11 @@ export default function PricingPage() {
       const response = await apiFetch("/api/product-lookup?type=taxes", company);
       const payload = await response.json();
       if (!response.ok || !payload.success) {
-        notify(payload.message || "Failed to fetch taxes",{ severity: "error" });
+        notify(payload.message || "Failed to fetch taxes", { severity: "error" });
       }
       setTaxOptions(payload.data || []);
     } catch (error: any) {
-      notify(error.message || "Failed to fetch taxes",{ severity: "error" });
+      notify(error.message || "Failed to fetch taxes", { severity: "error" });
     }
   }
 
@@ -274,7 +275,7 @@ export default function PricingPage() {
       const blob = await response.blob();
       triggerBrowserDownload(blob, "pricing-update-template.xlsx");
     } catch (error: any) {
-      notify(error.message || "Failed to download template",{ severity: "error" });
+      notify(error.message || "Failed to download template", { severity: "error" });
     } finally {
       setDownloading(false);
     }
@@ -282,7 +283,7 @@ export default function PricingPage() {
 
   async function handleUploadPricing() {
     if (!selectedFile) {
-      notify("Select an .xlsx file first.",{ severity: "warning" });
+      notify("Select an .xlsx file first.", { severity: "warning" });
       return;
     }
 
@@ -309,13 +310,13 @@ export default function PricingPage() {
           );
           triggerBrowserDownload(blob, payload.errorReportFileName || "pricing-upload-errors.xlsx");
         }
-        notify(payload.message || "Pricing upload failed",{ severity: "error" });
+        notify(payload.message || "Pricing upload failed", { severity: "error" });
       }
 
       setUploadPreviewRows(payload.previewRows || []);
       setUploadPreviewOpen(true);
     } catch (error: any) {
-      notify(error.message || "Pricing upload failed",{ severity: "error" });
+      notify(error.message || "Pricing upload failed", { severity: "error" });
     } finally {
       setPreviewing(false);
     }
@@ -323,7 +324,7 @@ export default function PricingPage() {
 
   async function confirmUploadPricing() {
     if (!selectedFile) {
-      notify("Select an .xlsx file first.",{ severity: "warning" });
+      notify("Select an .xlsx file first.", { severity: "warning" });
       return;
     }
 
@@ -475,7 +476,7 @@ export default function PricingPage() {
     const hasBase = asText(bulkBaseCost) !== "";
     const hasOperational = asText(bulkOperationalCost) !== "";
     const hasMargin = asText(bulkMarginValue) !== "";
-    const hasTax = asText(bulkTaxPercent) !== "";
+    const hasTax = bulkTaxId !== "";
 
     if (!hasBase && !hasOperational && !hasMargin && !hasTax) return;
 
@@ -487,8 +488,11 @@ export default function PricingPage() {
         if (hasOperational) next.operational_cost = bulkOperationalCost;
         if (hasMargin) next.margin_value = bulkMarginValue;
         if (hasTax) {
-          next.tax_percent = bulkTaxPercent;
-          next.tax_id = "";
+          const selectedTax = taxOptions.find((t) => String(t.id) === bulkTaxId);
+          if (selectedTax) {
+            next.tax_id = selectedTax.id;
+            next.tax_percent = selectedTax.total_percentage;
+          }
         }
         return next;
       })
@@ -579,20 +583,20 @@ export default function PricingPage() {
 
   async function savePricingRows(addAnother: boolean) {
     if (!effectiveDate) {
-      notify("Effective Date is required.",{ severity: "warning" });
+      notify("Effective Date is required.", { severity: "warning" });
       return;
     }
     if (effectiveDate < todayYyyyMmDd()) {
-      notify("Effective Date cannot be in the past.",{ severity: "warning" });
+      notify("Effective Date cannot be in the past.", { severity: "warning" });
       return;
     }
     if (entryRows.length === 0) {
-      notify("Select at least one product.",{ severity: "warning" });
+      notify("Select at least one product.", { severity: "warning" });
       return;
     }
     const invalidBase = entryRows.find((r) => asText(r.base_cost) === "");
     if (invalidBase) {
-      notify(`Base Cost is required for Variant ${invalidBase.variant_id}`, { severity: "warning" });
+      notify(`Base Cost is required for Variant ${invalidBase.product_code}`, { severity: "warning" });
       return;
     }
     if (marginType === "percentage") {
@@ -604,7 +608,7 @@ export default function PricingPage() {
       });
       if (invalidMargin) {
         notify(
-          `Margin Value must be less than 100 for Variant ${invalidMargin.variant_id}`,
+          `Margin Value must be less than 100 for Variant ${invalidMargin.product_code}`,
           { severity: "warning" }
         );
         return;
@@ -632,7 +636,7 @@ export default function PricingPage() {
       });
       const payload = await response.json();
       if (!response.ok) {
-        notify(payload.message || "Failed to create pricing",{ severity: "error" });
+        notify(payload.message || "Failed to create pricing", { severity: "error" });
         return;
       }
       notify("Pricing created successfully.", { severity: "success" });
@@ -669,15 +673,15 @@ export default function PricingPage() {
   async function saveEditedPricing() {
     if (!editingRow) return;
     if (!editEffectiveDate) {
-      notify("Effective Date is required.",{ severity: "warning" });
+      notify("Effective Date is required.", { severity: "warning" });
       return;
     }
     if (editEffectiveDate < todayYyyyMmDd()) {
-      notify("Effective Date cannot be in the past. edited",{ severity: "warning" });
+      notify("Effective Date cannot be in the past. edited", { severity: "warning" });
       return;
     }
     if (!asText(editBaseCost)) {
-      notify("Base Cost is required.",{ severity: "warning" });
+      notify("Base Cost is required.", { severity: "warning" });
       return;
     }
 
@@ -793,9 +797,8 @@ export default function PricingPage() {
                     <td className="px-4 py-3">{asDate(row.expires_at) || "-"}</td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
-                          row.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
-                        }`}
+                        className={`inline-flex rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${row.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"
+                          }`}
                       >
                         {row.is_active ? "Active" : "Inactive"}
                       </span>
@@ -877,8 +880,8 @@ export default function PricingPage() {
                   disabled={currentPricingPage === 1}
                   className="relative inline-flex items-center rounded-l-md px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                   <span className="sr-only">Previous</span>
-                                    <ChevronLeftIcon className="h-5 w-5" />
+                  <span className="sr-only">Previous</span>
+                  <ChevronLeftIcon className="h-5 w-5" />
                 </button>
 
                 {pricingPageNumbers.map((page, idx) =>
@@ -895,11 +898,10 @@ export default function PricingPage() {
                       type="button"
                       onClick={() => goToPricingPage(page)}
                       aria-current={currentPricingPage === page ? "page" : undefined}
-                      className={`relative inline-flex items-center px-3 py-2 text-xs font-medium ring-1 ring-inset ring-gray-300 ${
-                        currentPricingPage === page
-                          ? "z-10 bg-blue-600 text-white"
-                          : "text-gray-700 hover:bg-gray-50"
-                      }`}
+                      className={`relative inline-flex items-center px-3 py-2 text-xs font-medium ring-1 ring-inset ring-gray-300 ${currentPricingPage === page
+                        ? "z-10 bg-blue-600 text-white"
+                        : "text-gray-700 hover:bg-gray-50"
+                        }`}
                     >
                       {page}
                     </button>
@@ -913,7 +915,7 @@ export default function PricingPage() {
                   className="relative inline-flex items-center rounded-r-md px-3 py-2 text-xs font-medium text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <span className="sr-only">Next</span>
-                    <ChevronRightIcon className="h-5 w-5" />
+                  <ChevronRightIcon className="h-5 w-5" />
                 </button>
               </nav>
             </div>
@@ -1311,13 +1313,18 @@ export default function PricingPage() {
                         placeholder="Margin Value"
                         className="border p-2 rounded w-28"
                       />
-                      <input
-                        type="number"
-                        value={bulkTaxPercent}
-                        onChange={(e) => setBulkTaxPercent(e.target.value)}
-                        placeholder="Tax %"
-                        className="border p-2 rounded w-24"
-                      />
+                      <select
+                        value={bulkTaxId}
+                        onChange={(e) => setBulkTaxId(e.target.value)}
+                        className="border p-2 rounded w-32"
+                      >
+                        <option value="">No Tax</option>
+                        {taxOptions.map((tax) => (
+                          <option key={tax.id} value={String(tax.id)}>
+                            {tax.tax_name} ({tax.total_percentage}%)
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -1339,9 +1346,8 @@ export default function PricingPage() {
                 )}
                 <table className="min-w-full text-left text-sm">
                   <thead
-                    className={`bg-gray-50 text-gray-600 sticky ${
-                      bulkPricingVisible ? "top-[56px]" : "top-0"
-                    } z-10`}
+                    className={`bg-gray-50 text-gray-600 sticky ${bulkPricingVisible ? "top-[56px]" : "top-0"
+                      } z-10`}
                   >
                     <tr>
                       <th className="px-3 py-2 text-center w-10">
@@ -1387,7 +1393,7 @@ export default function PricingPage() {
                           operationalCostText: row.operational_cost,
                           marginType,
                           marginValueText: row.margin_value,
-                          taxPercentText: row.tax_percent || "0",
+                          taxPercentText: String(row.tax_percent || "0"),
                         });
                         return (
                           <tr key={row.variant_id} className="border-t border-gray-100">

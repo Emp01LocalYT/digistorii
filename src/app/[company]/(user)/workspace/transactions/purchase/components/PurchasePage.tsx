@@ -64,7 +64,7 @@ export default function PurchasePage() {
   const isEdit = !!purchaseId && !isRenewMode;
   const { company } = useTenant();
   const { user } = useUser();
-    const notify = useNotify();
+  const notify = useNotify();
   const {
     items: lookupItems,
     loading: lookupLoading,
@@ -82,8 +82,8 @@ export default function PurchasePage() {
 
   const initialHeader: PurchaseHeader = {
     po_type: "standard",
-    purchase_no: "",ref_no:"",  
-      bill_to: "",
+    purchase_no: "", ref_no: "",
+    bill_to: "",
     ship_to: "",
     despatch_terms: "",
     payment_terms: "",
@@ -127,7 +127,7 @@ export default function PurchasePage() {
   const [barcodeMessage, setBarcodeMessage] = useState("");
 
   const barcodeInputRef = useRef<HTMLInputElement | null>(null);
-  const barcodeHandlerRef = useRef<(value: string) => void>(() => {});
+  const barcodeHandlerRef = useRef<(value: string) => void>(() => { });
   const eventSourceRef = useRef<EventSource | null>(null);
   const hasLogged = useRef(false);
   const hasLoggedTenant = useRef(false);
@@ -135,7 +135,7 @@ export default function PurchasePage() {
   const isRejected =
     String(header.approval_status || "").toLowerCase() === "rejected" ||
     String(header.status || "").toLowerCase() === "rejected";
-  const isEditable = !header.approval_status || header.approval_status === "Awaiting for approval" ;
+  const isEditable = !header.approval_status || header.approval_status === "Awaiting for approval";
   const combinedProducts = useMemo(
     () => [...productsList, ...tempProducts],
     [productsList, tempProducts]
@@ -536,26 +536,26 @@ export default function PurchasePage() {
   //   };
   // }, [company, isEdit, header.po_type]);
 
-  
-useEffect(() => {
-  if (!company) return;
-   let active = true;
-  const loadMasters = async () => {
-    setPageLoading(true);
-    try {
-    const [
-      suppliersRes,
-      taxesRes,
-      despatchRes,
-      paymentRes,
-      currencyRes,
-    ] = await Promise.all([
-      fetch("/api/suppliers", { headers: { "x-tenant": company } }),
-      fetch("/api/tax-master", { headers: { "x-tenant": company } }),
-      fetch("/api/despatch-terms", { headers: { "x-tenant": company } }),
-      fetch("/api/payment-terms", { headers: { "x-tenant": company } }),
-      fetch("/api/currencies", { headers: { "x-tenant": company } }),
-    ]);
+
+  useEffect(() => {
+    if (!company) return;
+    let active = true;
+    const loadMasters = async () => {
+      setPageLoading(true);
+      try {
+        const [
+          suppliersRes,
+          taxesRes,
+          despatchRes,
+          paymentRes,
+          currencyRes,
+        ] = await Promise.all([
+          fetch("/api/suppliers", { headers: { "x-tenant": company } }),
+          fetch("/api/tax-master", { headers: { "x-tenant": company } }),
+          fetch("/api/despatch-terms", { headers: { "x-tenant": company } }),
+          fetch("/api/payment-terms", { headers: { "x-tenant": company } }),
+          fetch("/api/currencies", { headers: { "x-tenant": company } }),
+        ]);
 
         const suppliersData = await suppliersRes.json();
         const taxesData = await taxesRes.json();
@@ -568,41 +568,41 @@ useEffect(() => {
         setAllPaymentTerms(paymentData?.data || []);
         setAllCurrencies(currencyData?.data || []);
         setAllTaxes(taxesData?.data || []);
-        } catch (err) {
+      } catch (err) {
         console.error("Failed to load purchase data", err);
       } finally {
         if (active) setPageLoading(false);
       }
     };
-        console.log("Loading master data for purchase page:", company);
-        loadMasters();
-          return () => {
-            active = false;
-          };
-}, [company]);
+    console.log("Loading master data for purchase page:", company);
+    loadMasters();
+    return () => {
+      active = false;
+    };
+  }, [company]);
 
-useEffect(() => {
-  if (!company) return;
-  if (isEdit || isRenewMode) return;
-  if (header.po_type !== "standard") return;
+  useEffect(() => {
+    if (!company) return;
+    if (isEdit || isRenewMode) return;
+    if (header.po_type !== "standard") return;
 
-  const generateNumber = async () => {
-    const res = await fetch("/api/purchase/generateNo", {
-      headers: { "x-tenant": company },
-    });
+    const generateNumber = async () => {
+      const res = await fetch("/api/purchase/generateNo", {
+        headers: { "x-tenant": company },
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (data?.purchase_no) {
-      setHeader((prev) => ({
-        ...prev,
-        purchase_no: data.purchase_no,
-      }));
-    }
-  };
-  console.log("Generating purchase number for new purchase:", company);
-  generateNumber();
-}, [company, isEdit, isRenewMode, header.po_type]);
+      if (data?.purchase_no) {
+        setHeader((prev) => ({
+          ...prev,
+          purchase_no: data.purchase_no,
+        }));
+      }
+    };
+    console.log("Generating purchase number for new purchase:", company);
+    generateNumber();
+  }, [company, isEdit, isRenewMode, header.po_type]);
 
   useEffect(() => {
     if (!company) return;
@@ -636,30 +636,30 @@ useEffect(() => {
 
           const headerData: PurchaseHeader = isRenewMode
             ? {
-                ...initialHeader,
-                ...sourceHeader,
-                id: undefined,
-                purchase_no: generatedPurchaseNo,
-                ref_no: "",
-                purchase_date: new Date().toISOString().split("T")[0],
-                req_date: sourceHeader.req_date?.split("T")[0] || "",
-                despatch_terms: sourceHeader.despatch_terms
-                  ? String(Number(sourceHeader.despatch_terms))
-                  : "",
-                payment_terms: sourceHeader.payment_terms
-                  ? String(Number(sourceHeader.payment_terms))
-                  : "",
-                approval_status: undefined,
-                status: "",
-                renewed_from_po_id: Number(sourceHeader.id),
-                renewed_from_purchase_no: sourceHeader.purchase_no || null,
-              }
+              ...initialHeader,
+              ...sourceHeader,
+              id: undefined,
+              purchase_no: generatedPurchaseNo,
+              ref_no: "",
+              purchase_date: new Date().toISOString().split("T")[0],
+              req_date: sourceHeader.req_date?.split("T")[0] || "",
+              despatch_terms: sourceHeader.despatch_terms
+                ? String(Number(sourceHeader.despatch_terms))
+                : "",
+              payment_terms: sourceHeader.payment_terms
+                ? String(Number(sourceHeader.payment_terms))
+                : "",
+              approval_status: undefined,
+              status: "",
+              renewed_from_po_id: Number(sourceHeader.id),
+              renewed_from_purchase_no: sourceHeader.purchase_no || null,
+            }
             : {
-                ...initialHeader,
-                ...sourceHeader,
-                purchase_date: sourceHeader.purchase_date?.split("T")[0] || initialHeader.purchase_date,
-                req_date: sourceHeader.req_date?.split("T")[0] || "",
-              };
+              ...initialHeader,
+              ...sourceHeader,
+              purchase_date: sourceHeader.purchase_date?.split("T")[0] || initialHeader.purchase_date,
+              req_date: sourceHeader.req_date?.split("T")[0] || "",
+            };
 
           if (isRenewMode) {
             console.log("Renew mapped values", {
@@ -685,9 +685,9 @@ useEffect(() => {
             calculateLineItem(
               isRenewMode
                 ? {
-                    ...row,
-                    id: undefined,
-                  }
+                  ...row,
+                  id: undefined,
+                }
                 : row
             )
           );
@@ -760,6 +760,8 @@ useEffect(() => {
 
         if (Number(d.rate || 0) <= 0) newErrors[`rate_${index}`] = "Unit price must be > 0";
         if (Number(d.qty || 0) <= 0) newErrors[`qty_${index}`] = "Qty must be > 0";
+
+
         const isTempProduct = d.is_new === true || String(d.product_id).startsWith("temp-") || Boolean(d.temp_id);
         if (isTempProduct) {
           const tempItem = tempProducts.find(
@@ -776,9 +778,9 @@ useEffect(() => {
     return Object.keys(newErrors).length === 0;
   };
 
- const checking = () => {
-  console.log("to check button clicked");
- }
+  const checking = () => {
+    console.log("to check button clicked");
+  }
 
   const handleCreatePurchase = async (e: any) => {
     console.log("===== Create PO Started =====");
@@ -788,12 +790,12 @@ useEffect(() => {
     e.preventDefault();
     setErrorMessage("");
     const isValid = validate();
-      console.log("Validation Result:", isValid);
-      if (!isValid) {
-        console.log("Exiting early due to failed validation!");
-        return;
-      }
-      
+    console.log("Validation Result:", isValid);
+    if (!isValid) {
+      console.log("Exiting early due to failed validation!");
+      return;
+    }
+
 
     setLoading(true);
     try {
@@ -818,7 +820,7 @@ useEffect(() => {
             filename
           )}`;
         }
-              console.log("Attachment uploaded:", uploadData);
+        console.log("Attachment uploaded:", uploadData);
       }
 
 
@@ -826,7 +828,7 @@ useEffect(() => {
         tempProducts.map((item) => [item.temp_variant_id, item])
       );
       const createdProductRefs: Array<{ temp_id: string; product_id: number; variant_id: number }> = [];
-     
+
       for (const detail of details) {
         const tempKey = String(detail.temp_id || detail.product_id || "");
         const tempItem = tempProductMap.get(tempKey);
@@ -906,7 +908,7 @@ useEffect(() => {
         details: payloadDetails,
         createdProducts: createdProductRefs,
       };
-      console.log("final payload",payload);
+      console.log("final payload", payload);
       const url = isEdit ? `/api/purchase/${purchaseId}` : "/api/purchase";
       const method = isEdit ? "PUT" : "POST";
       const res = await fetch(url, {
@@ -1038,72 +1040,72 @@ useEffect(() => {
       )}
 
       <form onSubmit={handleCreatePurchase} className={`space-y-6 ${!isEditable ? "opacity-70" : ""}`}>
-       <PurchaseHeaderForm
-  header={computedHeader}
-  setHeader={setHeader}
-  errors={errors}
-  setErrors={setErrors}
-  isEditable={isEditable}
-  activeTab={activeTab}
-  setActiveTab={setActiveTab}
-  allSuppliers={allSuppliers}
-  allDespatchTerms={allDespatchTerms}
-  allPaymentTerms={allPaymentTerms}
-  currencyCode={currencyCode}
-  billToAddress={billToAddress}
-  shipToAddress={shipToAddress}
-  setAttachmentFile={setAttachmentFile}
-/>
+        <PurchaseHeaderForm
+          header={computedHeader}
+          setHeader={setHeader}
+          errors={errors}
+          setErrors={setErrors}
+          isEditable={isEditable}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          allSuppliers={allSuppliers}
+          allDespatchTerms={allDespatchTerms}
+          allPaymentTerms={allPaymentTerms}
+          currencyCode={currencyCode}
+          billToAddress={billToAddress}
+          shipToAddress={shipToAddress}
+          setAttachmentFile={setAttachmentFile}
+        />
 
-{activeTab === "items" ? (
-  <PurchaseItemsTable
-    details={details}
-    errors={errors}
-    isEditable={isEditable}
-    allTaxes={allTaxes}
-    updateRow={updateRow}
-    removeRow={removeRow}
-    totalQty={totals.totalQty}
-    totalAmount={totals.totalAmount}
-    onAddItems={() => setShowProductPopup(true)}
-    showAddItems={true}
-    onAddNewProduct={() => setShowAddProductModal(true)}
-    barcodeValue={barcodeValue}
-    onBarcodeChange={(value) => {
-      setBarcodeValue(value);
-      if (barcodeMessage) setBarcodeMessage("");
-    }}
-    onBarcodeSubmit={() => handleBarcodeSubmit()}
-    barcodeMessage={barcodeMessage}
-    barcodeInputRef={barcodeInputRef}
-    onTaxChange={handleTaxChange}
-    onBulkApply={applyBulkUpdates}
-    productTypeLabel={productTypeLabel}
-  />
-) : (
-  <div className="bg-white rounded-xl shadow p-4">
-    <h3 className="text-sm font-semibold text-gray-700 mb-3">
-      Purchase Summary
-    </h3>
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-      <div>Total Items: <span className="font-semibold">{details.length}</span></div>
-      <div>Total Qty: <span className="font-semibold">{totals.totalQty}</span></div>
-      <div>Items Amount: <span className="font-semibold">{totals.totalAmount.toFixed(2)}</span></div>
-      <div>Grand Total: <span className="font-semibold">{grandTotal.toFixed(2)}</span></div>
-    </div>
-  </div>
-)}
+        {activeTab === "items" ? (
+          <PurchaseItemsTable
+            details={details}
+            errors={errors}
+            isEditable={isEditable}
+            allTaxes={allTaxes}
+            updateRow={updateRow}
+            removeRow={removeRow}
+            totalQty={totals.totalQty}
+            totalAmount={totals.totalAmount}
+            onAddItems={() => setShowProductPopup(true)}
+            showAddItems={true}
+            onAddNewProduct={() => setShowAddProductModal(true)}
+            barcodeValue={barcodeValue}
+            onBarcodeChange={(value) => {
+              setBarcodeValue(value);
+              if (barcodeMessage) setBarcodeMessage("");
+            }}
+            onBarcodeSubmit={() => handleBarcodeSubmit()}
+            barcodeMessage={barcodeMessage}
+            barcodeInputRef={barcodeInputRef}
+            onTaxChange={handleTaxChange}
+            onBulkApply={applyBulkUpdates}
+            productTypeLabel={productTypeLabel}
+          />
+        ) : (
+          <div className="bg-white rounded-xl shadow p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              Purchase Summary
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>Total Items: <span className="font-semibold">{details.length}</span></div>
+              <div>Total Qty: <span className="font-semibold">{totals.totalQty}</span></div>
+              <div>Items Amount: <span className="font-semibold">{totals.totalAmount.toFixed(2)}</span></div>
+              <div>Grand Total: <span className="font-semibold">{grandTotal.toFixed(2)}</span></div>
+            </div>
+          </div>
+        )}
 
-<TotalsSection
-  formatMoney={formatMoney}
-  itemsSubtotal={itemsSubtotal}
-  productTax={productTax}
-  freightBase={freightBase}
-  freightTaxAmount={freightTax}
-  packagingAmount={packagingAmount}
-  extraChargesTotal={extraChargesTotal}
-  grandTotal={grandTotal}
-/>
+        <TotalsSection
+          formatMoney={formatMoney}
+          itemsSubtotal={itemsSubtotal}
+          productTax={productTax}
+          freightBase={freightBase}
+          freightTaxAmount={freightTax}
+          packagingAmount={packagingAmount}
+          extraChargesTotal={extraChargesTotal}
+          grandTotal={grandTotal}
+        />
 
         <div className="flex justify-end gap-4">
           <button
@@ -1114,10 +1116,10 @@ useEffect(() => {
             Back
           </button>
           {isEditable && (
-            <button 
-            type="submit"
-            disabled={loading}
-            className="bg-[var(--color-blue-600)] text-white px-6 py-2 rounded hover:opacity-90">
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-[var(--color-blue-600)] text-white px-6 py-2 rounded hover:opacity-90">
               {isEdit ? "Update Purchase" : "Create Purchase"}
             </button>
           )}

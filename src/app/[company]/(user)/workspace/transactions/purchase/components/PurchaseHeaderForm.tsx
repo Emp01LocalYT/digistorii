@@ -49,22 +49,20 @@ export default function PurchaseHeaderForm({
         <button
           type="button"
           onClick={() => setActiveTab("items")}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-            activeTab === "items"
-              ? "bg-[var(--color-blue-600)] text-white"
-              : "bg-gray-100 text-gray-700"
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold ${activeTab === "items"
+            ? "bg-[var(--color-blue-600)] text-white"
+            : "bg-gray-100 text-gray-700"
+            }`}
         >
           Items
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("additional")}
-          className={`px-4 py-2 rounded-lg text-sm font-semibold ${
-            activeTab === "additional"
-              ? "bg-[var(--color-blue-600)] text-white"
-              : "bg-gray-100 text-gray-700"
-          }`}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold ${activeTab === "additional"
+            ? "bg-[var(--color-blue-600)] text-white"
+            : "bg-gray-100 text-gray-700"
+            }`}
         >
           Additional Details
         </button>
@@ -114,11 +112,10 @@ export default function PurchaseHeaderForm({
                   }));
                 }
               }}
-              className={`border p-2 rounded w-full ${
-                header.po_type === "standard"
-                  ? "bg-gray-100 text-indigo-600 font-semibold"
-                  : ""
-              }`}
+              className={`border p-2 rounded w-full ${header.po_type === "standard"
+                ? "bg-gray-100 text-indigo-600 font-semibold"
+                : ""
+                }`}
               readOnly={!isEditable || header.po_type === "standard"}
             />
             {errors.purchase_no && (
@@ -145,9 +142,8 @@ export default function PurchaseHeaderForm({
                   }));
                 }
               }}
-              className={`border p-2 rounded w-full ${
-                errors.purchase_date ? "border-red-500" : ""
-              }`}
+              className={`border p-2 rounded w-full ${errors.purchase_date ? "border-red-500" : ""
+                }`}
             />
             {errors.purchase_date && (
               <p className="text-red-500 text-sm mt-1">{errors.purchase_date}</p>
@@ -192,66 +188,66 @@ export default function PurchaseHeaderForm({
               Supplier <span className="text-red-500">*</span>
             </label>
 
-           <Select
-            isDisabled={!isEditable}
-            placeholder="Select Supplier"
-            value={
-              allSuppliers
-                .map((s) => ({
-                  value: s.id,
-                  label: `${s.supplier_code}-${s.name}`,
-                  supplier: s,
-                }))
-                .find((opt) => String(opt.value) === String(header.supplier_id)) || null
-            }
-            // options={allSuppliers.map((s) => ({
-            //   value: s.id,
-            //   label: `${s.supplier_code}-${s.name}`,
-            //   supplier: s,
-              
-            // }))}
-            options={allSuppliers.map((s) => ({
-  value: s.id,
-  label: s.purchase_hold
-    ? `${s.supplier_code}-${s.name} (On Hold)`
-    : `${s.supplier_code}-${s.name}`,
-  supplier: s,
-  isDisabled: s.purchase_hold, 
-}))}
-            isSearchable
-            menuPortalTarget={document.body}
-            menuPosition="fixed"
-            styles={{
-              menuPortal: (base) => ({ ...base, zIndex: 9999 })
-            }}
-            onChange={(option: any) => {
-              const supplierId = option?.value;
-              const selectedSupplier = option?.supplier;
+            <Select
+              isDisabled={!isEditable}
+              placeholder="Select Supplier"
+              value={
+                allSuppliers
+                  .map((s) => ({
+                    value: s.id,
+                    label: `${s.supplier_code}-${s.name}`,
+                    supplier: s,
+                  }))
+                  .find((opt) => String(opt.value) === String(header.supplier_id)) || null
+              }
+              // options={allSuppliers.map((s) => ({
+              //   value: s.id,
+              //   label: `${s.supplier_code}-${s.name}`,
+              //   supplier: s,
 
-              const despatchId =
-                allDespatchTerms.find((t) => t.code === selectedSupplier?.dispatch_terms)?.id || "";
+              // }))}
+              options={allSuppliers.map((s) => ({
+                value: s.id,
+                label: s.purchase_hold
+                  ? `${s.supplier_code}-${s.name} (On Hold)`
+                  : `${s.supplier_code}-${s.name}`,
+                supplier: s,
+                isDisabled: s.purchase_hold,
+              }))}
+              isSearchable
+              menuPortalTarget={document.body}
+              menuPosition="fixed"
+              styles={{
+                menuPortal: (base) => ({ ...base, zIndex: 9999 })
+              }}
+              onChange={(option: any) => {
+                const supplierId = option?.value;
+                const selectedSupplier = option?.supplier;
 
-              const paymentId =
-                allPaymentTerms.find((t) => t.name === selectedSupplier?.payment_terms)?.id || "";
+                const despatchId =
+                  allDespatchTerms.find((t) => t.code === selectedSupplier?.dispatch_terms)?.id || "";
 
-              setHeader({
-                ...header,
-                supplier_id: supplierId,
-                currency: selectedSupplier?.currency || "",
-                bill_to: supplierId,
-                ship_to: supplierId,
-                despatch_terms: despatchId ? String(despatchId) : "",
-                payment_terms: paymentId ? String(paymentId) : "",
-              });
+                const paymentId =
+                  allPaymentTerms.find((t) => t.name === selectedSupplier?.payment_terms)?.id || "";
 
-              setErrors((prev: any) => {
-                const newErrors = { ...prev };
-                delete newErrors.supplier_id;
-                delete newErrors.currency;
-                return newErrors;
-              });
-            }}
-          />
+                setHeader({
+                  ...header,
+                  supplier_id: supplierId,
+                  currency: selectedSupplier?.currency || "",
+                  bill_to: supplierId,
+                  ship_to: supplierId,
+                  despatch_terms: despatchId ? String(despatchId) : "",
+                  payment_terms: paymentId ? String(paymentId) : "",
+                });
+
+                setErrors((prev: any) => {
+                  const newErrors = { ...prev };
+                  delete newErrors.supplier_id;
+                  delete newErrors.currency;
+                  return newErrors;
+                });
+              }}
+            />
             {errors.supplier_id && (
               <p className="text-red-500 text-sm mt-1">{errors.supplier_id}</p>
             )}
@@ -274,14 +270,15 @@ export default function PurchaseHeaderForm({
             <label className="text-sm font-semibold mb-1 block">Conversion Rate</label>
             <input
               type="number"
-              value={header.conversion_rate || ""}
+              value={header.conversion_rate ?? ""}
               className="border p-2 rounded w-full"
-              onChange={(e) =>
+              onChange={(e) => {
+                const val = e.target.value;
                 setHeader({
                   ...header,
-                  conversion_rate: e.target.value as PurchaseHeader["conversion_rate"],
+                  conversion_rate: val === "" ? "" : Math.max(0, Number(val)),
                 })
-              }
+              }}
             />
           </div>
 
@@ -382,12 +379,13 @@ export default function PurchaseHeaderForm({
                 type="number"
                 disabled={!isEditable}
                 value={header.freight_charges === "" ? "" : header.freight_charges}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const val = e.target.value;
                   setHeader({
                     ...header,
-                    freight_charges: e.target.value === "" ? "" : Number(e.target.value),
-                  })
-                }
+                    freight_charges: val === "" ? "" : Math.max(0, Number(val)),
+                  });
+                }}
                 className="border p-2 rounded w-full"
               />
             </div>
@@ -398,12 +396,13 @@ export default function PurchaseHeaderForm({
                 type="number"
                 disabled={!isEditable}
                 value={header.freight_tax === "" ? "" : header.freight_tax}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const val = e.target.value;
                   setHeader({
                     ...header,
-                    freight_tax: e.target.value === "" ? "" : Number(e.target.value),
-                  })
-                }
+                    freight_tax: val === "" ? "" : Math.min(100, Math.max(0, Number(val))),
+                  });
+                }}
                 className="border p-2 rounded w-full"
               />
             </div>
@@ -424,11 +423,13 @@ export default function PurchaseHeaderForm({
                 type="number"
                 disabled={!isEditable}
                 value={header.packaging_amount === "" ? "" : header.packaging_amount}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const val = e.target.value;
                   setHeader({
                     ...header,
-                    packaging_amount: e.target.value === "" ? "" : Number(e.target.value),
-                  })
+                    packaging_amount: val === "" ? "" : Math.max(0, Number(val)),
+                  });
+                }
                 }
                 className="border p-2 rounded w-full"
               />
@@ -441,7 +442,7 @@ export default function PurchaseHeaderForm({
               <textarea
                 value={header.notes || ''}
                 disabled={!isEditable}
-                onChange={(e) => setHeader({ ...header, notes: e.target.value  ?? ''})}
+                onChange={(e) => setHeader({ ...header, notes: e.target.value ?? '' })}
                 className="border p-2 rounded w-full"
                 rows={3}
               />

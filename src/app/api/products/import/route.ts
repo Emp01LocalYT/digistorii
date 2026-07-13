@@ -56,6 +56,7 @@ type PreliminaryRow = {
   categoryId: string | null;
   materialId: string | null;
   uomId: string | null;
+  genderId: string | null;
   barcode: string | null;
   explicitSku: string;
   normalizedSku: string | null;
@@ -75,6 +76,7 @@ type ValidatedRow = {
   categoryId: string | null;
   materialId: string | null;
   uomId: string | null;
+  genderId: string | null;
   barcode: string | null;
   finalSku: string;
   rootSku: string;
@@ -298,7 +300,7 @@ async function validateRows(options: {
   const uploadSkuRows = new Map<string, PreliminaryRow[]>();
   const skuRefs = new Set<string>();
   const barcodeRows = new Map<string, PreliminaryRow[]>();
-
+  const ALLOWED_GENDERS = ["male", "female", "transgender", "not specified"];
   const pushErrors = (rowNumber: number, errors: string[]) => {
     if (!errors.length) return;
     const current = rowErrors.get(rowNumber) || [];
@@ -317,13 +319,15 @@ async function validateRows(options: {
     const categoryId = resolveLookupId(categoryMap, stringValue(row.values.category), "category", errors);
     const materialId = resolveLookupId(materialMap, stringValue(row.values.material), "material", errors);
     const uomId = resolveLookupId(uomMap, stringValue(row.values.uom), "uom", errors);
-
+    const genderStr = stringValue(row.values.gender).toLowerCase();
     const barcode = normalizeBarcode(row.values.barcode);
     const explicitSku = stringValue(row.values.sku);
     const normalizedSku = explicitSku ? normalizeSkuRef(explicitSku) : null;
     const parentSku = stringValue(row.values.parent_sku);
     const normalizedParentSku = parentSku ? normalizeSkuRef(parentSku) : null;
-
+    if (genderStr && !ALLOWED_GENDERS.includes(genderStr)) {
+      errors.push(`Unknown gender: ${row.values.gender}`);
+    }
     const nextRow: PreliminaryRow = {
       rowNumber: row.rowNumber,
       values: row.values,
@@ -331,6 +335,7 @@ async function validateRows(options: {
       categoryId,
       materialId,
       uomId,
+      genderId: stringValue(row.values.gender),
       barcode,
       explicitSku,
       normalizedSku,
@@ -504,6 +509,7 @@ async function validateRows(options: {
       categoryId: row.categoryId,
       materialId: row.materialId,
       uomId: row.uomId,
+      genderId: row.genderId,
       barcode: row.barcode,
       finalSku: row.finalSku,
       rootSku: row.rootSku,
@@ -566,7 +572,7 @@ function getFamilyNumber(family: ProductFamily, field: FieldKey) {
   return null;
 }
 
-function getFamilyLookup(family: ProductFamily, field: "categoryId" | "materialId" | "uomId") {
+function getFamilyLookup(family: ProductFamily, field: "categoryId" | "materialId" | "uomId" | "genderId") {
   for (const row of getFamilyRowsInPriorityOrder(family)) {
     if (row[field]) return row[field];
   }
@@ -593,6 +599,42 @@ async function importRows(options: {
     [mapping.sheetName, batchTemplateId, fileName, parsedRows.length]
   );
   const batchId = Number(batchRes.rows[0].id);
+
+  const uniqueColors = new Set<string>();
+  const uniqueFittings = new Set<string>();
+  for (const row of validRows) {
+    const c = stringValue(row.values.color);
+    if (c) uniqueColors.add(c);
+    const f = stringValue(row.values.fitting);
+    if (f) uniqueFittings.add(f);
+  }
+
+  for (const c of uniqueColors) {
+    await client.query(`
+      INSERT INTO "${schema}".product_colors (color_name, hex_code)
+      VALUES ($1, '#000000')
+      ON CONFLICT (color_name) DO NOTHING
+    `, [c]);
+  }
+  const colorMapRes = await client.query(`SELECT id, color_name FROM "${schema}".product_colors`);
+  const colorMap = new Map<string, number>();
+  for (const r of colorMapRes.rows) {
+    colorMap.set(String(r.color_name).toLowerCase(), Number(r.id));
+  }
+
+
+  for (const f of uniqueFittings) {
+    await client.query(`
+      INSERT INTO "${schema}".product_fittings (fitting_name)
+      VALUES ($1)
+      ON CONFLICT (fitting_name) DO NOTHING
+    `, [f]);
+  }
+  const fittingMapRes = await client.query(`SELECT id, fitting_name FROM "${schema}".product_fittings`);
+  const fittingMap = new Map<string, number>();
+  for (const r of fittingMapRes.rows) {
+    fittingMap.set(String(r.fitting_name).toLowerCase(), Number(r.id));
+  }
 
   const families = groupNewFamilies(validRows);
   const familyProductIds = new Map<string, number>();
@@ -643,19 +685,23 @@ async function importRows(options: {
       continue;
     }
 
+    const colorStr = stringValue(row.values.color);
+    const fittingStr = stringValue(row.values.fitting);
+    const genderStr = row.genderId ? stringValue(row.genderId) : "Not Specified";
+
     const variantRes = await client.query(
       `
         INSERT INTO "${schema}".product_variants
-          (product_id, color, size, fitting, gender, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
+          (product_id, color_id, size, gender, fitting_id, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
         VALUES ($1, $2, $3, $4, $5, $6, 0, $7, $8, 'draft', $9)
         RETURNING id, barcode
       `,
       [
         productId,
-        stringValue(row.values.color) || null,
+        colorStr ? (colorMap.get(colorStr.toLowerCase()) || null) : null,
         stringValue(row.values.size) || null,
-        stringValue(row.values.fitting) || null,
-        stringValue(row.values.gender) || null,
+        genderStr,
+        fittingStr ? (fittingMap.get(fittingStr.toLowerCase()) || null) : null,
         row.finalSku,
         asNumber(stringValue(row.values.low_stock_threshold)) ?? 5,
         asBoolean(stringValue(row.values.backorders_allowed)) ?? false,
@@ -726,6 +772,31 @@ export async function POST(req: NextRequest) {
       const batchId = Number(batchRes.rows[0]?.id || 0);
       if (!batchId) throw new Error("No import batch available to undo");
 
+      const [categoriesRes, materialsRes, uomsRes] = await Promise.all([
+        client.query(
+          `
+            SELECT path_string, category_name
+            FROM "${schema}".product_categories
+            ORDER BY path_string ASC NULLS LAST, category_name ASC
+          `
+        ),
+        client.query(
+          `
+            SELECT material_code, material_name
+            FROM "${schema}".product_materials
+            ORDER BY material_name ASC
+          `
+        ),
+        client.query(
+          `
+            SELECT uom_code, uom_name
+            FROM "${schema}".uom
+            ORDER BY uom_name ASC
+          `
+        )
+
+      ]);
+
       const createdProductsRes = await client.query(
         `
           SELECT DISTINCT product_id
@@ -778,6 +849,15 @@ export async function POST(req: NextRequest) {
     const workbook = readWorkbook(buffer);
 
     if (action === "parse") {
+      const uomOptions = (await client.query(`SELECT uom_code, uom_name FROM "${schema}".uom`)).rows
+        .map((row: { uom_code: string | null; uom_name: string | null }) => {
+          const code = String(row.uom_code || "").trim();
+          const name = String(row.uom_name || "").trim();
+          if (code && name) return `${code} - ${name}`;
+          return name || code || "";
+        })
+        .filter(Boolean);
+
       const sheets = workbook.SheetNames.map((sheetName) => {
         const rows = getRows(workbook, sheetName);
         const headers = rows[0] ? Object.keys(rows[0]) : [];
@@ -787,7 +867,13 @@ export async function POST(req: NextRequest) {
           previewRows: rows.slice(0, 5),
         };
       });
-      return NextResponse.json({ success: true, sheets, requiredFields: REQUIRED_FIELDS, fields: IMPORTABLE_FIELDS });
+      return NextResponse.json({
+        success: true,
+        sheets,
+        requiredFields: REQUIRED_FIELDS,
+        fields: IMPORTABLE_FIELDS,
+        lookups: { uom: uomOptions }
+      });
     }
 
     const mapping = JSON.parse(String(form.get("mapping") || "{}")) as MappingConfig;

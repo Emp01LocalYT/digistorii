@@ -173,7 +173,10 @@ export async function PUT(
 
     const password = String(user?.password || "");
     const status = Boolean(user?.status);
-    const username = String(userRes.rows[0].username || "").trim() || `user_${id}`;
+    const inputUsername = String(user?.username ?? userRes.rows[0].username ?? "").trim() || `user_${id}`;
+    const inputName = String(user?.full_name ?? userRes.rows[0].name ?? "").trim();
+    const inputEmail = String(user?.email ?? "").trim();
+    const inputPhone = String(user?.phone ?? "").trim();
 
     if (password) {
       const hashedPassword = await hashPassword(password);
@@ -181,17 +184,25 @@ export async function PUT(
         `UPDATE public.users
          SET password_hash = $1,
              is_active = $2,
-             responsibility_id = $3
-         WHERE id = $4 AND company_id = $5`,
-        [hashedPassword, status, responsibilityId, id, companyId]
+             responsibility_id = $3,
+             name = $4,
+             username = $5,
+             email = $6,
+             phone = $7
+         WHERE id = $8 AND company_id = $9`,
+        [hashedPassword, status, responsibilityId, inputName, inputUsername, inputEmail, inputPhone, id, companyId]
       );
     } else {
       await client.query(
         `UPDATE public.users
          SET is_active = $1,
-             responsibility_id = $2
-         WHERE id = $3 AND company_id = $4`,
-        [status, responsibilityId, id, companyId]
+             responsibility_id = $2,
+             name = $3,
+             username = $4,
+             email = $5,
+             phone = $6
+         WHERE id = $7 AND company_id = $8`,
+        [status, responsibilityId, inputName, inputUsername, inputEmail, inputPhone, id, companyId]
       );
     }
 
@@ -205,7 +216,7 @@ export async function PUT(
            location_id = EXCLUDED.location_id,
            warehouse_id = EXCLUDED.warehouse_id,
            is_active = EXCLUDED.is_active`,
-      [id, companyId, username, responsibilityId, locationId, warehouseId, status]
+      [id, companyId, inputUsername, responsibilityId, locationId, warehouseId, status]
     );
 
     await client.query("COMMIT");

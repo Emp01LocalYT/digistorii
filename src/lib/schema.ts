@@ -143,9 +143,6 @@ export async function createCompanySchema(
       );
     `);
 
-  /* =========================================================
-     TAX MASTER
-     ========================================================= */
   await client.query(`
       CREATE TABLE IF NOT EXISTS "${schema}".tax_master (
         id SERIAL PRIMARY KEY,
@@ -159,9 +156,6 @@ export async function createCompanySchema(
       );
     `);
 
-  /* =========================================================
-     TAX COMPONENT
-     ========================================================= */
   await client.query(`
       CREATE TABLE IF NOT EXISTS "${schema}".tax_component (
         id SERIAL PRIMARY KEY,
@@ -173,9 +167,6 @@ export async function createCompanySchema(
       );
     `);
 
-  /* =========================================================
-     UOM MASTER
-     ========================================================= */
   await client.query(`
       CREATE TABLE IF NOT EXISTS "${schema}".uom (
         id SERIAL PRIMARY KEY,
@@ -186,9 +177,6 @@ export async function createCompanySchema(
       );
     `);
 
-  /* =========================================================
-     CURRENCY MASTER
-     ========================================================= */
   await client.query(`
       CREATE TABLE IF NOT EXISTS "${schema}".currencies (
         id SERIAL PRIMARY KEY,
@@ -313,6 +301,19 @@ export async function createCompanySchema(
         material_name VARCHAR(150) NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS "${schema}".product_fittings (
+        id SERIAL PRIMARY KEY,
+        fitting_name VARCHAR(150) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS "${schema}".product_colors (
+        id SERIAL PRIMARY KEY,
+        color_name VARCHAR(150) NOT NULL UNIQUE,
+        hex_code VARCHAR(20) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
     `);
 
   /* =========================================================
@@ -357,10 +358,10 @@ await client.query(`
 CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   id BIGSERIAL PRIMARY KEY,
   product_id BIGINT NOT NULL REFERENCES "${schema}".products(id) ON DELETE CASCADE,
-  color VARCHAR(30),
+  color_id BIGINT REFERENCES "${schema}".product_colors(id) ON DELETE SET NULL,
   size VARCHAR(30),
-  fitting VARCHAR(30),
-  gender VARCHAR(20),
+  fitting_id BIGINT REFERENCES "${schema}".product_fittings(id) ON DELETE SET NULL,
+  gender VARCHAR(20) CHECK (gender IN ('Male', 'Female', 'Transgender', 'Not Specified')),
   sku VARCHAR(120) NOT NULL UNIQUE,
   qty INT NOT NULL DEFAULT 0,
   low_stock_threshold INT DEFAULT 5,
@@ -373,7 +374,7 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
   CHECK (status IN ('draft', 'active', 'inactive')),
   CONSTRAINT unique_variant_barcode UNIQUE (barcode),
   CONSTRAINT unique_variant_combination
-  UNIQUE (product_id, color, size)
+  UNIQUE (product_id, color_id, size)
 );
 `);
   await client.query(`
@@ -433,6 +434,37 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_variants (
       ) THEN
         ALTER TABLE "${schema}".product_variants
           ADD CONSTRAINT unique_variant_barcode UNIQUE (barcode);
+      END IF;
+
+      -- Refactor color and fitting to IDs
+      IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = '${schema}'
+          AND table_name = 'product_variants'
+          AND column_name = 'color'
+      ) THEN
+        ALTER TABLE "${schema}".product_variants DROP CONSTRAINT IF EXISTS unique_variant_combination;
+        ALTER TABLE "${schema}".product_variants DROP COLUMN color;
+        ALTER TABLE "${schema}".product_variants DROP COLUMN fitting;
+        ALTER TABLE "${schema}".product_variants ADD COLUMN color_id BIGINT REFERENCES "${schema}".product_colors(id) ON DELETE SET NULL;
+        ALTER TABLE "${schema}".product_variants ADD COLUMN fitting_id BIGINT REFERENCES "${schema}".product_fittings(id) ON DELETE SET NULL;
+        ALTER TABLE "${schema}".product_variants ADD CONSTRAINT unique_variant_combination UNIQUE (product_id, color_id, size);
+      END IF;
+
+      -- Add CHECK constraint to gender
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        JOIN pg_namespace n ON n.oid = t.relnamespace
+        WHERE c.conname = 'product_variants_gender_chk'
+          AND n.nspname = '${schema}'
+      ) THEN
+        UPDATE "${schema}".product_variants SET gender = 'Not Specified' WHERE gender NOT IN ('Male', 'Female', 'Transgender', 'Not Specified') OR gender IS NULL;
+        ALTER TABLE "${schema}".product_variants
+          ADD CONSTRAINT product_variants_gender_chk
+          CHECK (gender IN ('Male', 'Female', 'Transgender', 'Not Specified'));
       END IF;
     END $$;
   `);
@@ -593,9 +625,6 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
       );
     `);
 
-  /* =========================================================
-     LOCATION MASTER
-     ========================================================= */
   await client.query(`
     CREATE TABLE IF NOT EXISTS "${schema}".locations (
       id SERIAL PRIMARY KEY,
@@ -635,9 +664,6 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
 
   await ensureLocationTableShape(client, schema);
 
-  /* =========================================================
-     WAREHOUSE MASTER
-     ========================================================= */
   await client.query(`
     CREATE TABLE IF NOT EXISTS "${schema}".warehouses (
       id SERIAL PRIMARY KEY,
@@ -663,11 +689,6 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
     );
   `);
 
-
-
-  /* =========================================================
-     LOCATOR MASTER
-     ========================================================= */
   await client.query(`
     CREATE TABLE IF NOT EXISTS "${schema}".locators (
       id SERIAL PRIMARY KEY,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -12,6 +12,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { TenantProvider, useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
@@ -36,10 +37,10 @@ export default function MaterialMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const inputClass = (key: string) =>
-    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${
-      errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
+    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
     }`;
 
   async function loadData() {
@@ -47,7 +48,7 @@ export default function MaterialMasterPage() {
     try {
       setTableLoading(true);
       const res = await apiFetch("/api/materials", company);
-      console.log("company name as ",company);
+      console.log("company name as ", company);
       const data = await res.json();
       setItems(data.success ? data.data || [] : []);
     } finally {
@@ -59,10 +60,31 @@ export default function MaterialMasterPage() {
     loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.material_code.trim()) next.material_code = "Material code is required";
+    else {
+      const codeMessage = getRuleValidationError("code", form.material_code);
+      if (codeMessage) next.material_code = codeMessage;
+    }
     if (!form.material_name.trim()) next.material_name = "Material name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.material_name);
+      if (nameMessage) next.material_name = nameMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -81,7 +103,7 @@ export default function MaterialMasterPage() {
           material_name: form.material_name.trim(),
         }),
       });
-      console.log("company",company);
+      console.log("company", company);
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Save failed");
 
@@ -95,7 +117,7 @@ export default function MaterialMasterPage() {
       setForm(initialForm());
       setErrors({});
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify("Failed to save material" + (error.message ? `: ${error.message}` : ""), { severity: "error" });
     } finally {
       setFormLoading(false);
     }
@@ -103,7 +125,7 @@ export default function MaterialMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this material?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this material?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/materials/${id}`, company, { method: "DELETE" });
@@ -177,15 +199,15 @@ export default function MaterialMasterPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -241,98 +263,97 @@ export default function MaterialMasterPage() {
                 </tbody>
               </table>
             </div>
-                      <div className="ui-pagination-wrapper">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="ui-pagination-info">
-                Showing <span className="font-medium">{showingFrom}</span> to{" "}
-                <span className="font-medium">{showingTo}</span> of{" "}
-                <span className="font-medium">{totalItems}</span> results
-              </p>
-              <div className="ui-table-actions">
-                <label htmlFor="material-rows-per-page" className="text-sm text-gray-600">
-                  Rows per page
-                </label>
-                <select
-                  id="material-rows-per-page"
-                  value={rowsPerPage}
-                  onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                  className="ui-pagination-select"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <div className="flex flex-1 justify-between sm:hidden">
-                <button
-                  type="button"
-                  onClick={goToPreviousPage}
-                  disabled={currentPage === 1}
-                  className="ui-pagination-icon-btn rounded-md"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={goToNextPage}
-                  disabled={currentPage === totalPages}
-                  className="ui-pagination-icon-btn rounded-md ml-3"
-                >
-                  Next
-                </button>
+            <div className="ui-pagination-wrapper">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="ui-pagination-info">
+                  Showing <span className="font-medium">{showingFrom}</span> to{" "}
+                  <span className="font-medium">{showingTo}</span> of{" "}
+                  <span className="font-medium">{totalItems}</span> results
+                </p>
+                <div className="ui-table-actions">
+                  <label htmlFor="material-rows-per-page" className="text-sm text-gray-600">
+                    Rows per page
+                  </label>
+                  <select
+                    id="material-rows-per-page"
+                    value={rowsPerPage}
+                    onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                    className="ui-pagination-select"
+                  >
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-                <nav aria-label="Pagination" className="ui-pagination-nav">
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex flex-1 justify-between sm:hidden">
                   <button
                     type="button"
                     onClick={goToPreviousPage}
                     disabled={currentPage === 1}
-                    className="ui-pagination-icon-btn rounded-l-md"
+                    className="ui-pagination-icon-btn rounded-md"
                   >
-                    <span className="sr-only">Previous</span>
-                    <ChevronLeftIcon className="h-5 w-5" />
+                    Previous
                   </button>
-
-                  {pageNumbers.map((page, idx) =>
-                    page === "..." ? (
-                      <span
-                        key={`ellipsis-${idx}`}
-                        className="ui-pagination-btn ui-pagination-btn-inactive"
-                      >
-                        ...
-                      </span>
-                    ) : (
-                      <button
-                        key={`page-${page}`}
-                        type="button"
-                        onClick={() => goToPage(page)}
-                        aria-current={currentPage === page ? "page" : undefined}
-                        className={`ui-pagination-btn ${
-                          currentPage === page ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    )
-                  )}
-
                   <button
                     type="button"
                     onClick={goToNextPage}
                     disabled={currentPage === totalPages}
-                    className="ui-pagination-icon-btn rounded-r-md"
+                    className="ui-pagination-icon-btn rounded-md ml-3"
                   >
-                    <span className="sr-only">Next</span>
-                    <ChevronRightIcon className="h-5 w-5" />
+                    Next
                   </button>
-                </nav>
+                </div>
+
+                <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
+                  <nav aria-label="Pagination" className="ui-pagination-nav">
+                    <button
+                      type="button"
+                      onClick={goToPreviousPage}
+                      disabled={currentPage === 1}
+                      className="ui-pagination-icon-btn rounded-l-md"
+                    >
+                      <span className="sr-only">Previous</span>
+                      <ChevronLeftIcon className="h-5 w-5" />
+                    </button>
+
+                    {pageNumbers.map((page, idx) =>
+                      page === "..." ? (
+                        <span
+                          key={`ellipsis-${idx}`}
+                          className="ui-pagination-btn ui-pagination-btn-inactive"
+                        >
+                          ...
+                        </span>
+                      ) : (
+                        <button
+                          key={`page-${page}`}
+                          type="button"
+                          onClick={() => goToPage(page)}
+                          aria-current={currentPage === page ? "page" : undefined}
+                          className={`ui-pagination-btn ${currentPage === page ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                            }`}
+                        >
+                          {page}
+                        </button>
+                      )
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={goToNextPage}
+                      disabled={currentPage === totalPages}
+                      className="ui-pagination-icon-btn rounded-r-md"
+                    >
+                      <span className="sr-only">Next</span>
+                      <ChevronRightIcon className="h-5 w-5" />
+                    </button>
+                  </nav>
+                </div>
               </div>
             </div>
-          </div>
           </div>
 
 
@@ -341,6 +362,7 @@ export default function MaterialMasterPage() {
 
       {showForm && (
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void submit("close");
@@ -354,6 +376,8 @@ export default function MaterialMasterPage() {
                 Material Code <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="code"
+                data-field="material_code"
                 value={form.material_code}
                 onChange={(e) => setForm({ ...form, material_code: e.target.value })}
                 className={inputClass("material_code")}
@@ -365,6 +389,8 @@ export default function MaterialMasterPage() {
                 Material Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="material_name"
                 value={form.material_name}
                 onChange={(e) => setForm({ ...form, material_name: e.target.value })}
                 className={inputClass("material_name")}
@@ -396,8 +422,8 @@ export default function MaterialMasterPage() {
                   Create & Add Another
                 </button>
               )}
-<button className="ui-btn ui-btn-primary ui-btn-responsive">
-                  {form.id ? "Update" : "Create"}
+              <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                {form.id ? "Update" : "Create"}
               </button>
             </div>
           </div>

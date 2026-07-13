@@ -14,7 +14,7 @@ type VariantBarcodePrintModalProps = {
   open: boolean;
   onClose: () => void;
   variants: VariantPrintItem[];
-  productName: string;
+  productName?: string;
   title: string;
 };
 
@@ -84,9 +84,8 @@ export default function VariantBarcodePrintModal({
             </div>
           ) : (
             <div
-              className={`barcode-print-area barcode-grid grid gap-4 ${
-                printableVariants.length > 1 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1"
-              }`}
+              className={`barcode-print-area barcode-grid grid gap-4 ${printableVariants.length > 1 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1"
+                }`}
             >
               {printableVariants.map((variant) => (
                 <div

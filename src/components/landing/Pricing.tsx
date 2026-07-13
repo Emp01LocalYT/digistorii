@@ -342,8 +342,12 @@ export default function Pricing({
   }
 
   return (
-    <section id="pricing" className="py-20 bg-gradient-to-b from-white to-gray-50">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="pricing" className="py-20 relative bg-gradient-to-b from-white to-gray-50 overflow-hidden">
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+      <div className="absolute left-0 right-0 top-0 -z-10 m-auto h-[310px] w-[310px] rounded-full bg-blue-600 opacity-[0.05] blur-[100px]"></div>
+      <div className="absolute left-1/4 right-0 bottom-0 -z-10 m-auto h-[250px] w-[250px] rounded-full bg-purple-600 opacity-[0.05] blur-[100px]"></div>
+      
+      <div className="max-w-7xl mx-auto px-6 relative z-10">
         <div className="text-center mb-12">
           <h2 className="text-4xl font-bold text-gray-900 mb-3">Simple Plans</h2>
           <p className="text-lg text-gray-600">Pick the website plan that fits your business stage.</p>

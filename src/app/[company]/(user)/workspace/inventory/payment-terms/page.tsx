@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type PaymentType = "immediate" | "days" | "month";
 
 type PaymentTerm = {
@@ -49,6 +50,7 @@ export default function PaymentTermsMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -69,10 +71,31 @@ export default function PaymentTermsMasterPage() {
     loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = "Name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.name);
+      if (nameMessage) next.name = nameMessage;
+    }
     if (!form.type) next.type = "Type is required";
+    else {
+      const typeMessage = getRuleValidationError("enum-payment-type", form.type);
+      if (typeMessage) next.type = typeMessage;
+    }
     if (form.type === "days" && (!form.days || form.days < 1 || form.days > 30)) {
       next.days = "Select days between 1 and 30";
     }
@@ -118,7 +141,7 @@ export default function PaymentTermsMasterPage() {
       setForm(initialForm());
       setErrors({});
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify(error.message || "Save failed", { severity: "error" });
     } finally {
       setFormLoading(false);
     }
@@ -126,7 +149,7 @@ export default function PaymentTermsMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this Payment Term?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this Payment Term?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/payment-terms/${id}`, company, { method: "DELETE" });
@@ -203,15 +226,15 @@ export default function PaymentTermsMasterPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -344,10 +367,9 @@ export default function PaymentTermsMasterPage() {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
+                          className={`ui-pagination-btn ${currentPage === page
                               ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -373,6 +395,7 @@ export default function PaymentTermsMasterPage() {
 
       {showForm && (
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void submit("close");
@@ -386,6 +409,8 @@ export default function PaymentTermsMasterPage() {
                 Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="name"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={inputClass("name")}
@@ -398,6 +423,8 @@ export default function PaymentTermsMasterPage() {
                 Type <span className="text-red-500">*</span>
               </label>
               <select
+                data-rules="enum-payment-type"
+                data-field="type"
                 value={form.type}
                 onChange={(e) => {
                   const nextType = e.target.value as PaymentType;
@@ -482,20 +509,20 @@ export default function PaymentTermsMasterPage() {
             >
               Cancel
             </button>
-              <div className="ui-btn-group">
-            {!form.id && (
-              <button
-                type="button"
-                onClick={() => void submit("add")}
-                className="ui-btn ui-btn-secondary ui-btn-responsive"
-              >
-                Create & Add Another
+            <div className="ui-btn-group">
+              {!form.id && (
+                <button
+                  type="button"
+                  onClick={() => void submit("add")}
+                  className="ui-btn ui-btn-secondary ui-btn-responsive"
+                >
+                  Create & Add Another
+                </button>
+              )}
+              <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                {form.id ? "Update" : "Create"}
               </button>
-            )}
-            <button className="ui-btn ui-btn-primary ui-btn-responsive">
-              {form.id ? "Update" : "Create"}
-            </button>
-          </div>
+            </div>
           </div>
         </form>
       )}

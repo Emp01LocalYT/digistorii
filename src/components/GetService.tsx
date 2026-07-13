@@ -36,16 +36,71 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
     slug: "",
     password: "",
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const inputClass = (field: string) =>
+    `w-full px-4 py-3 rounded-lg border ${
+      errors[field] ? "border-red-500 focus:ring-red-400" : "border-gray-300 focus:ring-blue-500"
+    } focus:outline-none`;
+
   const handleOpenPreview = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
+    if (!validate()) return;
     setIsPreviewOpen(true);
+  };
+
+  const validate = () => {
+    const next: Record<string, string> = {};
+
+  if (!formData.businessName.trim()) {
+    next.businessName = "Business Name is required";
   }
+  const slugValue = formData.slug.trim();
+
+  if (!slugValue) {
+    next.slug = "Website URL is required";
+  } else if (/\s/.test(slugValue)) {
+    next.slug = "Spaces are not allowed in the URL";
+  } else if (/[^a-z]/.test(slugValue)) {
+    next.slug = "Special characters and numbers are not allowed";
+  }
+  if(!formData.ownerName.trim()){
+    next.ownerName="Owner Name is reqired";
+  }
+  
+  if (!formData.ownerEmail.trim()) {
+    next.ownerEmail = "Owner Email is required";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.ownerEmail)) {
+    next.ownerEmail = "Invalid email";
+  }
+
+
+  if (!formData.ownerPhone.trim()) {
+    next.ownerPhone = "Owner Phone is required";
+  } else if (!/^\d+$/.test(formData.ownerPhone.trim())) {
+    next.ownerPhone = "Owner Phone must contain only numbers";
+  } else if (formData.ownerPhone.trim().length < 10) {
+    next.ownerPhone = "Owner Phone number must be at least 10 digits";
+  } else if (formData.ownerPhone.trim().length > 10) {
+    next.ownerPhone ="Owner Phone number must not exceed 10 digits";
+  }
+
+  if(!formData.password.trim()) {
+    next.password = "Password is required";
+  } else if (formData.password.trim().length < 8) {
+    next.password = "Password must be at least 8 characters long";
+  }
+
+  setErrors(next);
+  setError("");
+  return Object.keys(next).length === 0;
+};
   const handleSubmit = async () => {
+    if (!validate()) return;
     setIsPreviewOpen(false);
     setIsSubmitting(true);
 
@@ -144,28 +199,33 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Business Name*
+                    Business Name<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.businessName}
                     onChange={(e) => setFormData({ ...formData, businessName: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={inputClass("businessName")}
                   />
+                  {errors.businessName && (
+                    <p className="mt-2 text-sm text-red-600">{errors.businessName}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Website URL*
+                    Website URL<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
-                  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                  <div
+                    className={`flex items-center rounded-lg overflow-hidden ${
+                      errors.slug ? "border border-red-500" : "border border-gray-300"
+                    }`}
+                  >
                     <span className="bg-gray-100 px-4 py-3 text-gray-600 text-sm">
                       digistorii/
                     </span>
                     <input
                       type="text"
-                      required
                       value={formData.slug}
                       onChange={(e) =>
                         setFormData({
@@ -177,6 +237,9 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                       placeholder="your-company"
                     />
                   </div>
+                  {errors.slug && (
+                    <p className="mt-2 text-sm text-red-600">{errors.slug}</p>
+                  )}
                 </div>
               </div>
 
@@ -185,51 +248,60 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Owner Name*
+                    Owner Name<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
                   <input
                     type="text"
-                    required
                     value={formData.ownerName}
                     onChange={(e) => setFormData({ ...formData, ownerName: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-transparent"
+                    className={inputClass("ownerName")}
                   />
+                  {errors.ownerName && (
+                    <p className="mt-2 text-sm text-red-600">{errors.ownerName}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Owner Email*
+                    Owner Email<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
                   <input
                     type="email"
-                    required
                     value={formData.ownerEmail}
                     onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={inputClass("ownerEmail")}
                   />
+                  {errors.ownerEmail && (
+                    <p className="mt-2 text-sm text-red-600">{errors.ownerEmail}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Owner Phone
+                    Owner Phone<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
                   <input
                     type="tel"
-                    required
                     value={formData.ownerPhone}
                     onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className={inputClass("ownerPhone")}
                   />
+                  {errors.ownerPhone && (
+                    <p className="mt-2 text-sm text-red-600">{errors.ownerPhone}</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Password for Admin Portal*
+                    Password for Admin Portal<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
-                  <div className="flex items-center rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500">
+                  <div
+                    className={`flex items-center rounded-lg border ${
+                      errors.password ? "border-red-500 focus-within:ring-red-400" : "border-gray-300 focus-within:ring-blue-500"
+                    }`}
+                  >
                     <input
                       type={showPassword ? "text" : "password"}
-                      required
                       minLength={8}
                       value={formData.password}
                       onChange={(e) => setFormData({ ...formData, password: e.target.value })}
@@ -240,11 +312,12 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                       onClick={() => setShowPassword((prev) => !prev)}
                       className="px-4 py-3 text-sm font-semibold text-blue-600 hover:text-blue-700"
                     >
-                   
-                        {showPassword ? <HiEyeOff size={20} /> : <HiEye size={20} />}
-                      
+                      {showPassword ? <HiEyeOff size={20} /> : <HiEye size={20} />}
                     </button>
                   </div>
+                  {errors.password && (
+                    <p className="mt-2 text-sm text-red-600">{errors.password}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -275,11 +348,14 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
     {/* --- PREVIEW DIALOG MODAL --- */}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 md:p-8 shadow-2xl border border-gray-100 transform transition-all scale-100">
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Workspace Details</h3>
-            <p className="text-sm text-gray-500 mb-6">
-              Please double check your account information before we construct your environment setup.
-            </p>
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 md:p-8 shadow-2xl border border-gray-100 transform transition-all scale-100">
+            <h3 className="text-xl font-bold text-gray-900 mb-2">
+  Confirm Workspace Details
+</h3>
+
+<p className="text-sm text-gray-500 mb-6">
+  Please review your workspace details before continuing. If you can't complete the setup now, you can sign in later using your workspace URL and continue from where you left off.
+</p>
 
             <div className="space-y-4 bg-gray-50 rounded-xl p-5 border border-gray-100 text-sm">
               <div className="grid grid-cols-3 gap-2">
@@ -287,6 +363,10 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                 <span className="col-span-2 text-gray-900 font-semibold break-words">{formData.businessName}</span>
               </div>
               <div className="grid grid-cols-3 gap-2">
+                <span className="text-gray-500 font-medium">Admin Console URL:</span>
+                <span className="col-span-2 text-blue-600 font-semibold break-all">
+                  digistorii/{formData.slug}/admin
+                </span>
                 <span className="text-gray-500 font-medium">Workspace URL:</span>
                 <span className="col-span-2 text-blue-600 font-semibold break-all">
                   digistorii/{formData.slug}/workspace
@@ -307,9 +387,9 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
               </div>
             </div>
 
-            <p className="mt-6 text-xs text-gray-500 text-center">
+            {/* <p className="mt-6 text-xs text-gray-500 text-center">
               Are these details correct? You can go back to make changes if necessary.
-            </p>
+            </p> */}
 
             <div className="mt-6 flex flex-col sm:flex-row gap-3">
               <button

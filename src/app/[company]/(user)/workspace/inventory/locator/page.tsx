@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type WarehouseOption = { id: number; name: string };
 
 type Locator = {
@@ -80,6 +81,7 @@ export default function LocatorMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLDivElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -108,13 +110,42 @@ export default function LocatorMasterPage() {
     void loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.row.trim()) next.row = "Row is required";
+    else {
+      const rowMessage = getRuleValidationError("no-symbols", form.row);
+      if (rowMessage) next.row = rowMessage;
+    }
     if (!form.rack.trim()) next.rack = "Rack is required";
+    else {
+      const rackMessage = getRuleValidationError("no-symbols", form.rack);
+      if (rackMessage) next.rack = rackMessage;
+    }
     if (!form.bin.trim()) next.bin = "Bin is required";
+    else {
+      const binMessage = getRuleValidationError("no-symbols", form.bin);
+      if (binMessage) next.bin = binMessage;
+    }
     if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
     if (!form.type) next.type = "Type is required";
+    else {
+      const typeMessage = getRuleValidationError("enum-locator-type", form.type);
+      if (typeMessage) next.type = typeMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -151,7 +182,7 @@ export default function LocatorMasterPage() {
       setForm(getInitialForm());
       setErrors({});
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify("Failed to save locator" + (error.message ? `: ${error.message}` : ""), { severity: "error" });
     } finally {
       setFormLoading(false);
     }
@@ -159,7 +190,7 @@ export default function LocatorMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-      const ok = await confirm("Delete this locator?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this locator?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/locators/${id}`, company, { method: "DELETE" });
@@ -235,15 +266,15 @@ export default function LocatorMasterPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -376,10 +407,9 @@ export default function LocatorMasterPage() {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
+                          className={`ui-pagination-btn ${currentPage === page
                               ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -404,181 +434,197 @@ export default function LocatorMasterPage() {
       )}
 
       {showForm && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit("close");
-          }}
-          className="bg-white p-6 rounded-xl shadow space-y-6"
-        >
-          <h2 className="text-lg font-semibold">{form.id ? "Update Locator" : "Create Locator"}</h2>
+        <div ref={formRef}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit("close");
+            }}
+            className="bg-white p-6 rounded-xl shadow space-y-6"
+          >
+            <h2 className="text-lg font-semibold">{form.id ? "Update Locator" : "Create Locator"}</h2>
 
-          <div className="grid md:grid-cols-4 gap-6">
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Locator Name</label>
-              <input value={previewName} readOnly className="w-full mt-2 border rounded-lg p-3 bg-gray-100 text-gray-600" />
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Row <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.row}
-                onChange={(e) => setForm({ ...form, row: e.target.value })}
-                className={inputClass("row")}
-              />
-              {errors.row && <p className="text-red-500 text-sm mt-1">{errors.row}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Rack <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.rack}
-                onChange={(e) => setForm({ ...form, rack: e.target.value })}
-                className={inputClass("rack")}
-              />
-              {errors.rack && <p className="text-red-500 text-sm mt-1">{errors.rack}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Bin <span className="text-red-500">*</span>
-              </label>
-              <input
-                value={form.bin}
-                onChange={(e) => setForm({ ...form, bin: e.target.value })}
-                className={inputClass("bin")}
-              />
-              {errors.bin && <p className="text-red-500 text-sm mt-1">{errors.bin}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Warehouse <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={form.warehouse_id}
-                onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })}
-                className={inputClass("warehouse_id")}
-              >
-                <option value="">Select Warehouse</option>
-                {warehouses.map((wh) => (
-                  <option key={wh.id} value={String(wh.id)}>
-                    {wh.name}
-                  </option>
-                ))}
-              </select>
-              {errors.warehouse_id && <p className="text-red-500 text-sm mt-1">{errors.warehouse_id}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as Locator["type"] })}
-                className={inputClass("type")}
-              >
-                {TYPE_OPTIONS.map((t) => (
-                  <option key={t} value={t}>
-                    {t.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}
-                  </option>
-                ))}
-              </select>
-              {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Effective From</label>
-              <input
-                type="date"
-                value={form.effective_from}
-                onChange={(e) => setForm({ ...form, effective_from: e.target.value })}
-                className={inputClass("effective_from")}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Effective To</label>
-              <input
-                type="date"
-                value={form.effective_to}
-                onChange={(e) => setForm({ ...form, effective_to: e.target.value })}
-                className={inputClass("effective_to")}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Quantity</h3>
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-4 gap-6">
               <div>
-                <label className="text-sm font-semibold mb-1 block">Max Qty</label>
-                <input
-                  type="number"
-                  value={form.max_qty}
-                  onChange={(e) => setForm({ ...form, max_qty: e.target.value })}
-                  className={inputClass("max_qty")}
-                />
+                <label className="text-sm font-semibold mb-1 block">Locator Name</label>
+                <input value={previewName} readOnly className="w-full mt-2 border rounded-lg p-3 bg-gray-100 text-gray-600" />
               </div>
               <div>
-                <label className="text-sm font-semibold mb-1 block">Current Qty</label>
+                <label className="text-sm font-semibold mb-1 block">
+                  Row <span className="text-red-500">*</span>
+                </label>
                 <input
-                  type="number"
-                  value={form.current_qty}
-                  onChange={(e) => setForm({ ...form, current_qty: e.target.value })}
-                  className={inputClass("current_qty")}
+                  data-rules="no-symbols"
+                  data-field="row"
+                  value={form.row}
+                  onChange={(e) => setForm({ ...form, row: e.target.value })}
+                  className={inputClass("row")}
                 />
+                {errors.row && <p className="text-red-500 text-sm mt-1">{errors.row}</p>}
               </div>
               <div>
-                <label className="text-sm font-semibold mb-1 block">Suggested Qty</label>
+                <label className="text-sm font-semibold mb-1 block">
+                  Rack <span className="text-red-500">*</span>
+                </label>
                 <input
-                  type="number"
-                  value={form.suggested_qty}
-                  onChange={(e) => setForm({ ...form, suggested_qty: e.target.value })}
-                  className={inputClass("suggested_qty")}
+                  data-rules="no-symbols"
+                  data-field="rack"
+                  value={form.rack}
+                  onChange={(e) => setForm({ ...form, rack: e.target.value })}
+                  className={inputClass("rack")}
                 />
+                {errors.rack && <p className="text-red-500 text-sm mt-1">{errors.rack}</p>}
               </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Description</h3>
-            <textarea
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className={inputClass("description")}
-              rows={3}
-            />
-          </div>
-
-          <div className="ui-form-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setShowForm(false);
-                setForm(getInitialForm());
-                setErrors({});
-              }}
-              className="ui-btn ui-btn-secondary ui-btn-responsive"
-            >
-              Cancel
-            </button>
-
-            <div className="ui-btn-group">
-              {!form.id && (
-                <button
-                  type="button"
-                  onClick={() => void submit("add")}
-                  className="ui-btn ui-btn-secondary ui-btn-responsive"
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Bin <span className="text-red-500">*</span>
+                </label>
+                <input
+                  data-rules="no-symbols"
+                  data-field="bin"
+                  value={form.bin}
+                  onChange={(e) => setForm({ ...form, bin: e.target.value })}
+                  className={inputClass("bin")}
+                />
+                {errors.bin && <p className="text-red-500 text-sm mt-1">{errors.bin}</p>}
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Warehouse <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={form.warehouse_id}
+                  onChange={(e) => setForm({ ...form, warehouse_id: e.target.value })}
+                  className={inputClass("warehouse_id")}
                 >
-                  Create & Add Another
-                </button>
-              )}
-
-              <button className="ui-btn ui-btn-primary ui-btn-responsive">
-                {form.id ? "Update" : "Create"}
-              </button>
+                  <option value="">Select Warehouse</option>
+                  {warehouses.map((wh) => (
+                    <option key={wh.id} value={String(wh.id)}>
+                      {wh.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.warehouse_id && <p className="text-red-500 text-sm mt-1">{errors.warehouse_id}</p>}
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  data-rules="enum-locator-type"
+                  data-field="type"
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value as Locator["type"] })}
+                  className={inputClass("type")}
+                >
+                  {TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {t.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase())}
+                    </option>
+                  ))}
+                </select>
+                {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Effective From</label>
+                <input
+                  type="date"
+                  value={form.effective_from || ""}
+                  onChange={(e) => setForm({ ...form, effective_from: e.target.value ?? "" })}
+                  className={inputClass("effective_from")}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Effective To</label>
+                <input
+                  type="date"
+                  value={form.effective_to || ""}
+                  onChange={(e) => setForm({ ...form, effective_to: e.target.value ?? "" })}
+                  className={inputClass("effective_to")}
+                />
+              </div>
             </div>
-          </div>
-        </form>
+
+            <div className="space-y-4">
+              <h3 className="text-md font-semibold text-gray-700">Quantity</h3>
+              <div className="grid md:grid-cols-3 gap-6">
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Max Qty</label>
+                  <input
+                    data-rules="positive-integer"
+                    data-field="max_qty"
+                    type="number"
+                    value={form.max_qty}
+                    onChange={(e) => setForm({ ...form, max_qty: e.target.value })}
+                    className={inputClass("max_qty")}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Current Qty</label>
+                  <input
+                    data-rules="positive-integer"
+                    data-field="current_qty"
+                    type="number"
+                    value={form.current_qty}
+                    onChange={(e) => setForm({ ...form, current_qty: e.target.value })}
+                    className={inputClass("current_qty")}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Suggested Qty</label>
+                  <input
+                    data-rules="positive-integer"
+                    data-field="suggested_qty"
+                    type="number"
+                    value={form.suggested_qty}
+                    onChange={(e) => setForm({ ...form, suggested_qty: e.target.value })}
+                    className={inputClass("suggested_qty")}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-md font-semibold text-gray-700">Description</h3>
+              <textarea
+                value={form.description || ""}
+                onChange={(e) => setForm({ ...form, description: e.target.value ?? "" })}
+                className={inputClass("description")}
+                rows={3}
+              />
+            </div>
+
+            <div className="ui-form-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  setForm(getInitialForm());
+                  setErrors({});
+                }}
+                className="ui-btn ui-btn-secondary ui-btn-responsive"
+              >
+                Cancel
+              </button>
+
+              <div className="ui-btn-group">
+                {!form.id && (
+                  <button
+                    type="button"
+                    onClick={() => void submit("add")}
+                    className="ui-btn ui-btn-secondary ui-btn-responsive"
+                  >
+                    Create & Add Another
+                  </button>
+                )}
+
+                <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                  {form.id ? "Update" : "Create"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

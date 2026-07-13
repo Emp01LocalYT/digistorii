@@ -106,6 +106,8 @@ const navItems: NavItem[] = [
     permission: "settings_access",
     subItems: [
       { name: "Categories", path: "/workspace/inventory/categories", pro: false },
+      { name: "Fittings", path: "/workspace/inventory/fittings", pro: false },
+      { name: "Colors", path: "/workspace/inventory/colors", pro: false },
       { name: "Materials", path: "/workspace/inventory/materials", pro: false },
       { name: "UOM", path: "/workspace/inventory/uom", pro: false },
       { name: "Tax", path: "/workspace/inventory/tax", pro: false },
@@ -354,7 +356,7 @@ const AppSidebar: React.FC = () => {
       </div> */}
       <div
         className="py-8 flex items-center gap-3">
-        <Link href={`/${company || ""}/dashboard`} className="flex items-center gap-3">
+        <Link href={`/${company || ""}/workspace/dashboard`} className="flex items-center gap-3">
           {/* Icon */}
           <div className="bg-blue-600 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold text-lg">
             {company.charAt(0).toUpperCase()}
@@ -363,7 +365,7 @@ const AppSidebar: React.FC = () => {
           {/* Company Name */}
           {(isExpanded || isHovered || isMobileOpen) && (
             <span className="text-lg font-semibold text-gray-800 dark:text-white">
-              {company.charAt(0).toUpperCase() + company.slice(1)}
+              {user?.company_name || (company.charAt(0).toUpperCase() + company.slice(1))}
             </span>
           )}
         </Link>

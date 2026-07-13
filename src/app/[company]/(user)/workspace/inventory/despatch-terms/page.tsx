@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 type DespatchTerm = {
   id?: number;
   code: string;
@@ -36,6 +37,7 @@ export default function DespatchTermsMasterPage() {
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   const inputClass = (key: string) =>
     `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"}`;
@@ -56,10 +58,31 @@ export default function DespatchTermsMasterPage() {
     loadData();
   }, [company]);
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.code.trim()) next.code = "Code is required";
+    else {
+      const codeMessage = getRuleValidationError("code", form.code);
+      if (codeMessage) next.code = codeMessage;
+    }
     if (!form.despatch_name.trim()) next.despatch_name = "Despatch Name is required";
+    else {
+      const nameMessage = getRuleValidationError("no-symbols", form.despatch_name);
+      if (nameMessage) next.despatch_name = nameMessage;
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -92,7 +115,8 @@ export default function DespatchTermsMasterPage() {
       setForm(getInitialForm());
       setErrors({});
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify("Failed to save despatch term" + (error.message ? `: ${error.message}` : ""), { severity: "error" });
+
     } finally {
       setFormLoading(false);
     }
@@ -100,7 +124,7 @@ export default function DespatchTermsMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this despatch term?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this despatch term?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/despatch-terms/${id}`, company, { method: "DELETE" });
@@ -174,15 +198,15 @@ export default function DespatchTermsMasterPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -304,10 +328,9 @@ export default function DespatchTermsMasterPage() {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
+                          className={`ui-pagination-btn ${currentPage === page
                               ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -333,6 +356,7 @@ export default function DespatchTermsMasterPage() {
 
       {showForm && (
         <form
+          ref={formRef}
           onSubmit={(e) => {
             e.preventDefault();
             void submit("close");
@@ -346,6 +370,8 @@ export default function DespatchTermsMasterPage() {
                 Code <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="code"
+                data-field="code"
                 value={form.code}
                 onChange={(e) => setForm({ ...form, code: e.target.value })}
                 className={inputClass("code")}
@@ -357,6 +383,8 @@ export default function DespatchTermsMasterPage() {
                 Despatch Name <span className="text-red-500">*</span>
               </label>
               <input
+                data-rules="no-symbols"
+                data-field="despatch_name"
                 value={form.despatch_name}
                 onChange={(e) => setForm({ ...form, despatch_name: e.target.value })}
                 className={inputClass("despatch_name")}
@@ -377,20 +405,20 @@ export default function DespatchTermsMasterPage() {
             >
               Cancel
             </button>
-              <div className="ui-btn-group">
-            {!form.id && (
-              <button
-                type="button"
-                onClick={() => void submit("add")}
-                 className="ui-btn ui-btn-secondary ui-btn-responsive"
-              >
-                Create & Add Another
+            <div className="ui-btn-group">
+              {!form.id && (
+                <button
+                  type="button"
+                  onClick={() => void submit("add")}
+                  className="ui-btn ui-btn-secondary ui-btn-responsive"
+                >
+                  Create & Add Another
+                </button>
+              )}
+              <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                {form.id ? "Update" : "Create"}
               </button>
-            )}
-            <button className="ui-btn ui-btn-primary ui-btn-responsive">
-              {form.id ? "Update" : "Create"}
-            </button>
-          </div></div>
+            </div></div>
         </form>
       )}
     </div>

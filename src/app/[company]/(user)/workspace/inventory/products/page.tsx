@@ -14,7 +14,7 @@ import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
 import ProductFilters from "./components/ProductFilters";
-import { CategoryNode, flattenCategories } from "./components/category-utils";
+
 type ProductRow = {
   id: number;
   product_code: string;
@@ -27,9 +27,11 @@ type ProductRow = {
   status: number;
 };
 
-type FlatCategory = {
+type CategoryRow = {
   id: number;
-  path: string;
+  path_string?: string | null;
+  category_name?: string | null;
+  level?: number;
 };
 
 type MaterialOption = {
@@ -115,7 +117,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [categoriesTree, setCategoriesTree] = useState<CategoryNode[]>([]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
 
   const [search, setSearch] = useState("");
@@ -145,12 +147,14 @@ export default function ProductsPage() {
     own: "Own",
     vendor: "Vendor",
   };
-  const flatCategories = useMemo(() => flattenCategories(categoriesTree), [categoriesTree]);
   const categoryLabelMap = useMemo(() => {
     const map = new Map<string, string>();
-    flatCategories.forEach((row) => map.set(String(row.id), row.path));
+    categories.forEach((row) => {
+      const label = String(row.path_string || row.category_name || "").trim();
+      if (label) map.set(String(row.id), label);
+    });
     return map;
-  }, [flatCategories]);
+  }, [categories]);
   const materialLabelMap = useMemo(() => {
     const map = new Map<string, string>();
     materials.forEach((item) =>
@@ -159,8 +163,14 @@ export default function ProductsPage() {
     return map;
   }, [materials]);
   const categoryOptions = useMemo(
-    () => flatCategories.map((row) => ({ value: String(row.id), label: row.path })),
-    [flatCategories]
+    () =>
+      categories
+        .map((row) => {
+          const label = String(row.path_string || row.category_name || "").trim();
+          return label ? { value: String(row.id), label } : null;
+        })
+        .filter((option): option is { value: string; label: string } => Boolean(option)),
+    [categories]
   );
   const fallbackCategories = useMemo(() => {
     const items = new Set<string>();
@@ -179,11 +189,11 @@ export default function ProductsPage() {
     async function loadCategories() {
       if (!company) return;
       try {
-        const res = await apiFetch("/api/categories?format=tree", company);
+        const res = await apiFetch("/api/categories?format=flat", company);
         const data = await res.json();
-        setCategoriesTree(data.success ? data.data || [] : []);
+        setCategories(data.success ? data.data || [] : []);
       } catch {
-        setCategoriesTree([]);
+        setCategories([]);
       }
     }
     loadCategories();

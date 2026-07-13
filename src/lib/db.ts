@@ -5,9 +5,9 @@
 // });
 
 // types.setTypeParser(1082, (val: string) => val);
- 
 
-import { Pool,types } from "pg";
+
+import { Pool, types } from "pg";
 import { ensureDB } from "./ensure-db"
 
 export const pool = new Pool({
@@ -15,8 +15,8 @@ export const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 export async function query(text: string, params?: any[]) {
-  await ensureDB(); 
-  
+  await ensureDB();
+
   const start = Date.now();
   const res = await pool.query(text, params);
   const duration = Date.now() - start;
@@ -24,5 +24,5 @@ export async function query(text: string, params?: any[]) {
   console.log("executed query", { text, duration, rows: res.rowCount });
   return res;
 }
- 
+
 types.setTypeParser(1082, (val: string) => val);

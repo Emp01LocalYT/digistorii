@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const userResult = await pool.query(
       `SELECT
-         u.*,
+         u.*,c.company_name,
          COALESCE(cum.responsibility_id, u.responsibility_id) AS resolved_responsibility_id,
          r.responsibility_name,
          r.dashboard_access,
@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
        LEFT JOIN public.company_user_map cum
          ON cum.user_id = u.id
         AND cum.company_id = u.company_id
+      LEFT JOIN public.companies c
+        ON c.id=u.company_id
        LEFT JOIN public.user_responsibilities r
          ON r.id = COALESCE(cum.responsibility_id, u.responsibility_id)
        WHERE u.email = $1

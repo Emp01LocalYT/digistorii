@@ -5,53 +5,49 @@ import {
   IconFileTypeXls,
   IconBox,
   IconBrandCashapp,
-  IconLayoutDashboard,
+  IconLayoutDashboard, IconReceipt,
   IconShoppingCartCheck,
-  
+
 } from "@tabler/icons-react";
 
 export default function Features() {
   const features = [
     {
       title: "Instant Online Store",
-      description: "Your customers get a clean shopping website to browse products, add to cart, and place orders anytime.",
+      description: "Launch a clean, customer-facing website to display products, accept orders, and grow your digital presence effortlessly.",
       icon: IconShoppingCartCheck
     },
     {
-      title: "Operational Dashboard for Owners",
-      description: "Manage products, pricing, customers, invoices, and sales — from a single dashboard.",
-      icon: IconLayoutDashboard
+      title: "Fast POS Billing",
+      description: "Ring up sales in seconds with barcode scanning, instant invoice generation, and smooth over-the-counter billing.",
+      icon: IconReceipt
     },
     {
-      title: "Upload Products via Excel",
-      description: "No need to add products one-by-one. Upload an Excel sheet and your store is ready.",
+      title: "Bulk Excel Upload",
+      description: "Skip the manual data entry. Upload your entire product catalog in one click using a simple Excel spreadsheet.",
       icon: IconFileTypeXls
     },
     {
-      title: "Orders + Customer Data in One Place",
-      description: "Every order and customer detail automatically appears in your admin panel.",
+      title: "Smart Inventory Tracker",
+      description: "Monitor stock levels in real time across online orders and physical sales from a unified, centralized dashboard.",
       icon: IconBox
     },
     {
-      title: "Payments & Checkout",
-      description: "Accept orders with smooth checkout and payment support (UPI / cards / wallet support can be enabled).",
+      title: "Universal Checkout & Payments",
+      description: "Provide a seamless checkout experience with built-in support for UPI, cards, wallets, and cash tracking.",
       icon: IconBrandCashapp
     },
     {
-      title: "Works on Mobile",
-      description: "Your website and admin dashboard work smoothly on phone and desktop.",
+      title: "Store in Your Pocket",
+      description: "Track live sales, manage inventory, and monitor your entire business in real time directly from your smartphone.",
       icon: IconDeviceMobile
-    },
-    {
-      title: "Custom Website Name",
-      description: "Choose your store name and get your own business website link.",
-      icon: IconAppWindow
     }
   ];
 
   return (
-    <section className="py-20 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-6">
+    <section id="features" className="py-20 relative bg-gray-50 overflow-hidden">
+      <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:20px_20px] opacity-70"></div>
+      <div className="max-w-7xl mx-auto px-6 relative z-10">
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
             Everything You Need to Run Your Business Online
@@ -77,23 +73,23 @@ export default function Features() {
             </div>
           ))} */}
           {features.map((feature, index) => {
-  const Icon = feature.icon;
+            const Icon = feature.icon;
 
-  return (
-    <div
-      key={index}
-      className="group bg-white p-8 rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100"
-    >
-      <Icon
-        size={32}
-        stroke={1.5}
-        className="text-[#174FEB] group-hover:text-[#93ADF6] transition-colors"
-      />
-      <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
-      <p className="text-gray-600 leading-relaxed">{feature.description}</p>
-    </div>
-  );
-})}
+            return (
+              <div
+                key={index}
+                className="group bg-white p-8 rounded-xl shadow-sm hover:shadow-md transition-shadow border border-gray-100"
+              >
+                <Icon
+                  size={32}
+                  stroke={1.5}
+                  className="text-[#174FEB] group-hover:text-[#93ADF6] transition-colors"
+                />
+                <h3 className="text-xl font-bold text-gray-900 mb-3">{feature.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+              </div>
+            );
+          })}
 
         </div>
       </div>

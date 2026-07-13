@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
           p.name AS product_name,
           pv.sku,
           pv.barcode,
-          pv.color,
+          pv.color_id,
           pv.size,
           pv.fitting,
           pv.gender

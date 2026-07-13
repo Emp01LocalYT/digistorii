@@ -539,10 +539,10 @@ export async function POST(req: NextRequest) {
         `UPDATE public.companies
          SET gst_number = $2,
              pan_number = $3,
-             currency = $4,
+             address =$4, city =$5,country=$6,currency=$7,
              updated_at = NOW()
          WHERE id = $1`,
-        [context.id, payload.gst_number, payload.pan_number, currency]
+        [context.id, payload.gst_number, payload.pan_number, payload.business_address, payload.city,payload.country,currency ]
       );
 
       const existingBusiness = await client.query(
@@ -691,6 +691,8 @@ export async function POST(req: NextRequest) {
          WHERE id = $1`,
         [context.id]
       );
+
+      
     } else if (step === "WAREHOUSE_SETUP") {
       const subscription = await getPlanForCompany(client, context.id);
       const maxWarehouses = Number(subscription?.max_warehouses ?? PLAN_CONFIG.BASIC.max_warehouses);
@@ -752,7 +754,7 @@ export async function POST(req: NextRequest) {
         throw new Error("Warehouse code already exists");
       }
 
-      await client.query(
+      const warehouseInsert = await client.query(
         `INSERT INTO "${context.schema_name}".warehouses
          (
            code, name, location_id, type, address, is_default,
@@ -765,7 +767,8 @@ export async function POST(req: NextRequest) {
            $7, $8, $9, $10, $11, $12, $13,
            $14, $15, $16,
            NOW(), NOW()
-         )`,
+         )
+           RETURNING id`,
         [
           warehouseCode,
           warehouseName,
@@ -786,13 +789,38 @@ export async function POST(req: NextRequest) {
 
         ]
       );
+      const warehouseId = Number(warehouseInsert.rows[0].id);
+      const owner = await getOwnerForCompany(client, context.id);
+      
+
+      if (owner?.id) {
+        await client.query(
+          `
+          UPDATE public.company_user_map
+          SET
+              location_id = $1,
+              warehouse_id = $2
+          WHERE
+              company_id = $3
+              AND user_id = $4
+              AND location_id IS NULL
+              AND warehouse_id IS NULL
+          `,
+          [
+            locationId,
+            warehouseId,
+            context.id,
+            owner.id,
+          ]
+        );
+      }
 
       if (isDefault) {
         await client.query(
           `UPDATE "${context.schema_name}".warehouses
            SET is_default = FALSE
-           WHERE code <> $1`,
-          [warehouseCode]
+           WHERE id <> $1`,
+          [warehouseId]
         );
       }
 

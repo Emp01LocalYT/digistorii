@@ -1,5 +1,5 @@
 "use client";
-
+// gstin format -33 AAAAA1111A1Z5
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { City, Country, State } from "country-state-city";
 import Pricing from "@/components/landing/Pricing";
@@ -450,12 +450,34 @@ export default function OnboardingWizard({
     () => getGstStateCodeForState(businessSettings.state),
     [businessSettings.state]
   );
+
+  const formatGstinInput = (value: string, stateCode?: string | null) => {
+    const rawValue = String(value || "").toUpperCase();
+    if (!stateCode) return rawValue;
+
+    const suffix = rawValue.startsWith(stateCode)
+      ? rawValue.slice(2)
+      : /^\d{2}/.test(rawValue)
+      ? rawValue.slice(2)
+      : rawValue;
+
+    return `${stateCode}${suffix}`;
+  };
+
   const businessGstSuffix = useMemo(() => {
     if (businessGstStateCode && businessSettings.gst_number.startsWith(businessGstStateCode)) {
       return businessSettings.gst_number.slice(2);
     }
     return businessSettings.gst_number;
   }, [businessGstStateCode, businessSettings.gst_number]);
+
+  const isBusinessGstValid = useMemo(
+    () => gstAvailable && isValidGstin(businessSettings.gst_number),
+    [gstAvailable, businessSettings.gst_number]
+  );
+
+  const shouldShowBusinessGstError =
+    gstAvailable && businessGstSuffix.length > 0 && !isBusinessGstValid;
 
   const selectedRegisteredCountry = useMemo(
     () => countryOptions.find((entry) => entry.name === location.registered_country),
@@ -762,7 +784,7 @@ export default function OnboardingWizard({
 
   const updateBusinessGst = (value: string, stateCode = businessGstStateCode) => {
     setBusinessSettings((prev) => {
-      const gst_number = normalizeGstin(value, stateCode);
+      const gst_number = formatGstinInput(value, stateCode);
       return {
         ...prev,
         gst_number,
@@ -832,18 +854,18 @@ export default function OnboardingWizard({
       setError("Currency is required.");
       return;
     }
-    // if (gstAvailable && !businessSettings.gst_number) {
-    //   setError("GST number is required when GST Available is checked.");
-    //   return;
-    // }
-    // if (gstAvailable && !isValidGstin(businessSettings.gst_number)) {
-    //   setError("GST number must match the format XXAAAAA9999AXXZ.");
-    //   return;
-    // }
-    // if (gstAvailable && businessSettings.pan_number && !isValidPan(businessSettings.pan_number)) {
-    //   setError("PAN number must match the format AAAAA9999A.");
-    //   return;
-    // }
+    if (gstAvailable && !businessSettings.gst_number) {
+      setError("GST number is required when GST Available is checked.");
+      return;
+    }
+    if (gstAvailable && !isValidGstin(businessSettings.gst_number)) {
+      setError("GST number must match the format XXAAAAA9999AXXZ.");
+      return;
+    }
+    if (gstAvailable && businessSettings.pan_number && !isValidPan(businessSettings.pan_number)) {
+      setError("PAN number must match the format AAAAA9999A.");
+      return;
+    }
 
     const payload = {
       ...businessSettings,
@@ -873,6 +895,7 @@ export default function OnboardingWizard({
   };
 
   const handleStaffSubmit = async () => {
+    if (!validateStaffs()) return;
     await saveStep("STAFF_SETUP", { users: staffUsers });
   };
 
@@ -1098,6 +1121,63 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
   const removeStaffRow = (index: number) => {
     setStaffUsers((prev) => prev.filter((_, i) => i !== index));
   };
+  const [staffErrors, setStaffErrors] = useState<Record<string, string>[]>([]);
+
+  const validateStaffs = () => {
+    const next: Record<string, string>[] = staffUsers.map(() => ({}));
+    let valid = true;
+
+    staffUsers.forEach((user, i) => {
+      // required fields
+      if (!String(user.name || "").trim()) {
+        next[i].name = "Name is required";
+        valid = false;
+      }
+      if (!String(user.username || "").trim()) {
+        next[i].username = "Username is required";
+        valid = false;
+      }
+      const email = String(user.email || "").trim();
+      if (!email) {
+        next[i].email = "Email is required";
+        valid = false;
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        next[i].email = "Invalid email";
+        valid = false;
+      }
+      const password = String(user.password || "");
+      if (!password) {
+        next[i].password = "Password is required";
+        valid = false;
+      } else if (password.length <= 8) {
+        next[i].password = "Password must be more than 8 characters";
+        valid = false;
+      }
+      const phone = String(user.phone || "").trim();
+      if (!phone) {
+        next[i].phone = "Phone is required";
+        valid = false;
+      } else if (!/^\d{10}$/.test(phone)) {
+        next[i].phone = "Phone must be 10 digits";
+        valid = false;
+      }
+      if (!String(user.responsibility_id || "").trim()) {
+        next[i].responsibility_id = "Responsibility is required";
+        valid = false;
+      }
+      if (!String(user.location_id || "").trim()) {
+        next[i].location_id = "Location is required";
+        valid = false;
+      }
+      if (!String(user.warehouse_id || "").trim()) {
+        next[i].warehouse_id = "Warehouse is required";
+        valid = false;
+      }
+    });
+
+    setStaffErrors(next);
+    return valid;
+  };
 
   const formFieldClass =
     "w-full mt-2 border border-gray-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500";
@@ -1226,7 +1306,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
             <h2 className="text-2xl font-bold text-gray-900">Step 4: Business Setup</h2>
             <div className="grid md:grid-cols-3 gap-6">
               <div>
-                <label className={formLabelClass}>Country</label>
+                <label className={formLabelClass}>Country <span className="text-red-500">*</span></label>
                 <select
                   value={businessSettings.country}
                   onChange={(e) =>
@@ -1243,6 +1323,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     })
                   }
                   className={formFieldClass}
+                  required
                 >
                   <option value="">Select Country</option>
                   {countryOptions.map((country) => (
@@ -1253,7 +1334,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                 </select>
               </div>
               <div>
-                <label className={formLabelClass}>State</label>
+                <label className={formLabelClass}>State<span className="text-red-500">*</span></label>
                 <select
                   value={businessSettings.state}
                   onChange={(e) =>
@@ -1261,7 +1342,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                       const nextState = e.target.value;
                       const stateCode = getGstStateCodeForState(nextState);
                       const gst_number = gstAvailable
-                        ? normalizeGstin(prev.gst_number, stateCode)
+                        ? formatGstinInput(prev.gst_number, stateCode)
                         : prev.gst_number;
 
                       return {
@@ -1274,6 +1355,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     })
                   }
                   className={formFieldClass}
+                  required
                 >
                   <option value="">Select State</option>
                   {businessStateOptions.map((state) => (
@@ -1284,13 +1366,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                 </select>
               </div>
               <div>
-                <label className={formLabelClass}>City</label>
+                <label className={formLabelClass}>City<span className="text-red-500">*</span></label>
                 <select
                   value={businessSettings.city}
                   onChange={(e) =>
                     setBusinessSettings((prev) => ({ ...prev, city: e.target.value }))
                   }
                   className={formFieldClass}
+                  required
                 >
                   <option value="">Select City</option>
                   {businessCityOptions.map((city) => (
@@ -1347,7 +1430,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         if (!checked) {
                           return { ...prev, gst_number: "", pan_number: "" };
                         }
-                        const gst_number = normalizeGstin(prev.gst_number, businessGstStateCode);
+                        const gst_number = formatGstinInput(prev.gst_number, businessGstStateCode);
                         return {
                           ...prev,
                           gst_number,
@@ -1364,7 +1447,15 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
                       <label className={formLabelClass}>GST Number</label>
-                      <div className="mt-2 flex overflow-hidden rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500">
+                      <div
+                        className={`mt-2 flex overflow-hidden rounded-lg ${
+                          shouldShowBusinessGstError
+                            ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
+                            : isBusinessGstValid
+                            ? "border border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500"
+                            : "border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500"
+                        }`}
+                      >
                         <span className="flex items-center bg-gray-100 px-3 text-sm font-semibold text-gray-700">
                           {businessGstStateCode || "--"}
                         </span>
@@ -2099,7 +2190,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                       <button 
                         type="button" 
                         onClick={() => removeStaffRow(index)} 
-            className="absolute top-4 right-4 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 z-10"
+                        className="absolute top-4 right-4 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 z-10"
                         title="Remove Staff"
                       >
                         <TrashIcon className="w-5 h-5" />
@@ -2115,6 +2206,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         onChange={(e) => updateStaffRow(index, { name: e.target.value })}
                         className={formFieldClass}
                       />
+                      {staffErrors[index]?.name && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].name}</p>
+                      )}
                     </div>
                     <div>
                       <label className={formLabelClass}>
@@ -2125,6 +2219,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         onChange={(e) => updateStaffRow(index, { username: e.target.value })}
                         className={formFieldClass}
                       />
+                      {staffErrors[index]?.username && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].username}</p>
+                      )}
                     </div>
                     <div>
                       <label className={formLabelClass}>
@@ -2135,6 +2232,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         onChange={(e) => updateStaffRow(index, { email: e.target.value })}
                         className={formFieldClass}
                       />
+                      {staffErrors[index]?.email && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].email}</p>
+                      )}
                     </div>
                     <div>
   <label className={formLabelClass}>
@@ -2163,6 +2263,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
       )}
     </button>
   </div>
+    {staffErrors[index]?.password && (
+      <p className="mt-2 text-sm text-red-600">{staffErrors[index].password}</p>
+    )}
 </div>
                     <div>
                       <label className={formLabelClass}>
@@ -2173,6 +2276,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         onChange={(e) => updateStaffRow(index, { phone: e.target.value })}
                         className={formFieldClass}
                       />
+                      {staffErrors[index]?.phone && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].phone}</p>
+                      )}
                     </div>
                     <div>
                       <label className={formLabelClass}>
@@ -2194,6 +2300,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                           </option>
                         ))}
                       </select>
+                      {staffErrors[index]?.responsibility_id && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].responsibility_id}</p>
+                      )}
                     </div>
                     <div>
                       <label className={formLabelClass}>
@@ -2223,6 +2332,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                           </option>
                         ))}
                       </select>
+                      {staffErrors[index]?.location_id && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].location_id}</p>
+                      )}
                     </div>
                     <div>
                       <label className={formLabelClass}>
@@ -2247,6 +2359,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                             </option>
                           ))}
                       </select>
+                      {staffErrors[index]?.warehouse_id && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].warehouse_id}</p>
+                      )}
                     </div>
                     
                   </div>

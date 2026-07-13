@@ -9,7 +9,8 @@ import { apiFetch } from "@/lib/apiFetch";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import { usePagination } from "@/hooks/usePagination";
 import type { ProductLookupItem } from "@/lib/product-lookup";
-
+import { useConfirm } from "@/hooks/useConfirm";
+import { useNotify } from "@/hooks/useNotify";
 type WarehouseOption = { id: number; name: string };
 type LocatorOption = { id: number; locator_name: string; warehouse_id: number };
 
@@ -62,6 +63,8 @@ const ProductLookupModal = dynamic(
 
 export default function OpeningStockPage() {
   const { company } = useTenant();
+  const confirm = useConfirm();
+  const notify = useNotify();
   const [form, setForm] = useState<OpeningStockForm>(initialForm());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
@@ -318,7 +321,7 @@ export default function OpeningStockPage() {
       await loadDocNo();
       await loadList();
     } catch (error: any) {
-      alert(error.message || "Save failed");
+      notify(error.message || "Save failed", {severity:"error"});
     } finally {
       setSaving(false);
     }

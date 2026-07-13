@@ -10,6 +10,8 @@ const TEMPLATE_COLUMNS = [
   { header: "Material", key: "material", width: 24 },
   { header: "UOM", key: "uom", width: 16 },
   { header: "Source", key: "source", width: 16 },
+  { header: "Gender*", key: "gender", width: 16 },
+  { header: "Fitting*", key: "fitting", width: 16 },
   { header: "HSN Code*", key: "hsn_code", width: 16 },
   { header: "Weight", key: "weight", width: 14 },
   { header: "Length", key: "length", width: 14 },
@@ -17,8 +19,6 @@ const TEMPLATE_COLUMNS = [
   { header: "Height", key: "height", width: 14 },
   { header: "Color*", key: "color", width: 16 },
   { header: "Size*", key: "size", width: 16 },
-  { header: "Fitting*", key: "fitting", width: 16 },
-  { header: "Gender*", key: "gender", width: 16 },
   { header: "Parent SKU (or SKU)", key: "parent_sku", width: 22 },
   { header: "SKU (or Parent SKU)", key: "sku", width: 22 },
   { header: "Low Stock Threshold", key: "low_stock_threshold", width: 22 },
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   const client = await pool.connect();
   try {
     const { schema } = await getTenantSchema(req);
-    const [categoriesRes, materialsRes, uomRes] = await Promise.all([
+    const [categoriesRes, materialsRes, uomRes, colorsRes, fittingsRes] = await Promise.all([
       client.query(
         `
           SELECT id, path_string, category_name
@@ -52,6 +52,21 @@ export async function GET(req: NextRequest) {
           ORDER BY uom_name ASC
         `
       ),
+      client.query(
+        `
+          SELECT id, color_name
+          FROM "${schema}".product_colors
+          ORDER BY color_name ASC
+        `
+      ),
+      client.query(
+        `
+          SELECT id, fitting_name
+          FROM "${schema}".product_fittings
+          ORDER BY fitting_name ASC
+        `
+      ),
+
     ]);
 
     const categories = categoriesRes.rows
@@ -73,6 +88,9 @@ export async function GET(req: NextRequest) {
         return code && name ? `${name}` : name;
       })
       .filter(Boolean);
+    const colors = colorsRes.rows.map((r: any) => r.color_name);
+    const fittings = fittingsRes.rows.map((r: any) => r.fitting_name);
+    const genders = ["Male", "Female", "Transgender", "Not Specified"]
     const sources = ["own", "vendor"];
 
     const workbook = new ExcelJS.Workbook();
@@ -106,6 +124,9 @@ export async function GET(req: NextRequest) {
     listSheet.getColumn(2).values = ["Material", ...materials];
     listSheet.getColumn(3).values = ["UOM", ...uoms];
     listSheet.getColumn(4).values = ["Source", ...sources];
+    listSheet.getColumn(5).values = ["Color", ...colors];
+    listSheet.getColumn(6).values = ["Fitting", ...fittings];
+    listSheet.getColumn(7).values = ["Gender", ...genders];
     listSheet.state = "veryHidden";
 
     const maxRows = 500;
@@ -113,7 +134,12 @@ export async function GET(req: NextRequest) {
     const materialRange = `Lists!$B$2:$B$${Math.max(materials.length + 1, 2)}`;
     const uomRange = `Lists!$C$2:$C$${Math.max(uoms.length + 1, 2)}`;
     const sourceRange = `Lists!$D$2:$D$${Math.max(sources.length + 1, 2)}`;
+    // ... (Keep your existing range definitions)
+    const colorRange = `Lists!$E$2:$E$${Math.max(colors.length + 1, 2)}`;
+    const fittingRange = `Lists!$F$2:$F$${Math.max(fittings.length + 1, 2)}`;
+    const genderRange = `Lists!$G$2:$G$${Math.max(genders.length + 1, 2)}`;
 
+    // 1. Category (Col C)
     (worksheet as any).dataValidations.add(`C2:C${maxRows}`, {
       type: "list",
       allowBlank: true,
@@ -123,6 +149,8 @@ export async function GET(req: NextRequest) {
       error: "Choose a category from the list or leave it blank.",
       formulae: [categoryRange],
     });
+
+    // 2. Material (Col D)
     (worksheet as any).dataValidations.add(`D2:D${maxRows}`, {
       type: "list",
       allowBlank: true,
@@ -132,6 +160,8 @@ export async function GET(req: NextRequest) {
       error: "Choose a material from the list or leave it blank.",
       formulae: [materialRange],
     });
+
+    // 3. UOM (Col E)
     (worksheet as any).dataValidations.add(`E2:E${maxRows}`, {
       type: "list",
       allowBlank: true,
@@ -141,6 +171,8 @@ export async function GET(req: NextRequest) {
       error: "Choose a UOM from the list or leave it blank.",
       formulae: [uomRange],
     });
+
+    // 4. Source (Col F)
     (worksheet as any).dataValidations.add(`F2:F${maxRows}`, {
       type: "list",
       allowBlank: true,
@@ -149,6 +181,39 @@ export async function GET(req: NextRequest) {
       errorTitle: "Invalid source",
       error: "Choose own/vendor from the list or leave it blank.",
       formulae: [sourceRange],
+    });
+
+    // 5. Gender (Col G)
+    (worksheet as any).dataValidations.add(`G2:G${maxRows}`, {
+      type: "list",
+      allowBlank: true,
+      showErrorMessage: true,
+      errorStyle: "error",
+      errorTitle: "Invalid gender",
+      error: "Choose a gender from the list.",
+      formulae: [genderRange],
+    });
+
+    // 6. Fitting (Col H) - FIXED: Added missing validation block
+    (worksheet as any).dataValidations.add(`H2:H${maxRows}`, {
+      type: "list",
+      allowBlank: true,
+      showErrorMessage: true,
+      errorStyle: "error",
+      errorTitle: "Invalid fitting",
+      error: "Choose a fitting from the list.",
+      formulae: [fittingRange],
+    });
+
+    // 7. Color (Col N) - FIXED: Added missing validation block
+    (worksheet as any).dataValidations.add(`N2:N${maxRows}`, {
+      type: "list",
+      allowBlank: true,
+      showErrorMessage: true,
+      errorStyle: "error",
+      errorTitle: "Invalid color",
+      error: "Choose a color from the list.",
+      formulae: [colorRange],
     });
 
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());

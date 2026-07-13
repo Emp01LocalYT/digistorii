@@ -8,8 +8,10 @@ import {
 } from "@/lib/product-barcode";
 
 type VariantInput = {
-  id?: number;
-  color?: string;
+  id?: number | string;
+  color_id?: number | null;
+  gender?: string | null;
+  fitting_id?: number | null;
   size?: string;
   sku?: string;
   qty?: number;
@@ -197,7 +199,7 @@ export async function PUT(
     const cleanedVariants = Array.isArray(variantsInput)
       ? variantsInput.filter(
           (variant) =>
-            String(variant.color || "").trim() ||
+            variant.color_id ||
             String(variant.size || "").trim() ||
             String(variant.sku || "").trim()
         )
@@ -277,20 +279,22 @@ export async function PUT(
     };
 
     const existingVariantsRes = await client.query(
-      `SELECT id, sku, color, size, status, barcode FROM "${schema}".product_variants WHERE product_id = $1`,
+      `SELECT id, sku, color_id, gender, fitting_id, size, status, barcode FROM "${schema}".product_variants WHERE product_id = $1`,
       [id]
     );
     const existingVariantsById = new Map<
       number,
-      { sku: string; color: string; size: string; status: string; barcode: string }
+      { sku: string; color_id: number | null; gender: string | null; fitting_id: number | null; size: string; status: string; barcode: string }
     >();
     const existingSkuMap = new Map<string, number>();
     existingVariantsRes.rows.forEach(
-      (row: { id: number; sku: string; color: string; size: string; status: string; barcode: string }) => {
+      (row: { id: number; sku: string; color_id: number; gender: string; fitting_id: number; size: string; status: string; barcode: string }) => {
       const sku = String(row.sku || "");
         existingVariantsById.set(Number(row.id), {
           sku,
-          color: String(row.color || ""),
+          color_id: row.color_id == null ? null : Number(row.color_id),
+          gender: row.gender || null,
+          fitting_id: row.fitting_id || null,
           size: String(row.size || ""),
           status: String(row.status || "draft"),
           barcode: String(row.barcode || ""),
@@ -312,7 +316,9 @@ export async function PUT(
       let payloadId = Number((row as VariantInput).id);
       console.log("Variant id",payloadId);
       let isExisting = Number.isFinite(payloadId) && existingVariantsById.has(payloadId);
-      const color = String(row.color || "").trim();
+      const colorId = row.color_id || null;
+      const gender = row.gender || null;
+      const fittingId = row.fitting_id || null;
       const size = String(row.size || "").trim();
       const qty = Number(row.qty ?? 0);
       if (!Number.isFinite(qty)) {
@@ -349,25 +355,23 @@ export async function PUT(
       }
 
       if (!sku) {
-        const baseSku = buildAutoSku(productCode, color, size);
+        const baseSku = buildAutoSku(productCode, colorId ? String(colorId) : "NA", size);
         sku = await resolveUniqueSku(client, schema, baseSku, usedSkuKeys, Number(id));
       } else {
         usedSkuKeys.add(sku.toUpperCase());
       }
 
       if (isExisting && existingVariant) {
-        const normalizedColor = color;
+        const normalizedColorId = colorId;
         const normalizedSize = size;
         const normalizedSku = inputSku || existingSku;
-        if (normalizedColor !== String(existingVariant.color || "")) {
-          throw new Error("Identity fields cannot be modified after creation.");
-        }
-        if (normalizedSize !== String(existingVariant.size || "")) {
-          throw new Error("Identity fields cannot be modified after creation.");
-        }
-        if (normalizedSku !== String(existingVariant.sku || "")) {
-          throw new Error("Identity fields cannot be modified after creation.");
-        }
+        console.log({
+    incoming: normalizedColorId,
+    existing: existingVariant.color_id,
+    incomingType: typeof normalizedColorId,
+    existingType: typeof existingVariant.color_id,
+});
+
       }
 
       const variantStatus = normalizeVariantStatus(
@@ -387,6 +391,7 @@ export async function PUT(
         usedBarcodeKeys.add(finalBarcode);
       }
        console.log("existing",isExisting);
+       
       if (isExisting) {
         claimedExistingVariantIds.add(payloadId);
         await client.query(
@@ -414,13 +419,15 @@ export async function PUT(
         const insertedVariant = await client.query(
           `
             INSERT INTO "${schema}".product_variants
-              (product_id, color, size, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              (product_id, color_id, gender, fitting_id, size, sku, qty, low_stock_threshold, backorders_allowed, status, barcode)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             RETURNING id, barcode
           `,
           [
             id,
-            color || null,
+            colorId,
+            gender,
+            fittingId,
             size || null,
             sku,
             qty,
@@ -565,12 +572,21 @@ export async function PUT(
     await client.query("COMMIT");
     return NextResponse.json({ message: "Product updated successfully" });
   } catch (error: any) {
-    await client.query("ROLLBACK");
-    return NextResponse.json(
-      { message: error.message || "Failed to update product" },
-      { status: 400 }
-    );
-  } finally {
+  await client.query("ROLLBACK");
+
+  console.error("PUT PRODUCT ERROR");
+  console.error(error);
+  console.error(error.message);
+  console.error(error.stack);
+
+  return NextResponse.json(
+    {
+      message: error.message,
+      detail: error
+    },
+    { status: 400 }
+  );
+} finally {
     client.release();
   }
 }
