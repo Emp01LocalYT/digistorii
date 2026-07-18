@@ -1,6 +1,7 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 import Select from "react-select";
 import type {
   Currency,
@@ -178,9 +179,20 @@ export default function PurchaseHeaderForm({
           <div> <label className="text-sm font-semibold mb-1 block">Reference No</label>
             <input
               value={header.ref_no || ""}
-              onChange={(e) => setHeader({ ...header, ref_no: e.target.value })}
-              className="border p-2 rounded w-full"
+              onChange={(e) => {
+                const val = e.target.value;
+                setHeader({ ...header, ref_no: val });
+                const error = getRuleValidationError("alphanumeric-spaces-hyphens", val);
+                setErrors((prev: any) => ({
+                  ...prev,
+                  ref_no: error || "",
+                }));
+              }}
+              className={`border p-2 rounded w-full ${errors.ref_no ? "border-red-500" : ""}`}
             />
+            {errors.ref_no && (
+              <p className="text-red-500 text-sm mt-1">{errors.ref_no}</p>
+            )}
           </div>
 
           <div>
@@ -442,10 +454,21 @@ export default function PurchaseHeaderForm({
               <textarea
                 value={header.notes || ''}
                 disabled={!isEditable}
-                onChange={(e) => setHeader({ ...header, notes: e.target.value ?? '' })}
-                className="border p-2 rounded w-full"
+                onChange={(e) => {
+                  const val = e.target.value ?? '';
+                  setHeader({ ...header, notes: val });
+                  const error = getRuleValidationError("alphanumeric-spaces-hyphens", val);
+                  setErrors((prev: any) => ({
+                    ...prev,
+                    notes: error || "",
+                  }));
+                }}
+                className={`border p-2 rounded w-full ${errors.notes ? "border-red-500" : ""}`}
                 rows={3}
               />
+              {errors.notes && (
+                <p className="text-red-500 text-sm mt-1">{errors.notes}</p>
+              )}
             </div>
 
             <div>
@@ -453,6 +476,7 @@ export default function PurchaseHeaderForm({
               <input
                 type="file"
                 disabled={!isEditable}
+                accept="image/*,.pdf,.xls,.xlsx,.csv"
                 onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)}
                 className="border p-2 rounded w-full"
               />

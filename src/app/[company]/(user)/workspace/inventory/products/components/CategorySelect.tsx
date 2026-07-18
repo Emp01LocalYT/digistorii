@@ -69,6 +69,7 @@ export default function CategorySelect({
       options={options}
       disabled={disabled}
       optionFilterProp="label"
+      getPopupContainer={(triggerNode) => triggerNode.parentNode}
       optionRender={(option) => {
         const level = Number(option.data.level || 1);
         const prefix = level > 1 ? `${"-".repeat(level - 1)} ` : "";

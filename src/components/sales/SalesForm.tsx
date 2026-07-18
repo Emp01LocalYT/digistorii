@@ -224,7 +224,7 @@ export default function SalesForm() {
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const paymentAmountRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const barcodeHandlerRef = useRef<(value: string) => void>(() => {});
+  const barcodeHandlerRef = useRef<(value: string) => void>(() => { });
   const printRef = useRef<HTMLDivElement>(null);
   const thermalRef = useRef<HTMLDivElement>(null);
   const salesIndexRef = useRef<SalesIndexRow[] | null>(null);
@@ -464,8 +464,8 @@ export default function SalesForm() {
     [billingTotals.total, totalPaidAmount]
   );
   const balanceAmountstore = useMemo(
-    () => roundMoney(Math.max(Number (totalPaidAmount)- (billingTotals.total || 0), 0)),
-    [ totalPaidAmount,billingTotals.total,]
+    () => roundMoney(Math.max(Number(totalPaidAmount) - (billingTotals.total || 0), 0)),
+    [totalPaidAmount, billingTotals.total,]
   );
   const resolvedActiveLineIndex = useMemo(() => {
     if (details.length === 0) return null;
@@ -653,11 +653,11 @@ export default function SalesForm() {
         const discount = discountMap.get(Number(p.id));
         const applied = discount
           ? {
-              ...newRow,
-              discount_type: discount.discount_type,
-              discount_value: Number(discount.value || 0),
-              discount_auto: true,
-            }
+            ...newRow,
+            discount_type: discount.discount_type,
+            discount_value: Number(discount.value || 0),
+            discount_auto: true,
+          }
           : newRow;
         updated.push({
           ...applied,
@@ -708,41 +708,41 @@ export default function SalesForm() {
         }
 
         const uomObj = uomById.get(String(match.uom));
-          const pricing = pricingForVariant[String(match.id)] || {};
-          const newRow: ProductRow = {
-            product_id: String(match.id),
-            product_code: match.product_code,
-            product_name: match.product_name,
-            description: match.description,
-            uom: String(match.uom || ""),
-            uom_code: uomObj?.uom_code || "",
-            uom_name: uomObj?.uom_name || "",
-            hsn_no: match.hsn_code,
-            rate: Number(pricing.unit_price || 0),
-            qty: 1,
-            amount: 0,
-            discount: 0,
-            discount_value: 0,
+        const pricing = pricingForVariant[String(match.id)] || {};
+        const newRow: ProductRow = {
+          product_id: String(match.id),
+          product_code: match.product_code,
+          product_name: match.product_name,
+          description: match.description,
+          uom: String(match.uom || ""),
+          uom_code: uomObj?.uom_code || "",
+          uom_name: uomObj?.uom_name || "",
+          hsn_no: match.hsn_code,
+          rate: Number(pricing.unit_price || 0),
+          qty: 1,
+          amount: 0,
+          discount: 0,
+          discount_value: 0,
+          discount_auto: true,
+          tax_percent: Number(pricing.tax_percent || 0),
+          tax_amount: 0,
+          line_total: 0,
+          tax_id: pricing.tax_id ?? null,
+          tax_name: pricing.tax_name || "",
+        };
+        const discountForVariant = discountMap.get(Number(match.id));
+        const applied = discountForVariant
+          ? {
+            ...newRow,
+            discount_type: discountForVariant.discount_type,
+            discount_value: Number(discountForVariant.value || 0),
             discount_auto: true,
-            tax_percent: Number(pricing.tax_percent || 0),
-            tax_amount: 0,
-            line_total: 0,
-            tax_id: pricing.tax_id ?? null,
-            tax_name: pricing.tax_name || "",
-          };
-          const discountForVariant = discountMap.get(Number(match.id));
-          const applied = discountForVariant
-            ? {
-                ...newRow,
-                discount_type: discountForVariant.discount_type,
-                discount_value: Number(discountForVariant.value || 0),
-                discount_auto: true,
-              }
-            : newRow;
-          return [...updated, {
-            ...applied,
-            ...applyBillingCalculation(applied),
-          } as SalesDetail];
+          }
+          : newRow;
+        return [...updated, {
+          ...applied,
+          ...applyBillingCalculation(applied),
+        } as SalesDetail];
       });
 
       setErrors((prev) => ({
@@ -815,7 +815,7 @@ export default function SalesForm() {
           const detectedType = rawDetails.find((row: any) => row?.discount_type);
           const nextMode =
             detectedType?.discount_type === "percent" ||
-            detectedType?.discount_type === "percentage"
+              detectedType?.discount_type === "percentage"
               ? "percent"
               : detectedType?.discount_type === "amount" ||
                 detectedType?.discount_type === "fixed"
@@ -846,13 +846,13 @@ export default function SalesForm() {
           setDetails(fetchedDetails);
           const fetchedPayments = Array.isArray(data.data.payments)
             ? data.data.payments.map((payment: any) => ({
-                id: Number(payment.id),
-                payment_mode_id: Number(payment.payment_mode_id),
-                payment_mode_name: String(payment.payment_mode_name || ""),
-                amount: Number(payment.amount || 0),
-                location_id: payment.location_id != null ? Number(payment.location_id) : null,
-                warehouse_id: payment.warehouse_id != null ? Number(payment.warehouse_id) : null,
-              }))
+              id: Number(payment.id),
+              payment_mode_id: Number(payment.payment_mode_id),
+              payment_mode_name: String(payment.payment_mode_name || ""),
+              amount: Number(payment.amount || 0),
+              location_id: payment.location_id != null ? Number(payment.location_id) : null,
+              warehouse_id: payment.warehouse_id != null ? Number(payment.warehouse_id) : null,
+            }))
             : [];
           setPayments(fetchedPayments);
         }
@@ -926,7 +926,7 @@ export default function SalesForm() {
         });
         const data = await res.json();
         console.log("HTTP STATUS", res.status);
-console.log("RESPONSE JSON", data);
+        console.log("RESPONSE JSON", data);
         const payload = data?.data || {};
         console.log("FULL RESPONSE", data);
         console.log("PAYLOAD", payload);
@@ -951,7 +951,7 @@ console.log("RESPONSE JSON", data);
             payment_mode_name: getPaymentModeName(mode),
           }));
 
-       
+
 
         updateMasterData({
           uoms: Array.isArray(payload.uoms) ? payload.uoms : [],
@@ -979,7 +979,7 @@ console.log("RESPONSE JSON", data);
 
     loadMasterData();
   }, [company, isEdit, setHeader, syncCustomers, updateMasterData, updateUiState]);
- 
+
   useEffect(() => {
     if (isEdit || header.sales_no) return;
 
@@ -1272,12 +1272,12 @@ console.log("RESPONSE JSON", data);
         prev.map((payment) =>
           payment.payment_mode_id === paymentModeId
             ? {
-                ...payment,
-                amount:
-                  parsedValue === "" || Number.isFinite(parsedValue)
-                    ? parsedValue
-                    : payment.amount,
-              }
+              ...payment,
+              amount:
+                parsedValue === "" || Number.isFinite(parsedValue)
+                  ? parsedValue
+                  : payment.amount,
+            }
             : payment
         )
       );
@@ -1318,6 +1318,7 @@ console.log("RESPONSE JSON", data);
     if (!header.sales_no.trim()) newErrors.sales_no = "Bill No required";
     if (!header.customer_id) newErrors.customer_id = "Customer required";
     if (!header.sales_date) newErrors.sales_date = "Bill date required";
+
     if (header.total_amount <= 0)
       newErrors.total_amount = "Total amount must be greater than 0";
 
@@ -1422,7 +1423,7 @@ console.log("RESPONSE JSON", data);
       const stockCheckRes = await fetch("/api/pricing", {
         method: "PATCH",
         headers: {
-          "Content-Type": "application/json", 
+          "Content-Type": "application/json",
           "x-tenant": company,
           "x-warehouse-id": String(activeWarehouseId),
         },
@@ -1819,7 +1820,7 @@ console.log("RESPONSE JSON", data);
                 </span>
                 {/* <span>Same scanned item increases quantity automatically.</span> */}
               </div>
-           
+
               <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2">
                 <div className="text-sm font-semibold text-slate-800">Billing Items</div>
                 <div className="text-xs text-slate-500">
@@ -1894,8 +1895,8 @@ console.log("RESPONSE JSON", data);
                       <span className="truncate">
                         {payments.length
                           ? payments
-                              .map((payment) => payment.payment_mode_name || "Payment")
-                              .join(", ")
+                            .map((payment) => payment.payment_mode_name || "Payment")
+                            .join(", ")
                           : "Select payment mode"}
                       </span>
                       <span className="text-xs text-slate-400">{paymentPanelOpen ? "Close" : "Open"}</span>
@@ -1945,11 +1946,10 @@ console.log("RESPONSE JSON", data);
                               updatePaymentAmount(payment.payment_mode_id, e.target.value)
                             }
                             onKeyDown={(e) => handlePaymentAmountKeyDown(index, e)}
-                            className={`h-10 w-full rounded-lg border px-3 text-sm outline-none ${
-                              errors[`payment_mode_${payment.payment_mode_id}`]
+                            className={`h-10 w-full rounded-lg border px-3 text-sm outline-none ${errors[`payment_mode_${payment.payment_mode_id}`]
                                 ? "border-red-500 focus:ring-2 focus:ring-red-100"
                                 : "border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                            }`}
+                              }`}
                           />
                           {errors[`payment_mode_${payment.payment_mode_id}`] ? (
                             <p className="mt-1 text-xs text-red-500">

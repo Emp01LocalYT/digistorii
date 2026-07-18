@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 import { createPortal } from "react-dom";
 import { useTenant } from "@/context/TenantContext";
 import { useUser } from "@/context/CurrentUserContext";
@@ -749,6 +750,17 @@ export default function PurchasePage() {
     if (!header.currency) {
       newErrors.currency = "Currency is required";
     }
+
+    const refNoError = getRuleValidationError("alphanumeric-spaces-hyphens", header.ref_no || "");
+    if (refNoError) {
+      newErrors.ref_no = refNoError;
+    }
+
+    const notesError = getRuleValidationError("alphanumeric-spaces-hyphens", header.notes || "");
+    if (notesError) {
+      newErrors.notes = notesError;
+    }
+
     if (totalsData.grandTotal <= 0) newErrors.total_amount = "Total amount must be greater than 0";
 
     if (details.length === 0) {

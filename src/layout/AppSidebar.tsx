@@ -356,7 +356,7 @@ const AppSidebar: React.FC = () => {
       </div> */}
       <div
         className="py-8 flex items-center gap-3">
-        <Link href={`/${company || ""}/workspace/dashboard`} className="flex items-center gap-3">
+        <Link href={`/${company || ""}/workspace`} className="flex items-center gap-3">
           {/* Icon */}
           <div className="bg-blue-600 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold text-lg">
             {company.charAt(0).toUpperCase()}

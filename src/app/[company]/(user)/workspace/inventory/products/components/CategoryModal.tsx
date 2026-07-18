@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Input, Modal, Select } from "antd";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 type Option = { value: string; label: string };
 
@@ -36,6 +37,12 @@ export default function CategoryModal({
     if (!company) return;
     if (!categoryFormName.trim()) {
       setCategoryFormError("Category name is required");
+      return;
+    }
+
+    const nameError = getRuleValidationError("alphanumeric-spaces-hyphens", categoryFormName);
+    if (nameError) {
+      setCategoryFormError(nameError);
       return;
     }
     setCategorySaving(true);

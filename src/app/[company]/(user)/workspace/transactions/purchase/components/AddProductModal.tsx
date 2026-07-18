@@ -38,7 +38,7 @@ export default function AddProductModal({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100000] bg-black/40 backdrop-blur-sm flex items-center justify-center">
+    <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex items-center justify-center">
       <div className="w-[1100px] max-w-[95vw] h-[90vh] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-6 py-3 border-b bg-gray-50">
           <h2 className="text-lg font-semibold text-gray-700">Add New Product</h2>

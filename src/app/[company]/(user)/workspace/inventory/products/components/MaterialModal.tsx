@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Input, Modal } from "antd";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 type MaterialModalProps = {
   open: boolean;
@@ -28,6 +29,18 @@ export default function MaterialModal({ open, onClose, onSaved }: MaterialModalP
     if (!company) return;
     if (!materialFormCode.trim() || !materialFormName.trim()) {
       setMaterialFormError("Material code and name are required");
+      return;
+    }
+
+    const codeError = getRuleValidationError("alphanumeric-spaces-hyphens", materialFormCode);
+    if (codeError) {
+      setMaterialFormError(codeError);
+      return;
+    }
+
+    const nameError = getRuleValidationError("alphanumeric-spaces-hyphens", materialFormName);
+    if (nameError) {
+      setMaterialFormError(nameError);
       return;
     }
     setMaterialSaving(true);
@@ -63,7 +76,7 @@ export default function MaterialModal({ open, onClose, onSaved }: MaterialModalP
       }}
       footer={null}
       destroyOnHidden
-      zIndex={1000}
+      zIndex={1500}
     >
       <div className="space-y-4">
         <div>

@@ -37,7 +37,7 @@ type WizardProps = {
 
 type StaffMember = {
   name: string;
-  username:string;
+  username: string;
   email: string;
   phone: string;
   password: string;
@@ -373,7 +373,7 @@ export default function OnboardingWizard({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [stage, setStage] = useState<SetupStage>("ACCOUNT_CREATED");
+  // const [stage, setStage] = useState<SetupStage>("ACCOUNT_CREATED");
   const [currentStep, setCurrentStep] = useState(2);
   const persistedPlan = readPersistedSelectedPlan();
   const [selectedPlan, setSelectedPlan] = useState<PlanOption | null>(
@@ -402,9 +402,11 @@ export default function OnboardingWizard({
   const [modeInput, setModeInput] = useState("");
   const [staffUsers, setStaffUsers] = useState<StaffMember[]>([]);
   const [companyName, setCompanyName] = useState(company);
+  const [stage, setStage] = useState("PENDING");
   const [emailSent, setEmailSent] = useState(false);
   const [emailSending, setEmailSending] = useState(false);
-
+  const [emailSentButNotVerifiedYet, setEmailSentButNotVerifiedYet] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const planLimits = useMemo(() => {
     if (subscription) {
@@ -458,8 +460,8 @@ export default function OnboardingWizard({
     const suffix = rawValue.startsWith(stateCode)
       ? rawValue.slice(2)
       : /^\d{2}/.test(rawValue)
-      ? rawValue.slice(2)
-      : rawValue;
+        ? rawValue.slice(2)
+        : rawValue;
 
     return `${stateCode}${suffix}`;
   };
@@ -724,6 +726,7 @@ export default function OnboardingWizard({
     return () => window.clearTimeout(timer);
   }, [otpCooldown]);
 
+
   useEffect(() => {
     const defaultLocationId = locationOptions[0] ? String(locationOptions[0].id) : "";
     const defaultWarehouseId = warehouseOptions[0] ? String(warehouseOptions[0].id) : "";
@@ -850,6 +853,25 @@ export default function OnboardingWizard({
 
   const handleBusinessSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError("");
+    const noSymbolsRegex = /^[a-zA-Z0-9\s,.\-\/]*$/;
+    const validationErrors: Record<string, string> = {};
+
+    if (businessSettings.business_address && !noSymbolsRegex.test(businessSettings.business_address)) {
+      validationErrors.business_address = "Special characters/symbols are not allowed.";
+    }
+    // 1. Check Country "india-only" Rule
+    if (!businessSettings.country || businessSettings.country.toLowerCase() !== "india") {
+      validationErrors.country = "Service is currently only available in India.";
+    }
+
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return; // Stops execution and prevents saving
+    }
+    setErrors({});
+
     if (!businessSettings.currency) {
       setError("Currency is required.");
       return;
@@ -859,7 +881,7 @@ export default function OnboardingWizard({
       return;
     }
     if (gstAvailable && !isValidGstin(businessSettings.gst_number)) {
-      setError("GST number must match the format XXAAAAA9999AXXZ.");
+      setError("GST number must match the format 33AAAAA9999A1Z5");
       return;
     }
     if (gstAvailable && businessSettings.pan_number && !isValidPan(businessSettings.pan_number)) {
@@ -879,6 +901,45 @@ export default function OnboardingWizard({
 
   const handleWarehouseSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    const noSymbolsRegex = /^[a-zA-Z0-9\s,.\-\/]*$/;
+    const validationErrors: Record<string, string> = {};
+
+    if (warehouse.name && !noSymbolsRegex.test(warehouse.name)) {
+      validationErrors.name = "Symbols are not allowed in the warehouse name.";
+    }
+    if (warehouse.description && !noSymbolsRegex.test(warehouse.description)) {
+      validationErrors.description = "Symbols are not allowed in the description.";
+    }
+
+    const phoneRegex = /^\d{10}$/;
+    if (warehouse.landline && !phoneRegex.test(warehouse.landline)) {
+      validationErrors.landline = "Must be only 10 digit numbers";
+    }
+    if (warehouse.mobile_no && !phoneRegex.test(warehouse.mobile_no)) {
+      validationErrors.mobile_no = "Must be only 10 digit numbers";
+    }
+    if (warehouse.contact_person_mobile && !phoneRegex.test(warehouse.contact_person_mobile)) {
+      validationErrors.contact_person_mobile = "Must be only 10 digit numbers";
+    }
+
+    const faxInvalidRegex = /[^0-9\s()+-]/;
+    if (warehouse.fax && faxInvalidRegex.test(warehouse.fax)) {
+      validationErrors.fax = "Invalid characters. Only numbers, spaces, hyphens, (), and + are allowed.";
+    }
+
+    if (warehouse.contact_person_name && !noSymbolsRegex.test(warehouse.contact_person_name)) {
+      validationErrors.contact_person_name = "Symbols are not allowed.";
+    }
+
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+    setErrors({});
+
     const success = await saveStep("WAREHOUSE_SETUP", warehouse);
     if (success) {
       await loadWarehouseOptions();
@@ -887,6 +948,84 @@ export default function OnboardingWizard({
 
   const handleLocationSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setError("");
+
+    const noSymbolsRegex = /^[a-zA-Z0-9\s,.\-\/]*$/;
+    const validationErrors: Record<string, string> = {};
+
+
+
+    if (location.name && !noSymbolsRegex.test(location.name)) {
+      validationErrors.name = "Symbols are not allowed in the location name.";
+    }
+    if (location.description && !noSymbolsRegex.test(location.description)) {
+      validationErrors.description = "Symbols are not allowed in the description.";
+    }
+    if (location.registered_address_line_1 && !noSymbolsRegex.test(location.registered_address_line_1)) {
+      validationErrors.registered_address_line1 = "Symbols are not allowed.";
+    }
+    if (location.registered_address_line_2 && !noSymbolsRegex.test(location.registered_address_line_2)) {
+      validationErrors.registered_address_line2 = "Symbols are not allowed.";
+    }
+    if (location.bill_address_line_1 && !noSymbolsRegex.test(location.bill_address_line_1)) {
+      validationErrors.bill_address_line1 = "Symbols are not allowed.";
+    }
+    if (location.bill_address_line_2 && !noSymbolsRegex.test(location.bill_address_line_2)) {
+      validationErrors.bill_address_line2 = "Symbols are not allowed.";
+    }
+    if (location.ship_address_line_1 && !noSymbolsRegex.test(location.ship_address_line_1)) {
+      validationErrors.ship_address_line1 = "Symbols are not allowed.";
+    }
+    if (location.ship_address_line_2 && !noSymbolsRegex.test(location.ship_address_line_2)) {
+      validationErrors.ship_address_line2 = "Symbols are not allowed.";
+    }
+
+    // India-only country validation
+    if (location.registered_country && location.registered_country.toLowerCase() !== "india") {
+      validationErrors.registered_country = "Service is currently only available in India.";
+    }
+    if (location.bill_country && location.bill_country.toLowerCase() !== "india") {
+      validationErrors.bill_country = "Service is currently only available in India.";
+    }
+    if (location.ship_country && location.ship_country.toLowerCase() !== "india") {
+      validationErrors.ship_country = "Service is currently only available in India.";
+    }
+
+    const pincodeRegex = /^[0-9]{1,6}$/;
+    if (location.registered_pincode && !pincodeRegex.test(location.registered_pincode)) {
+      validationErrors.registered_pincode = "Pincode must be 6 digits.";
+    }
+    if (location.bill_pincode && !pincodeRegex.test(location.bill_pincode)) {
+      validationErrors.bill_pincode = "Pincode must be 6 digits.";
+    }
+    if (location.ship_pincode && !pincodeRegex.test(location.ship_pincode)) {
+      validationErrors.ship_pincode = "Pincode must be 6 digits.";
+    }
+
+    const phoneRegex = /^\d{10}$/;
+    if (location.landline && !phoneRegex.test(location.landline)) {
+      validationErrors.landline = "Must be only 10 digit numbers";
+    }
+    if (location.mobile && !phoneRegex.test(location.mobile)) {
+      validationErrors.mobile = "Must be only 10 digit numbers";
+    }
+
+    const faxInvalidRegex = /[^0-9\s()+-]/;
+    if (location.fax && faxInvalidRegex.test(location.fax)) {
+      validationErrors.fax = "Invalid characters. Only numbers, spaces, hyphens, (), and + are allowed.";
+    }
+
+    if (location.contact_person && !noSymbolsRegex.test(location.contact_person)) {
+      validationErrors.contact_person = "Symbols are not allowed.";
+    }
+
+
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return; // Stops execution and prevents saving
+    }
+    setErrors({});
+
     const success = await saveStep("LOCATION_SETUP", location);
     if (success) {
       setLocation(defaultLocation);
@@ -964,6 +1103,42 @@ export default function OnboardingWizard({
     await saveStep("PHONE_VERIFIED");
   };
 
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (emailSent && stage !== "LIVE") {
+      intervalId = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/onboarding?company=${company}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "x-tenant": company,
+            }
+          });
+          const contentType = res.headers.get("content-type");
+          if (!res.ok || !contentType || !contentType.includes("application/json")) {
+            console.warn("Polling endpoint did not return valid JSON. Retrying...");
+            return;
+          }
+
+          const data = await res.json();
+          const currentStage = data?.setup_stage || data?.data?.setup_stage;
+          if (currentStage === "LIVE") {
+            setStage("LIVE");
+            clearInterval(intervalId);
+          }
+        } catch (error) {
+          console.error("Failed status verification fetch:", error);
+        }
+      }, 3000);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [emailSent, stage, company]);
+
   const handleSendLaunchEmail = async () => {
     if (emailSending) return;
     setEmailSending(true);
@@ -983,6 +1158,7 @@ export default function OnboardingWizard({
         return;
       }
       setEmailSent(true);
+      setEmailSentButNotVerifiedYet(true);
     } catch {
       setError("Unable to send activation email.");
     } finally {
@@ -1110,14 +1286,14 @@ export default function OnboardingWizard({
       prev.map((member, i) => (i === index ? { ...member, ...patch } : member))
     );
   };
-const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
+  const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
   const togglePassword = (index: number) => {
-  setShowPasswords((prev) => {
-    const updated = [...prev];
-    updated[index] = !updated[index];
-    return updated;
-  });
-};
+    setShowPasswords((prev) => {
+      const updated = [...prev];
+      updated[index] = !updated[index];
+      return updated;
+    });
+  };
   const removeStaffRow = (index: number) => {
     setStaffUsers((prev) => prev.filter((_, i) => i !== index));
   };
@@ -1308,6 +1484,8 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
               <div>
                 <label className={formLabelClass}>Country <span className="text-red-500">*</span></label>
                 <select
+                  data-field="country"
+                  data-rules="india-only"
                   value={businessSettings.country}
                   onChange={(e) =>
                     setBusinessSettings((prev) => {
@@ -1332,10 +1510,12 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.country && <p className="text-red-500 text-sm mt-1">{errors.country}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>State<span className="text-red-500">*</span></label>
                 <select
+                  data-field="state"
                   value={businessSettings.state}
                   onChange={(e) =>
                     setBusinessSettings((prev) => {
@@ -1364,10 +1544,12 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>City<span className="text-red-500">*</span></label>
                 <select
+                  data-field="city"
                   value={businessSettings.city}
                   onChange={(e) =>
                     setBusinessSettings((prev) => ({ ...prev, city: e.target.value }))
@@ -1385,10 +1567,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.city && <p className="text-red-500 text-sm mt-1">{errors.city}</p>}
               </div>
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Business Address</label>
                 <textarea
+                  data-field="business_address"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   value={businessSettings.business_address}
                   onChange={(e) =>
                     setBusinessSettings((prev) => ({ ...prev, business_address: e.target.value }))
@@ -1397,12 +1583,15 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   placeholder="Optional"
                   className={formFieldClass}
                 />
+                {errors.business_address && <p className="text-red-500 text-sm mt-1">{errors.business_address}</p>}
               </div>
 
 
               <div>
                 <label className={formLabelClass}>Currency</label>
                 <select
+                  data-field="currency"
+                  data-optional="true"
                   value={businessSettings.currency}
                   onChange={(e) =>
                     setBusinessSettings((prev) => ({ ...prev, currency: e.target.value }))
@@ -1416,6 +1605,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
               </div>
               <div className="md:col-span-3 rounded-lg border border-gray-200 p-4 space-y-4">
                 <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -1448,18 +1638,20 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     <div>
                       <label className={formLabelClass}>GST Number</label>
                       <div
-                        className={`mt-2 flex overflow-hidden rounded-lg ${
-                          shouldShowBusinessGstError
-                            ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
-                            : isBusinessGstValid
+                        className={`mt-2 flex overflow-hidden rounded-lg ${shouldShowBusinessGstError
+                          ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
+                          : isBusinessGstValid
                             ? "border border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500"
                             : "border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500"
-                        }`}
+                          }`}
                       >
                         <span className="flex items-center bg-gray-100 px-3 text-sm font-semibold text-gray-700">
                           {businessGstStateCode || "--"}
                         </span>
                         <input
+                          data-field="gst_number"
+                          data-rules="code"
+                          data-optional="true"
                           type="text"
                           value={businessGstSuffix}
                           onChange={(e) => updateBusinessGst(e.target.value)}
@@ -1468,11 +1660,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                           placeholder="Enter remaining GSTIN characters"
                         />
                       </div>
-
+                      {errors.gst_number && <p className="text-red-500 text-sm mt-1">{errors.gst_number}</p>}
                     </div>
                     <div>
                       <label className={formLabelClass}>PAN Number</label>
                       <input
+                        data-field="pan_number"
+                        data-rules="code"
+                        data-optional="true"
                         type="text"
                         value={businessSettings.pan_number}
                         onChange={(e) => {
@@ -1485,6 +1680,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         maxLength={10}
                         className={formFieldClass}
                       />
+                      {errors.pan_number && <p className="text-red-500 text-sm mt-1">{errors.pan_number}</p>}
                     </div>
                   </div>
                 )}
@@ -1512,16 +1708,21 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   Store Location Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  data-field="name"
+                  data-rules="no-symbols"
                   type="text"
                   required
                   value={location.name}
                   onChange={(e) => updateLocation((prev) => ({ ...prev, name: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Type</label>
                 <select
+                  data-field="type"
+                  data-optional="true"
                   value={location.type}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1534,21 +1735,30 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   <option value="global">Global</option>
                   <option value="local">Local</option>
                 </select>
+                {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Inactive Date</label>
                 <input
+                  data-field="inactive_date"
+                  data-rules="date"
+                  data-optional="true"
                   type="date"
                   value={location.inactive_date}
+                  min={new Date().toISOString().split("T")[0]}
                   onChange={(e) =>
                     updateLocation((prev) => ({ ...prev, inactive_date: e.target.value }))
                   }
                   className={formFieldClass}
                 />
+                {errors.inactive_date && <p className="text-red-500 text-sm mt-1">{errors.inactive_date}</p>}
               </div>
               <div className="md:col-span-3">
                 <label className={formLabelClass}>Description</label>
                 <textarea
+                  data-field="description"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   value={location.description}
                   onChange={(e) =>
                     updateLocation((prev) => ({ ...prev, description: e.target.value }))
@@ -1556,6 +1766,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   placeholder="Optional"
                   className={formFieldClass}
                 />
+                {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
               </div>
               <div className="md:col-span-4">
                 <h3 className="text-base font-semibold text-gray-900">Registered Address</h3>
@@ -1563,6 +1774,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Address Line 1</label>
                 <input
+                  data-field="registered_address_line1"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={location.registered_address_line_1}
                   onChange={(e) =>
@@ -1573,10 +1787,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.registered_address_line1 && <p className="text-red-500 text-sm mt-1">{errors.registered_address_line1}</p>}
               </div>
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Address Line 2</label>
                 <input
+                  data-field="registered_address_line2"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={location.registered_address_line_2}
                   onChange={(e) =>
@@ -1587,10 +1805,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.registered_address_line2 && <p className="text-red-500 text-sm mt-1">{errors.registered_address_line2}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Country</label>
                 <select
+                  data-field="registered_country"
+                  data-optional="true"
                   value={location.registered_country}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1609,10 +1830,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.registered_country && <p className="text-red-500 text-sm mt-1">{errors.registered_country}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>State</label>
                 <select
+                  data-field="registered_state"
+                  data-optional="true"
                   value={location.registered_state}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1630,10 +1854,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.registered_state && <p className="text-red-500 text-sm mt-1">{errors.registered_state}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>City</label>
                 <select
+                  data-field="registered_city"
+                  data-optional="true"
                   value={location.registered_city}
                   onChange={(e) =>
                     updateLocation((prev) => ({ ...prev, registered_city: e.target.value }))
@@ -1650,10 +1877,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.registered_city && <p className="text-red-500 text-sm mt-1">{errors.registered_city}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Pincode</label>
                 <input
+                  data-field="registered_pincode"
+                  data-rules="numeric-string"
+                  data-optional="true"
                   type="text"
                   value={location.registered_pincode}
                   onChange={(e) =>
@@ -1661,6 +1892,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.registered_pincode && <p className="text-red-500 text-sm mt-1">{errors.registered_pincode}</p>}
               </div>
               <div className="md:col-span-4 rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center gap-2">
@@ -1685,6 +1917,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Address Line 1</label>
                 <input
+                  data-field="bill_address_line1"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={location.bill_address_line_1}
                   onChange={(e) =>
@@ -1692,10 +1927,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.bill_address_line1 && <p className="text-red-500 text-sm mt-1">{errors.bill_address_line1}</p>}
               </div>
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Address Line 2</label>
                 <input
+                  data-field="bill_address_line2"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={location.bill_address_line_2}
                   onChange={(e) =>
@@ -1703,10 +1942,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.bill_address_line2 && <p className="text-red-500 text-sm mt-1">{errors.bill_address_line2}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Country</label>
                 <select
+                  data-field="bill_country"
+                  data-optional="true"
                   value={location.bill_country}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1725,10 +1967,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.bill_country && <p className="text-red-500 text-sm mt-1">{errors.bill_country}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>State</label>
                 <select
+                  data-field="bill_state"
+                  data-optional="true"
                   value={location.bill_state}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1746,10 +1991,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.bill_state && <p className="text-red-500 text-sm mt-1">{errors.bill_state}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>City</label>
                 <select
+                  data-field="bill_city"
+                  data-optional="true"
                   value={location.bill_city}
                   onChange={(e) => updateLocation((prev) => ({ ...prev, bill_city: e.target.value }))}
                   className={formFieldClass}
@@ -1764,10 +2012,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.bill_city && <p className="text-red-500 text-sm mt-1">{errors.bill_city}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Pincode</label>
                 <input
+                  data-field="bill_pincode"
+                  data-rules="numeric-string"
+                  data-optional="true"
                   type="text"
                   value={location.bill_pincode}
                   onChange={(e) =>
@@ -1775,6 +2027,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.bill_pincode && <p className="text-red-500 text-sm mt-1">{errors.bill_pincode}</p>}
               </div>
               <div className="md:col-span-4 rounded-lg border border-gray-200 p-4">
                 <div className="flex items-center gap-2">
@@ -1799,6 +2052,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Address Line 1</label>
                 <input
+                  data-field="ship_address_line1"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={location.ship_address_line_1}
                   onChange={(e) =>
@@ -1806,10 +2062,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.ship_address_line1 && <p className="text-red-500 text-sm mt-1">{errors.ship_address_line1}</p>}
               </div>
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Address Line 2</label>
                 <input
+                  data-field="ship_address_line2"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={location.ship_address_line_2}
                   onChange={(e) =>
@@ -1817,10 +2077,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.ship_address_line2 && <p className="text-red-500 text-sm mt-1">{errors.ship_address_line2}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Country</label>
                 <select
+                  data-field="ship_country"
+                  data-optional="true"
                   value={location.ship_country}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1839,10 +2102,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.ship_country && <p className="text-red-500 text-sm mt-1">{errors.ship_country}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>State</label>
                 <select
+                  data-field="ship_state"
+                  data-optional="true"
                   value={location.ship_state}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1860,10 +2126,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.ship_state && <p className="text-red-500 text-sm mt-1">{errors.ship_state}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>City</label>
                 <select
+                  data-field="ship_city"
+                  data-optional="true"
                   value={location.ship_city}
                   onChange={(e) => updateLocation((prev) => ({ ...prev, ship_city: e.target.value }))}
                   className={formFieldClass}
@@ -1878,10 +2147,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.ship_city && <p className="text-red-500 text-sm mt-1">{errors.ship_city}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Pincode</label>
                 <input
+                  data-field="ship_pincode"
+                  data-rules="numeric-string"
+                  data-optional="true"
                   type="text"
                   value={location.ship_pincode}
                   onChange={(e) =>
@@ -1889,10 +2162,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.ship_pincode && <p className="text-red-500 text-sm mt-1">{errors.ship_pincode}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Landline</label>
                 <input
+                  data-field="landline"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={location.landline}
                   onChange={(e) =>
@@ -1900,37 +2177,53 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.landline && <p className="text-red-500 text-sm mt-1">{errors.landline}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Mobile</label>
                 <input
+                  data-field="mobile"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={location.mobile}
                   onChange={(e) => updateLocation((prev) => ({ ...prev, mobile: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.mobile && <p className="text-red-500 text-sm mt-1">{errors.mobile}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Fax</label>
                 <input
+                  data-field="fax"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={location.fax}
                   onChange={(e) => updateLocation((prev) => ({ ...prev, fax: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.fax && <p className="text-red-500 text-sm mt-1">{errors.fax}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Email</label>
                 <input
+                  data-field="email"
+                  data-rules="email"
+                  data-optional="true"
                   type="email"
                   value={location.email}
                   onChange={(e) => updateLocation((prev) => ({ ...prev, email: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Contact Person</label>
                 <input
+                  data-field="contact_person"
+                  data-rules="alpha-name"
+                  data-optional="true"
                   type="text"
                   value={location.contact_person}
                   onChange={(e) =>
@@ -1938,6 +2231,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.contact_person && <p className="text-red-500 text-sm mt-1">{errors.contact_person}</p>}
               </div>
               <div className="md:col-span-3 rounded-lg border border-gray-200 p-4">
                 <div className="grid md:grid-cols-1 gap-3">
@@ -1977,30 +2271,37 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   Warehouse Code <span className="text-red-500">*</span>
                 </label>
                 <input
+                  data-field="code"
+                  data-rules="code"
                   type="text"
                   required
                   value={warehouse.code}
                   onChange={(e) => setWarehouse((prev) => ({ ...prev, code: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.code && <p className="text-red-500 text-sm mt-1">{errors.code}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>
                   Warehouse Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  data-field="name"
+                  data-rules="no-symbols"
                   type="text"
                   required
                   value={warehouse.name}
                   onChange={(e) => setWarehouse((prev) => ({ ...prev, name: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>
                   Location <span className="text-red-500">*</span>
                 </label>
                 <select
+                  data-field="location_id"
                   value={warehouse.location_id}
                   onChange={(e) =>
                     setWarehouse((prev) => ({ ...prev, location_id: e.target.value }))
@@ -2015,10 +2316,13 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                     </option>
                   ))}
                 </select>
+                {errors.location_id && <p className="text-red-500 text-sm mt-1">{errors.location_id}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Type</label>
                 <select
+                  data-field="type"
+                  data-optional="true"
                   value={warehouse.type}
                   onChange={(e) =>
                     setWarehouse((prev) => ({
@@ -2031,6 +2335,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   <option value="global">Global</option>
                   <option value="local">Local</option>
                 </select>
+                {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
               </div>
               {/* <div className="md:col-span-2">
                 <label className={formLabelClass}>Address</label>
@@ -2044,6 +2349,9 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
               <div>
                 <label className={formLabelClass}>Effective From</label>
                 <input
+                  data-field="effective_from"
+                  data-rules="date"
+                  data-optional="true"
                   type="date"
                   value={warehouse.effective_from}
                   onChange={(e) =>
@@ -2051,21 +2359,30 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.effective_from && <p className="text-red-500 text-sm mt-1">{errors.effective_from}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Effective To</label>
                 <input
+                  data-field="effective_to"
+                  data-rules="date"
+                  data-optional="true"
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={warehouse.effective_to}
                   onChange={(e) =>
                     setWarehouse((prev) => ({ ...prev, effective_to: e.target.value }))
                   }
                   className={formFieldClass}
                 />
+                {errors.effective_to && <p className="text-red-500 text-sm mt-1">{errors.effective_to}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Description</label>
                 <input
+                  data-field="description"
+                  data-rules="no-symbols"
+                  data-optional="true"
                   type="text"
                   value={warehouse.description}
                   onChange={(e) =>
@@ -2073,10 +2390,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Landline</label>
                 <input
+                  data-field="landline"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={warehouse.landline}
                   onChange={(e) =>
@@ -2084,10 +2405,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.landline && <p className="text-red-500 text-sm mt-1">{errors.landline}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Mobile</label>
                 <input
+                  data-field="mobile_no"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={warehouse.mobile_no}
                   onChange={(e) =>
@@ -2095,28 +2420,40 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.mobile_no && <p className="text-red-500 text-sm mt-1">{errors.mobile_no}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Fax</label>
                 <input
+                  data-field="fax"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={warehouse.fax}
                   onChange={(e) => setWarehouse((prev) => ({ ...prev, fax: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.fax && <p className="text-red-500 text-sm mt-1">{errors.fax}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Email</label>
                 <input
+                  data-field="email"
+                  data-rules="email"
+                  data-optional="true"
                   type="email"
                   value={warehouse.email}
                   onChange={(e) => setWarehouse((prev) => ({ ...prev, email: e.target.value }))}
                   className={formFieldClass}
                 />
+                {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Contact Person Name</label>
                 <input
+                  data-field="contact_person_name"
+                  data-rules="alpha-name"
+                  data-optional="true"
                   type="text"
                   value={warehouse.contact_person_name}
                   onChange={(e) =>
@@ -2124,10 +2461,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.contact_person_name && <p className="text-red-500 text-sm mt-1">{errors.contact_person_name}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Contact Person Mobile</label>
                 <input
+                  data-field="contact_person_mobile"
+                  data-rules="phone"
+                  data-optional="true"
                   type="text"
                   value={warehouse.contact_person_mobile}
                   onChange={(e) =>
@@ -2135,10 +2476,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.contact_person_mobile && <p className="text-red-500 text-sm mt-1">{errors.contact_person_mobile}</p>}
               </div>
               <div>
                 <label className={formLabelClass}>Contact Person Email</label>
                 <input
+                  data-field="contact_person_email"
+                  data-rules="email"
+                  data-optional="true"
                   type="email"
                   value={warehouse.contact_person_email}
                   onChange={(e) =>
@@ -2146,8 +2491,8 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   }
                   className={formFieldClass}
                 />
+                {errors.contact_person_email && <p className="text-red-500 text-sm mt-1">{errors.contact_person_email}</p>}
               </div>
-
               <div className="md:col-span-3">
                 <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                   <input
@@ -2161,6 +2506,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                   Mark as default warehouse
                 </label>
               </div>
+
             </div>
             <button
               type="submit"
@@ -2187,27 +2533,29 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
               {staffUsers.map((user, index) => (
 
                 <div key={index} className="relative rounded-xl border border-gray-200 p-5 bg-gray-50/50">
-                      <button 
-                        type="button" 
-                        onClick={() => removeStaffRow(index)} 
-                        className="absolute top-4 right-4 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 z-10"
-                        title="Remove Staff"
-                      >
-                        <TrashIcon className="w-5 h-5" />
-                      </button>
-                   
-                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pr-0 md:pr-8">
+                  <button
+                    type="button"
+                    onClick={() => removeStaffRow(index)}
+                    className="absolute top-4 right-4 p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 z-10"
+                    title="Remove Staff"
+                  >
+                    <TrashIcon className="w-5 h-5" />
+                  </button>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pr-0 md:pr-8">
                     <div>
                       <label className={formLabelClass}>
                         Name <span className="text-red-500">*</span>
                       </label>
                       <input
+                        data-field={`staff_name_${index}`}
+                        data-rules="alpha-name"
                         value={user.name}
                         onChange={(e) => updateStaffRow(index, { name: e.target.value })}
                         className={formFieldClass}
                       />
-                      {staffErrors[index]?.name && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].name}</p>
+                      {(staffErrors[index]?.name || errors[`staff_name_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.name || errors[`staff_name_${index}`]}</p>
                       )}
                     </div>
                     <div>
@@ -2215,12 +2563,14 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         Username <span className="text-red-500">*</span>
                       </label>
                       <input
+                        data-field={`staff_username_${index}`}
+                        data-rules="no-symbols"
                         value={user.username || ""}
                         onChange={(e) => updateStaffRow(index, { username: e.target.value })}
                         className={formFieldClass}
                       />
-                      {staffErrors[index]?.username && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].username}</p>
+                      {(staffErrors[index]?.username || errors[`staff_username_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.username || errors[`staff_username_${index}`]}</p>
                       )}
                     </div>
                     <div>
@@ -2228,56 +2578,61 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         Email <span className="text-red-500">*</span>
                       </label>
                       <input
+                        data-field={`staff_email_${index}`}
+                        data-rules="email"
                         value={user.email}
                         onChange={(e) => updateStaffRow(index, { email: e.target.value })}
                         className={formFieldClass}
                       />
-                      {staffErrors[index]?.email && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].email}</p>
+                      {(staffErrors[index]?.email || errors[`staff_email_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.email || errors[`staff_email_${index}`]}</p>
                       )}
                     </div>
                     <div>
-  <label className={formLabelClass}>
-    Password <span className="text-red-500">*</span>
-  </label>
+                      <label className={formLabelClass}>
+                        Password <span className="text-red-500">*</span>
+                      </label>
 
-  <div className="relative">
-    <input
-      type={showPasswords[index] ? "text" : "password"}
-      value={user.password || ""}
-      onChange={(e) =>
-        updateStaffRow(index, { password: e.target.value })
-      }
-      className={`${formFieldClass} pr-10`}
-    />
+                      <div className="relative">
+                        <input
+                          data-field={`staff_password_${index}`}
+                          type={showPasswords[index] ? "text" : "password"}
+                          value={user.password || ""}
+                          onChange={(e) =>
+                            updateStaffRow(index, { password: e.target.value })
+                          }
+                          className={`${formFieldClass} pr-10`}
+                        />
 
-    <button
-      type="button"
-      onClick={() => togglePassword(index)}
-      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-    >
-      {showPasswords[index] ? (
-        <HiEyeOff size={18} />
-      ) : (
-        <HiEye size={18} />
-      )}
-    </button>
-  </div>
-    {staffErrors[index]?.password && (
-      <p className="mt-2 text-sm text-red-600">{staffErrors[index].password}</p>
-    )}
-</div>
+                        <button
+                          type="button"
+                          onClick={() => togglePassword(index)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                          {showPasswords[index] ? (
+                            <HiEyeOff size={18} />
+                          ) : (
+                            <HiEye size={18} />
+                          )}
+                        </button>
+                      </div>
+                      {(staffErrors[index]?.password || errors[`staff_password_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.password || errors[`staff_password_${index}`]}</p>
+                      )}
+                    </div>
                     <div>
                       <label className={formLabelClass}>
                         Phone <span className="text-red-500">*</span>
                       </label>
                       <input
+                        data-field={`staff_phone_${index}`}
+                        data-rules="phone"
                         value={user.phone}
                         onChange={(e) => updateStaffRow(index, { phone: e.target.value })}
                         className={formFieldClass}
                       />
-                      {staffErrors[index]?.phone && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].phone}</p>
+                      {(staffErrors[index]?.phone || errors[`staff_phone_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.phone || errors[`staff_phone_${index}`]}</p>
                       )}
                     </div>
                     <div>
@@ -2285,6 +2640,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         Responsibility <span className="text-red-500">*</span>
                       </label>
                       <select
+                        data-field={`staff_responsibility_id_${index}`}
                         value={user.responsibility_id}
                         onChange={(e) =>
                           updateStaffRow(index, {
@@ -2300,8 +2656,8 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                           </option>
                         ))}
                       </select>
-                      {staffErrors[index]?.responsibility_id && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].responsibility_id}</p>
+                      {(staffErrors[index]?.responsibility_id || errors[`staff_responsibility_id_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.responsibility_id || errors[`staff_responsibility_id_${index}`]}</p>
                       )}
                     </div>
                     <div>
@@ -2309,6 +2665,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         Location <span className="text-red-500">*</span>
                       </label>
                       <select
+                        data-field={`staff_location_id_${index}`}
                         value={user.location_id}
                         onChange={(e) => {
                           const nextLocationId = e.target.value;
@@ -2332,8 +2689,8 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                           </option>
                         ))}
                       </select>
-                      {staffErrors[index]?.location_id && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].location_id}</p>
+                      {(staffErrors[index]?.location_id || errors[`staff_location_id_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.location_id || errors[`staff_location_id_${index}`]}</p>
                       )}
                     </div>
                     <div>
@@ -2341,6 +2698,7 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                         Warehouse <span className="text-red-500">*</span>
                       </label>
                       <select
+                        data-field={`staff_warehouse_id_${index}`}
                         value={user.warehouse_id}
                         onChange={(e) => updateStaffRow(index, { warehouse_id: e.target.value })}
                         className={formFieldClass}
@@ -2359,11 +2717,11 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
                             </option>
                           ))}
                       </select>
-                      {staffErrors[index]?.warehouse_id && (
-                        <p className="mt-2 text-sm text-red-600">{staffErrors[index].warehouse_id}</p>
+                      {(staffErrors[index]?.warehouse_id || errors[`staff_warehouse_id_${index}`]) && (
+                        <p className="mt-2 text-sm text-red-600">{staffErrors[index]?.warehouse_id || errors[`staff_warehouse_id_${index}`]}</p>
                       )}
                     </div>
-                    
+
                   </div>
                 </div>
               ))}
@@ -2382,94 +2740,99 @@ const [showPasswords, setShowPasswords] = useState<boolean[]>([]);
         {currentStep === 8 && (
           <div className="space-y-6">
             <h2 className="text-2xl font-bold text-gray-900">Step 8: Email Activation &amp; Launch</h2>
-
-            {!emailSent ? (
-              <>
-                {/* Workspace Summary */}
-                <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-slate-50 to-blue-50 p-6 space-y-4">
-                  <h3 className="text-lg font-bold text-gray-900">🚀 Your Workspace Summary</h3>
-                  <div className="grid md:grid-cols-3 gap-4">
-                    <div className="rounded-xl bg-white border border-gray-100 p-4 text-center shadow-sm">
-                      <p className="text-3xl font-bold text-blue-600">{planLimits.maxUsers}</p>
-                      <p className="text-xs text-gray-500 mt-1">System Users</p>
-                    </div>
-                    <div className="rounded-xl bg-white border border-gray-100 p-4 text-center shadow-sm">
-                      <p className="text-3xl font-bold text-blue-600">{planLimits.maxLocations}</p>
-                      <p className="text-xs text-gray-500 mt-1">Locations</p>
-                    </div>
-                    <div className="rounded-xl bg-white border border-gray-100 p-4 text-center shadow-sm">
-                      <p className="text-3xl font-bold text-blue-600">{planLimits.maxWarehouses}</p>
-                      <p className="text-xs text-gray-500 mt-1">Warehouses</p>
-                    </div>
-                  </div>
-                  <div className="grid md:grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
-                      <span className="text-gray-500">Admin Console</span>
-                      <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}/admin`}</p>
-                    </div>
-                    <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
-                      <span className="text-gray-500">Operations Portal URL</span>
-                      <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}/workspace`}</p>
-                    </div>
-                    <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
-                      <span className="text-gray-500">E-Commerce</span>
-                      <p className={`font-semibold mt-0.5 ${planLimits.ecommerceAccess ? "text-green-600" : "text-gray-400"}`}>
-                        {planLimits.ecommerceAccess ? "✅ Enabled" : "Disabled"}
-                      </p>
-                    </div>
-                    <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
-                      <span className="text-gray-500">Selected Plan</span>
-                      <p className="font-semibold text-gray-900 mt-0.5">
-                        {selectedPlan?.plan_name || subscription?.plan_code || "—"}
-                        {selectedPlan?.billing_cycle ? ` (${selectedPlan.billing_cycle})` : ""}
-                      </p>
-                    </div>
-                  </div>
+            {/* Workspace Summary Panel (Always Visible on Step 8) */}
+            <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-slate-50 to-blue-50 p-6 space-y-4">
+              <h3 className="text-lg font-bold text-gray-900">🚀 Your Workspace Summary</h3>
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="rounded-xl bg-white border border-gray-100 p-4 text-center shadow-sm">
+                  <p className="text-3xl font-bold text-blue-600">{planLimits.maxUsers}</p>
+                  <p className="text-xs text-gray-500 mt-1">System Users</p>
                 </div>
+                <div className="rounded-xl bg-white border border-gray-100 p-4 text-center shadow-sm">
+                  <p className="text-3xl font-bold text-blue-600">{planLimits.maxLocations}</p>
+                  <p className="text-xs text-gray-500 mt-1">Locations</p>
+                </div>
+                <div className="rounded-xl bg-white border border-gray-100 p-4 text-center shadow-sm">
+                  <p className="text-3xl font-bold text-blue-600">{planLimits.maxWarehouses}</p>
+                  <p className="text-xs text-gray-500 mt-1">Warehouses</p>
+                </div>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
+                  <span className="text-gray-500">Admin Console</span>
+                  <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}/admin`}</p>
+                </div>
+                <div className="rounded-lg bg-white border border-gray-100 px-4 py-3">
+                  <span className="text-gray-500">Operations Portal URL</span>
+                  <p className="font-semibold text-blue-700 mt-0.5">{`digistorii/${company}/workspace`}</p>
+                </div>
+              </div>
+            </div>
 
-                {/* Launch button */}
-                {stage !== "LIVE" ? (
-                  <button
-                    type="button"
-                    onClick={handleSendLaunchEmail}
-                    disabled={emailSending}
-                    className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white font-bold text-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-70 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
-                  >
-                    {emailSending ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Sending Activation Email…
-                      </span>
-                    ) : (
-                      " Verify Email & Launch Workspace"
-                    )}
-                  </button>
-                ) : (
-                  <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                    Onboarding completed. Your tenant is now LIVE.
-                  </div>
-                )}
-              </>
-            ) : (
-              /* ── Post-email-sent waiting state ── */
-              <div className="rounded-2xl border border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-8 text-center space-y-5">
+            {/* Dynamic Status Logic Container */}
+            {stage === "LIVE" ? (
+              /* ── STATE C: Verified & Celebration View ── */
+              <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-green-50 to-emerald-50 p-8 text-center space-y-4 shadow-md animate-fade-in">
                 <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-                  <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <svg className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-2xl font-bold text-green-800">🎉 Onboarding Completed!</h3>
+                <p className="text-green-700 max-w-md mx-auto leading-relaxed">
+                  Your tenant setup is complete and your workspace is now <strong>LIVE</strong>.
+                </p>
+                <div className="pt-2">
+                  <a
+                    href={`${company}/workspace/login`}
+                    className="inline-block rounded-xl bg-green-600 px-6 py-3 text-white font-semibold shadow hover:bg-green-700 transition-all"
+                  >
+                    Go to My Dashboard →
+                  </a>
+                </div>
+              </div>
+            ) : emailSent ? (
+              /* ── STATE B: Waiting on Inbox Link Verification ── */
+              <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-8 text-center space-y-5 shadow-sm">
+                <div className="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center animate-pulse">
+                  <svg className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-green-800">Activation Email Sent!</h3>
-                <p className="text-green-700 max-w-md mx-auto leading-relaxed">
-                  We have sent a secure workspace activation link to your registration email.
-                  Please verify your inbox to set your profile status to <strong>live</strong> and launch your dashboard!
+                <h3 className="text-xl font-bold text-blue-900">Activation Email Sent!</h3>
+                <p className="text-slate-600 max-w-md mx-auto leading-relaxed text-sm">
+                  We have sent a secure confirmation link to your email address.
+                  Please <strong>check your inbox and click the button</strong> to activate this workspace.
                 </p>
-                <div className="rounded-lg bg-white/70 border border-green-200 px-4 py-3 inline-block text-sm text-green-700">
-                  🎉 Your workspace is now <strong>LIVE</strong>. You can close this page.
+
+                <div className="flex items-center justify-center gap-2 text-xs text-indigo-600 font-medium bg-white/80 border border-indigo-100 rounded-lg px-4 py-2 inline-flex">
+                  <svg className="animate-spin h-4 w-4 text-indigo-600" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Waiting for verification... This page will update automatically.
                 </div>
               </div>
+            ) : (
+              /* ── STATE A: Initial Form State (Hasn't clicked button yet) ── */
+              <button
+                type="button"
+                onClick={handleSendLaunchEmail}
+                disabled={emailSending}
+                className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white font-bold text-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-70 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+              >
+                {emailSending ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Sending Activation Email…
+                  </span>
+                ) : (
+                  "Verify Email & Launch Workspace"
+                )}
+              </button>
             )}
           </div>
         )}

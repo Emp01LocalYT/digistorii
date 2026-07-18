@@ -96,6 +96,10 @@ export default function PaymentTermsMasterPage() {
       const typeMessage = getRuleValidationError("enum-payment-type", form.type);
       if (typeMessage) next.type = typeMessage;
     }
+    if (form.description && form.description.trim()) {
+      const descriptionMessage = getRuleValidationError("no-symbols", form.description);
+      if (descriptionMessage) next.description = descriptionMessage;
+    }
     if (form.type === "days" && (!form.days || form.days < 1 || form.days > 30)) {
       next.days = "Select days between 1 and 30";
     }
@@ -368,7 +372,7 @@ export default function PaymentTermsMasterPage() {
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
                           className={`ui-pagination-btn ${currentPage === page
-                              ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                            ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                             }`}
                         >
                           {page}
@@ -489,11 +493,13 @@ export default function PaymentTermsMasterPage() {
             <div className="md:col-span-2">
               <label className="text-sm font-semibold mb-1 block">Description(if any)</label>
               <textarea
+                data-rules="no-symbols"
+                data-field="description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={3}
                 className={inputClass("description")}
-              />
+              /> {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
             </div>
           </div>
 

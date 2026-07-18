@@ -4,13 +4,7 @@ import { pool } from "@/lib/db";
 import { hashPassword } from "@/lib/hash";
 import { ensureDB } from "@/lib/ensure-db";
 import { ensureLocationTableShape } from "@/lib/locationSchema";
-import {
-  normalizeBillingInterval,
-  PLAN_CONFIG,
-  SetupStage,
-  getNextStepNumber,
-  isValidSetupStage,
-} from "@/lib/onboarding";
+import { normalizeBillingInterval, PLAN_CONFIG, SetupStage, getNextStepNumber, isValidSetupStage, } from "@/lib/onboarding";
 import {
   extractPanFromGstin,
   getGstStateCodeForState,
@@ -64,70 +58,6 @@ async function getCompanyContext(client: any, company: string): Promise<CompanyC
     pan_number: row.pan_number || null,
     currency: row.currency || null,
   };
-}
-
-async function ensureTenantOnboardingTables(client: any, schema: string) {
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS "${schema}".business_settings (
-      id SERIAL PRIMARY KEY,
-      gst_number VARCHAR(20),
-      pan_number VARCHAR(20),
-      business_address TEXT,
-      city VARCHAR(120),
-      state VARCHAR(120),
-      country VARCHAR(120),
-      currency VARCHAR(20),
-      timezone VARCHAR(80),
-      invoice_prefix VARCHAR(20),
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW()
-    );
-  `);
-
-  await client.query(`
-    CREATE TABLE IF NOT EXISTS "${schema}".payment_modes (
-      id SERIAL PRIMARY KEY,
-      name VARCHAR(120) NOT NULL,
-      is_default BOOLEAN DEFAULT FALSE,
-      is_active BOOLEAN DEFAULT TRUE,
-      created_at TIMESTAMP DEFAULT NOW(),
-      updated_at TIMESTAMP DEFAULT NOW(),
-      CONSTRAINT uq_payment_modes_name UNIQUE (name)
-    );
-  `);
-
-  await client.query(`
-    ALTER TABLE "${schema}".locations
-    ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
-  `);
-  await ensureLocationTableShape(client, schema);
-  await client.query(`
-    ALTER TABLE "${schema}".warehouses
-    ADD COLUMN IF NOT EXISTS address TEXT;
-  `);
-  await client.query(`
-    ALTER TABLE "${schema}".warehouses
-    ADD COLUMN IF NOT EXISTS is_default BOOLEAN DEFAULT FALSE;
-  `);
-}
-
-async function ensureCompanyBusinessColumns(client: any) {
-  await client.query(`
-    ALTER TABLE public.companies
-    ADD COLUMN IF NOT EXISTS gst_number VARCHAR(20);
-  `);
-  await client.query(`
-    ALTER TABLE public.companies
-    ADD COLUMN IF NOT EXISTS pan_number VARCHAR(20);
-  `);
-  await client.query(`
-    ALTER TABLE public.companies
-    ADD COLUMN IF NOT EXISTS currency VARCHAR(10);
-  `);
-  await client.query(`
-    ALTER TABLE public.users
-    ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN DEFAULT FALSE;
-  `);
 }
 
 async function getOwnerForCompany(client: any, companyId: number) {
@@ -242,9 +172,7 @@ export async function GET(req: NextRequest) {
   const client = await pool.connect();
   try {
     const company = parseCompany(req);
-    await ensureCompanyBusinessColumns(client);
     const context = await getCompanyContext(client, company);
-    await ensureTenantOnboardingTables(client, context.schema_name);
     await ensureCompanyResponsibilities(client, context.id);
 
     const subscription = await getPlanForCompany(client, context.id);
@@ -305,17 +233,17 @@ export async function GET(req: NextRequest) {
       },
       subscription: subscription
         ? {
-            plan_id: Number(subscription.plan_id),
-            plan_code: subscription.plan_code,
-            plan_name: subscription.plan_code,
-            ecommerce_access: Boolean(subscription.ecommerce_access),
-            max_users: Number(subscription.max_users ?? 5),
-            max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),
-            max_warehouses: Number(subscription.max_warehouses ?? 1),
-            status: subscription.status,
-            billing_interval: normalizeBillingInterval(subscription.billing_interval),
-            amount: Number(subscription.amount ?? 0),
-          }
+          plan_id: Number(subscription.plan_id),
+          plan_code: subscription.plan_code,
+          plan_name: subscription.plan_code,
+          ecommerce_access: Boolean(subscription.ecommerce_access),
+          max_users: Number(subscription.max_users ?? 5),
+          max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),
+          max_warehouses: Number(subscription.max_warehouses ?? 1),
+          status: subscription.status,
+          billing_interval: normalizeBillingInterval(subscription.billing_interval),
+          amount: Number(subscription.amount ?? 0),
+        }
         : null,
       business_settings: {
         ...(businessRow || {}),
@@ -354,9 +282,7 @@ export async function POST(req: NextRequest) {
       throw new Error("Company is required");
     }
 
-    await ensureCompanyBusinessColumns(client);
     const context = await getCompanyContext(client, company);
-    await ensureTenantOnboardingTables(client, context.schema_name);
     await ensureCompanyResponsibilities(client, context.id);
 
     await client.query("BEGIN");
@@ -503,7 +429,7 @@ export async function POST(req: NextRequest) {
       const currency = String(data?.currency || "").trim().toUpperCase() || null;
 
       // if (gstNumber && !isValidGstin(gstNumber)) {
-      //   throw new Error("GST number must match the format XXAAAAA9999AXXZ");
+      //   throw new Error("GST number must match the format 33AAAAA9999A1Z5");
       // }
       // if (gstNumber && stateCode && !gstNumber.startsWith(stateCode)) {
       //   throw new Error("GST number state code must match the selected state");
@@ -542,7 +468,7 @@ export async function POST(req: NextRequest) {
              address =$4, city =$5,country=$6,currency=$7,
              updated_at = NOW()
          WHERE id = $1`,
-        [context.id, payload.gst_number, payload.pan_number, payload.business_address, payload.city,payload.country,currency ]
+        [context.id, payload.gst_number, payload.pan_number, payload.business_address, payload.city, payload.country, currency]
       );
 
       const existingBusiness = await client.query(
@@ -595,9 +521,9 @@ export async function POST(req: NextRequest) {
       const subscription = await getPlanForCompany(client, context.id);
       const maxLocations = Number(
         subscription?.max_locations ??
-          subscription?.max_warehouses ??
-          PLAN_CONFIG.BASIC.max_locations ??
-          PLAN_CONFIG.BASIC.max_warehouses
+        subscription?.max_warehouses ??
+        PLAN_CONFIG.BASIC.max_locations ??
+        PLAN_CONFIG.BASIC.max_warehouses
       );
       const locationCountResult = await client.query(
         `SELECT COUNT(*)::int AS count FROM "${context.schema_name}".locations`
@@ -692,7 +618,7 @@ export async function POST(req: NextRequest) {
         [context.id]
       );
 
-      
+
     } else if (step === "WAREHOUSE_SETUP") {
       const subscription = await getPlanForCompany(client, context.id);
       const maxWarehouses = Number(subscription?.max_warehouses ?? PLAN_CONFIG.BASIC.max_warehouses);
@@ -791,7 +717,7 @@ export async function POST(req: NextRequest) {
       );
       const warehouseId = Number(warehouseInsert.rows[0].id);
       const owner = await getOwnerForCompany(client, context.id);
-      
+
 
       if (owner?.id) {
         await client.query(
@@ -841,8 +767,8 @@ export async function POST(req: NextRequest) {
         location_id?: string | number;
         warehouse_id?: string | number;
       }> = Array.isArray(data?.users)
-        ? data.users
-        : [];
+          ? data.users
+          : [];
 
       const responsibilities = await getResponsibilitiesForCompany(client, context.id);
       const subscription = await getPlanForCompany(client, context.id);
@@ -931,7 +857,7 @@ export async function POST(req: NextRequest) {
            (company_id, name,username, email, phone, password_hash, responsibility_id, is_active)
            VALUES ($1, $2, $3, $4, $5, $6,$7, TRUE)
            RETURNING id`,
-          [context.id, name,username, email, phone, passwordHash, responsibilityId]
+          [context.id, name, username, email, phone, passwordHash, responsibilityId]
         );
         const userId = Number(newUser.rows[0].id);
 
@@ -981,17 +907,17 @@ export async function POST(req: NextRequest) {
       next_step: getNextStepNumber(updated.setup_stage),
       subscription: subscription
         ? {
-            plan_id: Number(subscription.plan_id),
-            plan_code: subscription.plan_code,
-            plan_name: subscription.plan_code,
-            ecommerce_access: Boolean(subscription.ecommerce_access),
-            max_users: Number(subscription.max_users ?? 5),
-            max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),
-            max_warehouses: Number(subscription.max_warehouses ?? 1),
-            status: subscription.status,
-            billing_interval: normalizeBillingInterval(subscription.billing_interval),
-            amount: Number(subscription.amount ?? 0),
-          }
+          plan_id: Number(subscription.plan_id),
+          plan_code: subscription.plan_code,
+          plan_name: subscription.plan_code,
+          ecommerce_access: Boolean(subscription.ecommerce_access),
+          max_users: Number(subscription.max_users ?? 5),
+          max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),
+          max_warehouses: Number(subscription.max_warehouses ?? 1),
+          status: subscription.status,
+          billing_interval: normalizeBillingInterval(subscription.billing_interval),
+          amount: Number(subscription.amount ?? 0),
+        }
         : null,
     });
   } catch (error: any) {

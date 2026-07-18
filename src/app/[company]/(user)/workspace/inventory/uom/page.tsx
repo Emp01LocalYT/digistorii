@@ -16,6 +16,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 import { usePagination } from "@/hooks/usePagination";
 import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
+
 type Uom = {
   id?: number;
   uom_code: string;
@@ -61,19 +62,19 @@ export default function UomMasterPage() {
 
 
   useEffect(() => {
-  if (!showForm || !formRef.current) return;
-  const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
-    setErrors((prev) => {
-      if (message) {
-        return { ...prev, [fieldName]: message };
-      }
-      const next = { ...prev };
-      delete next[fieldName];
-      return next;
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) {
+          return { ...prev, [fieldName]: message };
+        }
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
     });
-  });
-  return cleanup;
-}, [showForm]);
+    return cleanup;
+  }, [showForm]);
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!form.uom_code.trim()) next.uom_code = "UOM Code is required";
@@ -126,7 +127,7 @@ export default function UomMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this UOM?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this UOM?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/uom/${id}`, company, { method: "DELETE" });
@@ -200,16 +201,16 @@ export default function UomMasterPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              //className="w-full pl-10 pr-4 py-2 border rounded-lg"
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  //className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -331,10 +332,9 @@ export default function UomMasterPage() {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
+                          className={`ui-pagination-btn ${currentPage === page
                               ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -396,43 +396,43 @@ export default function UomMasterPage() {
               {errors.uom_name && <p className="text-red-500 text-sm mt-1">{errors.uom_name}</p>}
             </div>
           </div>
-<div className="ui-form-actions">
-  
-  {/* Left side */}
-  <button
-    type="button"
-    onClick={() => {
-      setShowForm(false);
-      setForm(getInitialForm());
-      setErrors({});
-    }}
-    className="ui-btn ui-btn-secondary ui-btn-responsive"
-  >
-    Cancel
-  </button>
+          <div className="ui-form-actions">
 
-  {/* Right side */}
-  <div className="ui-btn-group">
-    {!form.id && (
-      <button
-        type="button"
-        onClick={() => void submit("add")}
-        className="ui-btn ui-btn-secondary ui-btn-responsive"
-      >
-        Create & Add Another
-      </button>
-    )}
+            {/* Left side */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setForm(getInitialForm());
+                setErrors({});
+              }}
+              className="ui-btn ui-btn-secondary ui-btn-responsive"
+            >
+              Cancel
+            </button>
 
-    <button className="ui-btn ui-btn-primary ui-btn-responsive">
-      {form.id ? "Update" : "Create"}
-    </button>
-  </div>
+            {/* Right side */}
+            <div className="ui-btn-group">
+              {!form.id && (
+                <button
+                  type="button"
+                  onClick={() => void submit("add")}
+                  className="ui-btn ui-btn-secondary ui-btn-responsive"
+                >
+                  Create & Add Another
+                </button>
+              )}
 
-</div>
+              <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                {form.id ? "Update" : "Create"}
+              </button>
+            </div>
+
+          </div>
         </form>
       )}
     </div>
-  );  
+  );
 }
 
 

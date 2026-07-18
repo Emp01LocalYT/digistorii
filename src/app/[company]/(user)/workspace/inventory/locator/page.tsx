@@ -123,29 +123,41 @@ export default function LocatorMasterPage() {
     return cleanup;
   }, [showForm]);
 
+
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!form.row.trim()) next.row = "Row is required";
-    else {
-      const rowMessage = getRuleValidationError("no-symbols", form.row);
-      if (rowMessage) next.row = rowMessage;
-    }
-    if (!form.rack.trim()) next.rack = "Rack is required";
-    else {
-      const rackMessage = getRuleValidationError("no-symbols", form.rack);
-      if (rackMessage) next.rack = rackMessage;
-    }
-    if (!form.bin.trim()) next.bin = "Bin is required";
-    else {
-      const binMessage = getRuleValidationError("no-symbols", form.bin);
-      if (binMessage) next.bin = binMessage;
-    }
-    if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
+
+    // Scan all fields with data-rules inside the form container (formRef.current),
+    // so validation works regardless of tab visibility.
+    const container = formRef.current;
+    if (!container) return true;
+
+    const fields = container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "[data-rules]"
+    );
+
+    fields.forEach((target) => {
+      const fieldName = target.getAttribute("data-field") || target.getAttribute("id") || "";
+      if (!fieldName) return;
+
+      const rules = target.getAttribute("data-rules") || "";
+      const value = target.value || "";
+      const isOptional = target.getAttribute("data-optional") === "true";
+
+      if (!value.trim()) {
+        if (!isOptional) {
+          next[fieldName] = `${fieldName.replace(/_/g, " ").toUpperCase()} is required`;
+        }
+      } else {
+        const error = getRuleValidationError(rules, value);
+        if (error) next[fieldName] = error;
+      }
+    });
     if (!form.type) next.type = "Type is required";
-    else {
-      const typeMessage = getRuleValidationError("enum-locator-type", form.type);
-      if (typeMessage) next.type = typeMessage;
-    }
+    if (!form.row) next.type = "Row is required";
+    if (!form.rack) next.type = "Rack is required";
+    if (!form.bin) next.type = "Bin is required";
+    if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -408,7 +420,7 @@ export default function LocatorMasterPage() {
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
                           className={`ui-pagination-btn ${currentPage === page
-                              ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                            ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                             }`}
                         >
                           {page}
@@ -538,7 +550,9 @@ export default function LocatorMasterPage() {
                 <label className="text-sm font-semibold mb-1 block">Effective To</label>
                 <input
                   type="date"
+                  data-optional="true"
                   value={form.effective_to || ""}
+                  min={new Date().toISOString().split("T")[0]}
                   onChange={(e) => setForm({ ...form, effective_to: e.target.value ?? "" })}
                   className={inputClass("effective_to")}
                 />
@@ -553,6 +567,7 @@ export default function LocatorMasterPage() {
                   <input
                     data-rules="positive-integer"
                     data-field="max_qty"
+                    data-optional="true"
                     type="number"
                     value={form.max_qty}
                     onChange={(e) => setForm({ ...form, max_qty: e.target.value })}
@@ -564,6 +579,7 @@ export default function LocatorMasterPage() {
                   <input
                     data-rules="positive-integer"
                     data-field="current_qty"
+                    data-optional="true"
                     type="number"
                     value={form.current_qty}
                     onChange={(e) => setForm({ ...form, current_qty: e.target.value })}
@@ -575,6 +591,7 @@ export default function LocatorMasterPage() {
                   <input
                     data-rules="positive-integer"
                     data-field="suggested_qty"
+                    data-optional="true"
                     type="number"
                     value={form.suggested_qty}
                     onChange={(e) => setForm({ ...form, suggested_qty: e.target.value })}
@@ -587,6 +604,9 @@ export default function LocatorMasterPage() {
             <div className="space-y-4">
               <h3 className="text-md font-semibold text-gray-700">Description</h3>
               <textarea
+                data-optional="true"
+                data-rules="no-symbols"
+                data-field="description"
                 value={form.description || ""}
                 onChange={(e) => setForm({ ...form, description: e.target.value ?? "" })}
                 className={inputClass("description")}

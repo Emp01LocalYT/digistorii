@@ -116,33 +116,37 @@ export default function WarehouseMasterPage() {
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!form.code.trim()) next.code = "Code is required";
-    else {
-      const codeMessage = getRuleValidationError("code", form.code);
-      if (codeMessage) next.code = codeMessage;
-    }
-    if (!form.name.trim()) next.name = "Name is required";
-    else {
-      const nameMessage = getRuleValidationError("no-symbols", form.name);
-      if (nameMessage) next.name = nameMessage;
-    }
+
+    // Scan all fields with data-rules inside the form container (formRef.current),
+    // so validation works regardless of tab visibility.
+    const container = formRef.current;
+    if (!container) return true;
+
+    const fields = container.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "[data-rules]"
+    );
+
+    fields.forEach((target) => {
+      const fieldName = target.getAttribute("data-field") || target.getAttribute("id") || "";
+      if (!fieldName) return;
+
+      const rules = target.getAttribute("data-rules") || "";
+      const value = target.value || "";
+      const isOptional = target.getAttribute("data-optional") === "true";
+
+      if (!value.trim()) {
+        if (!isOptional) {
+          next[fieldName] = `${fieldName.replace(/_/g, " ").toUpperCase()} is required`;
+        }
+      } else {
+        const error = getRuleValidationError(rules, value);
+        if (error) next[fieldName] = error;
+      }
+    });
+
+    // location_id uses a plain <select> without data-rules — validate it separately.
     if (!form.location_id) next.location_id = "Location is required";
-    if (!form.type) next.type = "Type is required";
-    else {
-      const typeMessage = getRuleValidationError("enum-global-local", form.type);
-      if (typeMessage) next.type = typeMessage;
-    }
-    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) next.email = "Invalid email";
-    else if (form.email) {
-      const emailMessage = getRuleValidationError("email", form.email);
-      if (emailMessage) next.email = emailMessage;
-    }
-    if (form.contact_person_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contact_person_email)) {
-      next.contact_person_email = "Invalid email";
-    } else if (form.contact_person_email) {
-      const contactEmailMessage = getRuleValidationError("email", form.contact_person_email);
-      if (contactEmailMessage) next.contact_person_email = contactEmailMessage;
-    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -185,7 +189,7 @@ export default function WarehouseMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this warehouse?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this warehouse?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/warehouses/${id}`, company, { method: "DELETE" });
@@ -259,15 +263,15 @@ export default function WarehouseMasterPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -397,10 +401,9 @@ export default function WarehouseMasterPage() {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
-                              ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                          className={`ui-pagination-btn ${currentPage === page
+                            ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                            }`}
                         >
                           {page}
                         </button>
@@ -426,210 +429,246 @@ export default function WarehouseMasterPage() {
 
       {showForm && (
         <div ref={formRef}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit("close");
-          }}
-          className="bg-white p-6 rounded-xl shadow space-y-6"
-        >
-          <h2 className="text-lg font-semibold">{form.id ? "Update Warehouse" : "Create Warehouse"}</h2>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void submit("close");
+            }}
+            className="bg-white p-6 rounded-xl shadow space-y-6"
+          >
+            <h2 className="text-lg font-semibold">{form.id ? "Update Warehouse" : "Create Warehouse"}</h2>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Code <span className="text-red-500">*</span>
-              </label>
-              <input
-                data-rules="code"
-                data-field="code"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
-                className={inputClass("code")}
-              />
-              {errors.code && <p className="text-red-500 text-sm mt-1">{errors.code}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                data-rules="no-symbols"
-                data-field="name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className={inputClass("name")}
-              />
-              {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Location <span className="text-red-500">*</span>
-              </label>
-              <select
-                value={form.location_id}
-                onChange={(e) => setForm({ ...form, location_id: e.target.value })}
-                className={inputClass("location_id")}
-              >
-                <option value="">Select Location</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={String(loc.id)}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
-              {errors.location_id && <p className="text-red-500 text-sm mt-1">{errors.location_id}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Type <span className="text-red-500">*</span>
-              </label>
-              <select
-                data-rules="enum-global-local"
-                data-field="type"
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value as Warehouse["type"] })}
-                className={inputClass("type")}
-              >
-                <option value="global">Global</option>
-                <option value="local">Local</option>
-              </select>
-              {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Effective From</label>
-              <input
-                type="date"
-                value={form.effective_from || ''}
-                onChange={(e) => setForm({ ...form, effective_from: e.target.value ?? "" })}
-                className={inputClass("effective_from")}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Effective To</label>
-              <input
-                type="date"
-                value={form.effective_to || ''}
-                onChange={(e) => setForm({ ...form, effective_to: e.target.value ?? "" })}
-                className={inputClass("effective_to")}
-              />
-            </div>
-            <div className="md:col-span-3">
-              <label className="text-sm font-semibold mb-1 block">Description</label>
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className={inputClass("description")}
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Contact Info</h3>
-            <div className="grid md:grid-cols-4 gap-6">
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Landline</label>
-                <input
-                  value={form.landline}
-                  onChange={(e) => setForm({ ...form, landline: e.target.value })}
-                  className={inputClass("landline")}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Mobile</label>
-                <input
-                  value={form.mobile_no}
-                  onChange={(e) => setForm({ ...form, mobile_no: e.target.value })}
-                  className={inputClass("mobile_no")}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Fax</label>
-                <input
-                  value={form.fax}
-                  onChange={(e) => setForm({ ...form, fax: e.target.value })}
-                  className={inputClass("fax")}
-                />
-              </div>
-              <div>
-                <label className="text-sm font-semibold mb-1 block">Email</label>
-                <input
-                  data-rules="email"
-                  data-field="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className={inputClass("email")}
-                />
-                {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-md font-semibold text-gray-700">Contact Person</h3>
             <div className="grid md:grid-cols-3 gap-6">
               <div>
-                <label className="text-sm font-semibold mb-1 block">Name</label>
+                <label className="text-sm font-semibold mb-1 block">
+                  Code <span className="text-red-500">*</span>
+                </label>
                 <input
-                  value={form.contact_person_name}
-                  onChange={(e) => setForm({ ...form, contact_person_name: e.target.value })}
-                  className={inputClass("contact_person_name")}
+                  data-rules="code"
+                  data-field="code"
+                  value={form.code}
+                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  className={inputClass("code")}
                 />
+                {errors.code && <p className="text-red-500 text-sm mt-1">{errors.code}</p>}
               </div>
               <div>
-                <label className="text-sm font-semibold mb-1 block">Mobile</label>
+                <label className="text-sm font-semibold mb-1 block">
+                  Name <span className="text-red-500">*</span>
+                </label>
                 <input
-                  value={form.contact_person_mobile}
-                  onChange={(e) => setForm({ ...form, contact_person_mobile: e.target.value })}
-                  className={inputClass("contact_person_mobile")}
+                  data-rules="alphanumeric-spaces-hyphens"
+                  data-field="name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className={inputClass("name")}
                 />
+                {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
               </div>
               <div>
-                <label className="text-sm font-semibold mb-1 block">Email</label>
-                <input
-                  data-rules="email"
-                  data-field="contact_person_email"
-                  value={form.contact_person_email}
-                  onChange={(e) => setForm({ ...form, contact_person_email: e.target.value })}
-                  className={inputClass("contact_person_email")}
-                />
-                {errors.contact_person_email && (
-                  <p className="text-red-500 text-sm mt-1">{errors.contact_person_email}</p>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="ui-form-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setShowForm(false);
-                setForm(getInitialForm());
-                setErrors({});
-              }}
-              className="ui-btn ui-btn-secondary ui-btn-responsive"
-            >
-              Cancel
-            </button>
-
-            <div className="ui-btn-group">
-              {!form.id && (
-                <button
-                  type="button"
-                  onClick={() => void submit("add")}
-                  className="ui-btn ui-btn-secondary ui-btn-responsive"
+                <label className="text-sm font-semibold mb-1 block">
+                  Location <span className="text-red-500">*</span>
+                </label>
+                <select
+                  data-field="location_id"
+                  value={form.location_id}
+                  onChange={(e) => setForm({ ...form, location_id: e.target.value })}
+                  className={inputClass("location_id")}
                 >
-                  Create & Add Another
-                </button>
-              )}
-
-              <button className="ui-btn ui-btn-primary ui-btn-responsive">
-                {form.id ? "Update" : "Create"}
-              </button>
+                  <option value="">Select Location</option>
+                  {locations.map((loc) => (
+                    <option key={loc.id} value={String(loc.id)}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.location_id && <p className="text-red-500 text-sm mt-1">{errors.location_id}</p>}
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">
+                  Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  data-rules="enum-global-local"
+                  data-field="type"
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value as Warehouse["type"] })}
+                  className={inputClass("type")}
+                >
+                  <option value="global">Global</option>
+                  <option value="local">Local</option>
+                </select>
+                {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Effective From</label>
+                <input
+                  type="date"
+                  data-field="effective_from"
+                  data-rules="date"
+                  data-optional="true"
+                  value={form.effective_from || ''}
+                  onChange={(e) => setForm({ ...form, effective_from: e.target.value ?? "" })}
+                  className={inputClass("effective_from")}
+                />
+                {errors.effective_from && <p className="text-red-500 text-sm mt-1">{errors.effective_from}</p>}
+              </div>
+              <div>
+                <label className="text-sm font-semibold mb-1 block">Effective To</label>
+                <input
+                  type="date"
+                  data-field="effective_to"
+                  data-rules="date"
+                  data-optional="true"
+                  value={form.effective_to || ''}
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setForm({ ...form, effective_to: e.target.value ?? "" })}
+                  className={inputClass("effective_to")}
+                />
+                {errors.effective_to && <p className="text-red-500 text-sm mt-1">{errors.effective_to}</p>}
+              </div>
+              <div className="md:col-span-3">
+                <label className="text-sm font-semibold mb-1 block">Description</label>
+                <textarea
+                  data-field="description"
+                  data-rules="no-symbols"
+                  data-optional="true"
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className={inputClass("description")}
+                  rows={3}
+                />
+                {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
+              </div>
             </div>
-          </div>
-        </form>
+
+            <div className="space-y-4">
+              <h3 className="text-md font-semibold text-gray-700">Contact Info</h3>
+              <div className="grid md:grid-cols-4 gap-6">
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Landline</label>
+                  <input
+                    data-field="landline"
+                    data-rules="phone"
+                    data-optional="true"
+                    value={form.landline}
+                    onChange={(e) => setForm({ ...form, landline: e.target.value })}
+                    className={inputClass("landline")}
+                  />
+                  {errors.landline && <p className="text-red-500 text-sm mt-1">{errors.landline}</p>}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Mobile</label>
+                  <input
+                    data-field="mobile_no"
+                    data-rules="phone"
+                    data-optional="true"
+                    value={form.mobile_no}
+                    onChange={(e) => setForm({ ...form, mobile_no: e.target.value })}
+                    className={inputClass("mobile_no")}
+                  />
+                  {errors.mobile_no && <p className="text-red-500 text-sm mt-1">{errors.mobile_no}</p>}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Fax</label>
+                  <input
+                    data-field="fax"
+                    data-rules="fax-phone"
+                    data-optional="true"
+                    value={form.fax}
+                    onChange={(e) => setForm({ ...form, fax: e.target.value })}
+                    className={inputClass("fax")}
+                  />
+                  {errors.fax && <p className="text-red-500 text-sm mt-1">{errors.fax}</p>}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Email</label>
+                  <input
+                    data-rules="email"
+                    data-field="email"
+                    data-optional="true"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    className={inputClass("email")}
+                  />
+                  {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-md font-semibold text-gray-700">Contact Person</h3>
+              <div className="grid md:grid-cols-3 gap-6">
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Name</label>
+                  <input
+                    data-field="contact_person_name"
+                    data-rules="alpha-name"
+                    data-optional="true"
+                    value={form.contact_person_name}
+                    onChange={(e) => setForm({ ...form, contact_person_name: e.target.value })}
+                    className={inputClass("contact_person_name")}
+                  />
+                  {errors.contact_person_name && <p className="text-red-500 text-sm mt-1">{errors.contact_person_name}</p>}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Mobile</label>
+                  <input
+                    data-field="contact_person_mobile"
+                    data-rules="phone"
+                    data-optional="true"
+                    value={form.contact_person_mobile}
+                    onChange={(e) => setForm({ ...form, contact_person_mobile: e.target.value })}
+                    className={inputClass("contact_person_mobile")}
+                  />
+                  {errors.contact_person_mobile && <p className="text-red-500 text-sm mt-1">{errors.contact_person_mobile}</p>}
+                </div>
+                <div>
+                  <label className="text-sm font-semibold mb-1 block">Email</label>
+                  <input
+                    data-rules="email"
+                    data-field="contact_person_email"
+                    data-optional="true"
+                    value={form.contact_person_email}
+                    onChange={(e) => setForm({ ...form, contact_person_email: e.target.value })}
+                    className={inputClass("contact_person_email")}
+                  />
+                  {errors.contact_person_email && (
+                    <p className="text-red-500 text-sm mt-1">{errors.contact_person_email}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="ui-form-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  setForm(getInitialForm());
+                  setErrors({});
+                }}
+                className="ui-btn ui-btn-secondary ui-btn-responsive"
+              >
+                Cancel
+              </button>
+
+              <div className="ui-btn-group">
+                {!form.id && (
+                  <button
+                    type="button"
+                    onClick={() => void submit("add")}
+                    className="ui-btn ui-btn-secondary ui-btn-responsive"
+                  >
+                    Create & Add Another
+                  </button>
+                )}
+
+                <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                  {form.id ? "Update" : "Create"}
+                </button>
+              </div>
+            </div>
+          </form>
         </div>
       )}
     </div>

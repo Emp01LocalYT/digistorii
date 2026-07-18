@@ -572,6 +572,14 @@ export default function PricingPage() {
     });
     setSelectProductsModalOpen(false);
   }
+  function removeRow(variantId: number) {
+    setEntryRows((prev) => prev.filter((row) => row.variant_id !== variantId));
+    setSelectedVariantMap((prev) => {
+      const next = { ...prev };
+      delete next[String(variantId)];
+      return next;
+    });
+  }
 
   function updateRow(variantId: number, patch: Partial<EntryRow>) {
     setEntryRows((prev) =>
@@ -787,8 +795,8 @@ export default function PricingPage() {
                   </td>
                 </tr>
               ) : (
-                paginatedPricingRows.map((row) => (
-                  <tr key={row.id} className="border-t border-gray-100">
+                paginatedPricingRows.map((row, index) => (
+                  <tr key={`${row.id}-${index}`} className="border-t border-gray-100">
                     <td className="px-4 py-3">{row.product_code || "-"}</td>
                     <td className="px-4 py-3">{row.product_name || "-"}</td>
                     <td className="px-4 py-3">{row.sku}</td>
@@ -951,6 +959,7 @@ export default function PricingPage() {
                 </label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={editEffectiveDate}
                   onChange={(e) => setEditEffectiveDate(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -962,6 +971,7 @@ export default function PricingPage() {
                 </label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={editExpiresAt}
                   onChange={(e) => setEditExpiresAt(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -1197,7 +1207,7 @@ export default function PricingPage() {
 
       {createModalOpen ? (
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-[1200px] max-w-[95vw] h-[700px] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
+          <div className="w-[1600px] max-w-[95vw] h-[800px] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-end justify-between gap-3 px-6 py-4 border-b bg-gray-50">
               <div>
                 <h2 className="text-lg font-semibold">Add Pricing</h2>
@@ -1222,6 +1232,7 @@ export default function PricingPage() {
                   </label>
                   <input
                     type="date"
+                    min={new Date().toISOString().split("T")[0]}
                     value={effectiveDate}
                     onChange={(e) => setEffectiveDate(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -1233,6 +1244,7 @@ export default function PricingPage() {
                   </label>
                   <input
                     type="date"
+                    min={new Date().toISOString().split("T")[0]}
                     value={expiresAt}
                     onChange={(e) => setExpiresAt(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -1371,6 +1383,7 @@ export default function PricingPage() {
                       <th className="px-3 py-2 font-medium">Unit Price</th>
                       <th className="px-3 py-2 font-medium">Landed Price</th>
                       <th className="px-3 py-2 font-medium">Selling Price</th>
+                      <th className="px-3 py-2 font-medium text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1467,6 +1480,17 @@ export default function PricingPage() {
                             <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.unitPrice)}</td>
                             <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.landed)}</td>
                             <td className="px-3 py-2 bg-gray-50">{fmtMoney(calc.selling)}</td>
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeRow(row.variant_id)}
+                                className="text-red-500 hover:text-red-700 p-1 rounded transition-colors"
+                                aria-label="Remove item"
+                              >
+                                {/* A simple semantic cross icon or standard Text */}
+                                <span className="text-base font-bold">&times;</span>
+                              </button>
+                            </td>
                           </tr>
                         );
                       })

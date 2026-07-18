@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Input, Modal } from "antd";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 type UomModalProps = {
   open: boolean;
@@ -28,6 +29,18 @@ export default function UomModal({ open, onClose, onSaved }: UomModalProps) {
     if (!company) return;
     if (!uomCode.trim() || !uomName.trim()) {
       setUomError("UOM code and name are required");
+      return;
+    }
+
+    const codeError = getRuleValidationError("alphanumeric-spaces-hyphens", uomCode);
+    if (codeError) {
+      setUomError(codeError);
+      return;
+    }
+
+    const nameError = getRuleValidationError("alphanumeric-spaces-hyphens", uomName);
+    if (nameError) {
+      setUomError(nameError);
       return;
     }
     setUomSaving(true);

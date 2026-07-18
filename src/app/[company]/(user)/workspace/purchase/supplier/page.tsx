@@ -9,7 +9,7 @@ import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { usePagination } from "@/hooks/usePagination";
 import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
-import { useNotify} from "@/hooks/useNotify";
+import { useNotify } from "@/hooks/useNotify";
 import Select from "react-select";
 type Contact = { person: string; phone: string; email: string };
 type SupplierTab = "commercial" | "address" | "bank" | "contact";
@@ -287,27 +287,44 @@ export default function SupplierPage() {
     return cleanup;
   }, [showForm]);
 
-  function validate(): boolean {
+  const validate = () => {
     const next: Record<string, string> = {};
-    if (!supplier.short_name.trim()) next.short_name = "Short Name is required";
-    else {
-      const codeMessage = getRuleValidationError("code", supplier.short_name);
-      if (codeMessage) next.short_name = codeMessage;
-    }
-    if (!supplier.supplier_name.trim()) next.supplier_name = "Supplier Name is required";
-    else {
-      const codeMessage = getRuleValidationError("alpha-name", supplier.supplier_name);
-      if (codeMessage) next.supplier_name = codeMessage;
-    }
-    if (!supplier.currency) next.currency = "Currency is required";
-    if (![1, 2, 3].includes(Number(supplier.classification))) next.classification = "Classification is required";
-    if (supplier.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supplier.email)) next.email = "Invalid email";
-    supplier.contacts.forEach((c, i) => {
-      if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) next[`contact_email_${i}`] = "Invalid email";
+
+    // Scan all fields with data-rules inside the form container (works across all tabs,
+    // including those currently hidden by the CSS toggle — they stay in the DOM).
+    const container = formRef.current;
+    if (!container) return true;
+
+    const standardFields = container.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+      "[data-rules]"
+    );
+
+    standardFields.forEach((target) => {
+      const fieldName = target.getAttribute("data-field") || target.getAttribute("name") || "";
+      if (!fieldName) return;
+
+      const rules = target.getAttribute("data-rules") || "";
+      const value = target.value || "";
+      const isOptional = target.getAttribute("data-optional") === "true";
+
+      if (!value.trim()) {
+        if (!isOptional) {
+          next[fieldName] = `${fieldName.replace(/_/g, " ").toUpperCase()} is required`;
+        }
+      } else {
+        const error = getRuleValidationError(rules, value);
+        if (error) next[fieldName] = error;
+      }
     });
+
+    // react-select for Currency has no data-rules; validate via state.
+    if (!supplier.currency || !supplier.currency.trim()) {
+      next["currency"] = "CURRENCY is required";
+    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
-  }
+  };
   const saveSupplier = async (keepOpen = false) => {
     if (!validate()) return;
     setFormLoading(true);
@@ -570,7 +587,7 @@ export default function SupplierPage() {
       )}
 
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow space-y-6">
+        <form ref={formRef} onSubmit={handleSubmit} className="bg-white p-6 rounded-xl shadow space-y-6">
           <h2 className="text-lg font-semibold">{supplier.id ? "Update Supplier" : "Create Supplier"}</h2>
 
           <div className="grid md:grid-cols-4 gap-6">
@@ -578,12 +595,25 @@ export default function SupplierPage() {
             <div><label className="text-sm font-semibold mb-1 block">Short Name <span className="text-red-500">*</span></label><input value={supplier.short_name} data-rules="no-symbols" data-field="short_name" onChange={(e) => setSupplier({ ...supplier, short_name: e.target.value })} className={inputClass("short_name")} />{errors.short_name && <p className="text-red-500 text-sm mt-1">{errors.short_name}</p>}</div>
             <div><label className="text-sm font-semibold mb-1 block">Supplier Name <span className="text-red-500">*</span></label><input value={supplier.supplier_name} data-rules="no-symbols" data-field="supplier_name" onChange={(e) => setSupplier({ ...supplier, supplier_name: e.target.value, name: e.target.value })} className={inputClass("supplier_name")} />{errors.supplier_name && <p className="text-red-500 text-sm mt-1">{errors.supplier_name}</p>}</div>
 
-            <div><label className="text-sm font-semibold mb-1 block">Classification</label><select value={supplier.classification} onChange={(e) => setSupplier({ ...supplier, classification: Number(e.target.value) })} className={inputClass("classification")}>{CLASSIFICATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-            <div><label className="text-sm font-semibold mb-1 block">Introduced Date</label><input type="date" value={supplier.introduced_date || ''} data-rules="date" data-field="introduced_date" data-optional="true" onChange={(e) => setSupplier({ ...supplier, introduced_date: e.target.value ?? "" })} className={inputClass("introduced_date")} />{errors.introduced_date && <p className="text-red-500 text-sm mt-1">{errors.introduced_date}</p>}</div>
+            <div>
+              <label className="text-sm font-semibold mb-1 block">Classification</label>
+              <select data-field="classification" data-optional="true" value={supplier.classification} onChange={(e) => setSupplier({ ...supplier, classification: Number(e.target.value) })} className={inputClass("classification")}>{CLASSIFICATION_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
+              {errors.classification && <p className="text-red-500 text-sm mt-1">{errors.classification}</p>}
+            </div>
+            <div><label className="text-sm font-semibold mb-1 block">Introduced Date</label>
+              <input
+                type="date"
+                value={supplier.introduced_date || ''}
+                data-rules="date"
+                data-field="introduced_date"
+                data-optional="true"
+                onChange={(e) => setSupplier({ ...supplier, introduced_date: e.target.value ?? "" })}
+                className={inputClass("introduced_date")}
+              />{errors.introduced_date && <p className="text-red-500 text-sm mt-1">{errors.introduced_date}</p>}</div>
             <div><label className="text-sm font-semibold mb-1 block">Introduced By</label><input value={supplier.introduced_by || ''} data-rules="alpha-name" data-field="introduced_by" data-optional="true" onChange={(e) => setSupplier({ ...supplier, introduced_by: e.target.value ?? "" })} className={inputClass("introduced_by")} />{errors.introduced_by && <p className="text-red-500 text-sm mt-1">{errors.introduced_by}</p>}</div>
 
             <div><label className="text-sm font-semibold mb-1 block">Effective From</label><input type="date" value={supplier.effective_from || ''} data-rules="date" data-field="effective_from" data-optional="true" onChange={(e) => setSupplier({ ...supplier, effective_from: e.target.value ?? "" })} className={inputClass("effective_from")} />{errors.effective_from && <p className="text-red-500 text-sm mt-1">{errors.effective_from}</p>}</div>
-            <div><label className="text-sm font-semibold mb-1 block">Effective To</label><input type="date" value={supplier.effective_to || ''} data-rules="date" data-field="effective_to" data-optional="true" onChange={(e) => setSupplier({ ...supplier, effective_to: e.target.value ?? "" })} className={inputClass("effective_to")} />{errors.effective_to && <p className="text-red-500 text-sm mt-1">{errors.effective_to}</p>}</div>
+            <div><label className="text-sm font-semibold mb-1 block">Effective To</label><input type="date" value={supplier.effective_to || ''} min={new Date().toISOString().split("T")[0]} data-rules="date" data-field="effective_to" data-optional="true" onChange={(e) => setSupplier({ ...supplier, effective_to: e.target.value ?? "" })} className={inputClass("effective_to")} />{errors.effective_to && <p className="text-red-500 text-sm mt-1">{errors.effective_to}</p>}</div>
             <div className="flex items-end gap-6 pb-2"><label className="inline-flex items-center gap-2 text-sm font-medium">
               <input type="checkbox" checked={supplier.purchase_hold} onChange={(e) => setSupplier({ ...supplier, purchase_hold: e.target.checked })} />Purchase Hold</label>
               {/* <label className="inline-flex items-center gap-2 text-sm font-medium">
@@ -594,90 +624,106 @@ export default function SupplierPage() {
           <div className="border-t border-gray-100 pt-4">
             <div className="flex flex-wrap gap-2">{tabs.map((tab) => <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)} className={`px-4 py-2 rounded-lg text-sm font-medium border ${activeTab === tab.key ? "bg-[var(--color-blue-500)] text-white border-[var(--color-blue-600)]" : "bg-white text-gray-700 border-gray-200"}`}>{tab.label}</button>)}</div>
 
-            {activeTab === "commercial" && <div className="grid md:grid-cols-3 gap-6 mt-6">
-              <div><label className="text-sm font-semibold mb-1 block">Despatch Terms</label>
-                {/* <input value={supplier.dispatch_terms} onChange={(e) => setSupplier({ ...supplier, dispatch_terms: e.target.value })} className={inputClass("dispatch_terms")} /> */}
-                <Select
-                  placeholder="Select Despatch Term"
-                  value={despatchTerms
-                    .map((dt) => ({ label: dt.despatch_name, value: dt.code }))
-                    .find((opt) => opt.value === supplier.dispatch_terms) || null}
-                  onChange={(option) =>
-                    setSupplier({ ...supplier, dispatch_terms: option?.value || "" })
-                  }
-                  options={despatchTerms.map((dt) => ({
-                    label: dt.despatch_name,
-                    value: dt.code,
-                  }))}
-                  isSearchable
-                />
-              </div>
-              <div><label className="text-sm font-semibold mb-1 block">Payment Terms</label>
-                <Select
-                  placeholder="Select Payment Term"
-                  value={paymentTerms
-                    .map((pt) => ({ label: pt.name, value: pt.name }))
-                    .find((opt) => opt.value === supplier.payment_terms) || null}
-                  onChange={(option) =>
-                    setSupplier({ ...supplier, payment_terms: option?.value || "" })
-                  }
-                  options={paymentTerms.map((pt) => ({
-                    label: pt.name, value: pt.name
-                  }))}
-                  isSearchable
-                />
-              </div>
-              <div><label className="text-sm font-semibold mb-1 block">Currency<span className="text-red-500">*</span></label>
-                <Select
-                  placeholder="Select Currency"
-                  value={
-                    currenciesOptions.find((opt) => opt.value === supplier.currency) || null}
-                  onChange={(option) =>
-                    setSupplier({ ...supplier, currency: option?.value || "" })
-                  }
-                  options={currenciesOptions.map((c) => ({ label: c.label, value: c.value }))}
-                  isSearchable
-                />{errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
-              </div>
-              <div><label className="text-sm font-semibold mb-1 block">GSTIN</label><input value={supplier.gstin || ""} data-rules="code" data-field="gstin" data-optional="true" onChange={(e) => setSupplier({ ...supplier, gstin: e.target.value ?? " " })} className={inputClass("gstin")} />{errors.gstin && <p className="text-red-500 text-sm mt-1">{errors.gstin}</p>}</div>
-              <div><label className="text-sm font-semibold mb-1 block">CIN</label><input value={supplier.cin || ""} data-rules="code" data-field="cin" data-optional="true"
-                onChange={(e) => setSupplier({ ...supplier, cin: e.target.value })} className={inputClass("cin") ?? ""} />{errors.cin && <p className="text-red-500 text-sm mt-1">{errors.cin}</p>}</div></div>}
+            {/* Always render all tab panels — toggle visibility with CSS so fields stay in the DOM for validation */}
+            <div className={activeTab !== "commercial" ? "hidden" : ""}>
+              <div className="grid md:grid-cols-3 gap-6 mt-6">
+                <div><label className="text-sm font-semibold mb-1 block">Despatch Terms</label>
+                  {/* <input value={supplier.dispatch_terms} onChange={(e) => setSupplier({ ...supplier, dispatch_terms: e.target.value })} className={inputClass("dispatch_terms")} /> */}
+                  <Select
+                    placeholder="Select Despatch Term"
+                    value={despatchTerms
+                      .map((dt) => ({ label: dt.despatch_name, value: dt.code }))
+                      .find((opt) => opt.value === supplier.dispatch_terms) || null}
+                    onChange={(option) =>
+                      setSupplier({ ...supplier, dispatch_terms: option?.value || "" })
+                    }
+                    options={despatchTerms.map((dt) => ({
+                      label: dt.despatch_name,
+                      value: dt.code,
+                    }))}
+                    isSearchable
+                  />
+                </div>
+                <div><label className="text-sm font-semibold mb-1 block">Payment Terms</label>
+                  <Select
+                    placeholder="Select Payment Term"
+                    value={paymentTerms
+                      .map((pt) => ({ label: pt.name, value: pt.name }))
+                      .find((opt) => opt.value === supplier.payment_terms) || null}
+                    onChange={(option) =>
+                      setSupplier({ ...supplier, payment_terms: option?.value || "" })
+                    }
+                    options={paymentTerms.map((pt) => ({
+                      label: pt.name, value: pt.name
+                    }))}
+                    isSearchable
+                  />
+                </div>
+                <div><label className="text-sm font-semibold mb-1 block">Currency<span className="text-red-500">*</span></label>
+                  <Select
+                    placeholder="Select Currency"
+                    inputId="currency"
+                    name="currency"
+                    value={
+                      currenciesOptions.find((opt) => opt.value === supplier.currency) || null}
+                    onChange={(option) =>
+                      setSupplier({ ...supplier, currency: option?.value || "" })
+                    }
+                    options={currenciesOptions.map((c) => ({ label: c.label, value: c.value }))}
+                    isSearchable
+                  />{errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
+                </div>
+                <div><label className="text-sm font-semibold mb-1 block">GSTIN</label><input value={supplier.gstin || ""} data-rules="code" data-field="gstin" data-optional="true" onChange={(e) => setSupplier({ ...supplier, gstin: e.target.value ?? " " })} className={inputClass("gstin")} />{errors.gstin && <p className="text-red-500 text-sm mt-1">{errors.gstin}</p>}</div>
+                <div><label className="text-sm font-semibold mb-1 block">CIN</label><input value={supplier.cin || ""} data-rules="code" data-field="cin" data-optional="true"
+                  onChange={(e) => setSupplier({ ...supplier, cin: e.target.value })} className={inputClass("cin") ?? ""} />
+                  {errors.cin && <p className="text-red-500 text-sm mt-1">{errors.cin}</p>}
+                </div></div>
+            </div>
 
-            {activeTab === "address" && (
+            <div className={activeTab !== "address" ? "hidden" : ""}>
               <div className="grid md:grid-cols-4 gap-6 mt-6">
 
                 {/* Row 1 */}
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
                   <input
+                    data-field="address_line1"
+                    data-rules="no-symbols"
+                    data-optional="true"
                     value={supplier.address_line1 || " "}
                     onChange={(e) =>
                       setSupplier({ ...supplier, address_line1: e.target.value ?? "" })
                     }
                     className={inputClass("address_line1")}
-                  />
+                  />{errors.address_line1 && <p className="text-red-500 text-sm mt-1">{errors.address_line1}</p>}
                 </div>
 
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
                   <input
+                    data-field="address_line2"
+                    data-rules="no-symbols"
+                    data-optional="true"
                     value={supplier.address_line2 || " "}
                     onChange={(e) =>
                       setSupplier({ ...supplier, address_line2: e.target.value ?? "" })
                     }
                     className={inputClass("address_line2")}
-                  />
+                  />{errors.address_line2 && <p className="text-red-500 text-sm mt-1">{errors.address_line2}</p>}
                 </div>
 
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Address Line 3</label>
                   <input
+                    data-field="address_line3"
+                    data-rules="no-symbols"
+                    data-optional="true"
                     value={supplier.address_line3 || " "}
                     onChange={(e) =>
                       setSupplier({ ...supplier, address_line3: e.target.value ?? "" })
                     }
                     className={inputClass("address_line3")}
-                  />
+                  />{errors.address_line3 && <p className="text-red-500 text-sm mt-1">{errors.address_line3}</p>}
                 </div>
 
                 {/* empty space to complete row */}
@@ -687,6 +733,9 @@ export default function SupplierPage() {
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Country</label>
                   <select
+                    data-field="country"
+                    data-optional="true"
+                    data-rules="india-only"
                     value={supplier.country || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, country: e.target.value ?? "", state: "", city: "" })
@@ -700,12 +749,15 @@ export default function SupplierPage() {
                       </option>
                     ))}
                   </select>
+                  {errors.country && <p className="text-red-500 text-sm mt-1">{errors.country}</p>}
                 </div>
 
 
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Province / State</label>
                   <select
+                    data-field="state"
+                    data-optional="true"
                     value={supplier.state || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, state: e.target.value ?? "", city: "" })
@@ -719,10 +771,13 @@ export default function SupplierPage() {
                       </option>
                     ))}
                   </select>
+                  {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
                 </div>
                 <div>
                   <label className="text-sm font-semibold mb-1 block">City</label>
                   <select
+                    data-field="city"
+                    data-optional="true"
                     value={supplier.city || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, city: e.target.value ?? "" })
@@ -739,6 +794,7 @@ export default function SupplierPage() {
                       </option>
                     ))}
                   </select>
+                  {errors.city && <p className="text-red-500 text-sm mt-1">{errors.city}</p>}
                 </div>
 
 
@@ -749,7 +805,7 @@ export default function SupplierPage() {
                   </label>
                   <input
                     value={supplier.pincode || ""}
-                    data-rules="code"
+                    data-rules="pincode-6"
                     data-field="pincode"
                     data-optional="true"
                     onChange={(e) =>
@@ -764,23 +820,29 @@ export default function SupplierPage() {
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Website</label>
                   <input
+                    data-field="website"
+                    data-optional="true"
                     value={supplier.website || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, website: e.target.value ?? "" })
                     }
                     className={inputClass("website")}
                   />
+                  {errors.website && <p className="text-red-500 text-sm mt-1">{errors.website}</p>}
                 </div>
 
                 <div>
                   <label className="text-sm font-semibold mb-1 block">LinkedIn</label>
                   <input
+                    data-field="linkedin"
+                    data-optional="true"
                     value={supplier.linkedin || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, linkedin: e.target.value ?? "" })
                     }
                     className={inputClass("linkedin")}
                   />
+                  {errors.linkedin && <p className="text-red-500 text-sm mt-1">{errors.linkedin}</p>}
                 </div>
 
                 <div>
@@ -801,21 +863,31 @@ export default function SupplierPage() {
                 <div>
                   <label className="text-sm font-semibold mb-1 block">Skype</label>
                   <input
+                    data-field="skype"
+                    data-optional="true"
                     value={supplier.skype || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, skype: e.target.value ?? "" })
                     }
                     className={inputClass("skype")}
                   />
+                  {errors.skype && <p className="text-red-500 text-sm mt-1">{errors.skype}</p>}
                 </div>
 
               </div>
-            )}
+            </div>
 
 
-            {activeTab === "bank" && <div className="grid md:grid-cols-3 gap-6 mt-6"><div><label className="text-sm font-semibold mb-1 block">Bank Name</label><input value={supplier.bank_name} data-rules="alpha-name" data-field="bank_name" data-optional="true" onChange={(e) => setSupplier({ ...supplier, bank_name: e.target.value })} className={inputClass("bank_name")} />{errors.bank_name && <p className="text-red-500 text-sm mt-1">{errors.bank_name}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Name</label><input value={supplier.beneficiary_name} data-rules="alpha-name" data-field="beneficiary_name" data-optional="true" onChange={(e) => setSupplier({ ...supplier, beneficiary_name: e.target.value })} className={inputClass("beneficiary_name")} />{errors.beneficiary_name && <p className="text-red-500 text-sm mt-1">{errors.beneficiary_name}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Code</label><input value={supplier.beneficiary_code} data-rules="code" data-field="beneficiary_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, beneficiary_code: e.target.value })} className={inputClass("beneficiary_code")} />{errors.beneficiary_code && <p className="text-red-500 text-sm mt-1">{errors.beneficiary_code}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Branch</label><input value={supplier.branch} data-rules="no-symbols" data-field="branch" data-optional="true" onChange={(e) => setSupplier({ ...supplier, branch: e.target.value })} className={inputClass("branch")} />{errors.branch && <p className="text-red-500 text-sm mt-1">{errors.branch}</p>}</div><div><label className="text-sm font-semibold mb-1 block">IFSC Code</label><input value={supplier.ifsc_code} data-rules="code" data-field="ifsc_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, ifsc_code: e.target.value })} className={inputClass("ifsc_code")} />{errors.ifsc_code && <p className="text-red-500 text-sm mt-1">{errors.ifsc_code}</p>}</div><div><label className="text-sm font-semibold mb-1 block">SWIFT Code</label><input value={supplier.swift_code} data-rules="code" data-field="swift_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, swift_code: e.target.value })} className={inputClass("swift_code")} />{errors.swift_code && <p className="text-red-500 text-sm mt-1">{errors.swift_code}</p>}</div></div>}
-
-            {activeTab === "contact" && (
+            <div className={activeTab !== "bank" ? "hidden" : ""}>
+              <div className="grid md:grid-cols-3 gap-6 mt-6">
+                <div><label className="text-sm font-semibold mb-1 block">Bank Name</label><input value={supplier.bank_name || ""} data-rules="alpha-name" data-field="bank_name" data-optional="true" onChange={(e) => setSupplier({ ...supplier, bank_name: e.target.value ?? "" })} className={inputClass("bank_name")} />{errors.bank_name && <p className="text-red-500 text-sm mt-1">{errors.bank_name}</p>}</div>
+                <div><label className="text-sm font-semibold mb-1 block">Beneficiary Name</label><input value={supplier.beneficiary_name || ""} data-rules="alpha-name" data-field="beneficiary_name" data-optional="true" onChange={(e) => setSupplier({ ...supplier, beneficiary_name: e.target.value ?? "" })} className={inputClass("beneficiary_name")} />{errors.beneficiary_name && <p className="text-red-500 text-sm mt-1">{errors.beneficiary_name}</p>}</div><div><label className="text-sm font-semibold mb-1 block">Beneficiary Code</label><input value={supplier.beneficiary_code || ""} data-rules="code" data-field="beneficiary_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, beneficiary_code: e.target.value ?? "" })} className={inputClass("beneficiary_code")} />{errors.beneficiary_code && <p className="text-red-500 text-sm mt-1">{errors.beneficiary_code}</p>}</div>
+                <div><label className="text-sm font-semibold mb-1 block">Branch</label><input value={supplier.branch || ""} data-rules="no-symbols" data-field="branch" data-optional="true"
+                  onChange={(e) => setSupplier({ ...supplier, branch: e.target.value ?? "" })} className={inputClass("branch")} />{errors.branch && <p className="text-red-500 text-sm mt-1">{errors.branch}</p>}</div>
+                <div><label className="text-sm font-semibold mb-1 block">IFSC Code</label><input value={supplier.ifsc_code || ""} data-rules="code" data-field="ifsc_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, ifsc_code: e.target.value ?? "" })} className={inputClass("ifsc_code")} />{errors.ifsc_code && <p className="text-red-500 text-sm mt-1">{errors.ifsc_code}</p>}</div>
+                <div><label className="text-sm font-semibold mb-1 block">SWIFT Code</label><input value={supplier.swift_code || ""} data-rules="code" data-field="swift_code" data-optional="true" onChange={(e) => setSupplier({ ...supplier, swift_code: e.target.value ?? "" })} className={inputClass("swift_code")} />{errors.swift_code && <p className="text-red-500 text-sm mt-1">{errors.swift_code}</p>}</div></div>
+            </div>
+            <div className={activeTab !== "contact" ? "hidden" : ""}>
               <div className="mt-6 space-y-4">
                 {supplier.contacts.map((contact, idx) => (
                   <div key={idx} className="grid md:grid-cols-3 gap-4">
@@ -876,7 +948,7 @@ export default function SupplierPage() {
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
 
           <div className="ui-form-actions">

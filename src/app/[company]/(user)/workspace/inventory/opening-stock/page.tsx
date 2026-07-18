@@ -8,9 +8,12 @@ import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import { usePagination } from "@/hooks/usePagination";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 import type { ProductLookupItem } from "@/lib/product-lookup";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
+
+
 type WarehouseOption = { id: number; name: string };
 type LocatorOption = { id: number; locator_name: string; warehouse_id: number };
 
@@ -85,11 +88,11 @@ export default function OpeningStockPage() {
   const [openingStockCategory, setOpeningStockCategory] = useState("");
   const [selectedOpeningSkuMap, setSelectedOpeningSkuMap] = useState<Record<string, boolean>>({});
   const [bulkOpeningQty, setBulkOpeningQty] = useState("");
+  const formRef = useRef<HTMLFormElement | null>(null);
   const openingHeaderCheckboxRef = useRef<HTMLInputElement>(null);
 
   const inputClass = (key: string) =>
-    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${
-      errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
+    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
     }`;
 
   async function loadDocNo() {
@@ -233,18 +236,35 @@ export default function OpeningStockPage() {
     void loadDocNo();
   }
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) return { ...prev, [fieldName]: message };
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
+
   function validate(): boolean {
     const next: Record<string, string> = {};
     const itemNext: Record<string, string> = {};
     const selectedForSubmit = selectedItems.filter((item) => Boolean(selectedOpeningSkuMap[item.sku]));
-
-    if (!form.date) next.date = "Date is required";
-    if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
-    if (!form.locator_id) next.locator_id = "Store locator is required";
     if (selectedItems.length === 0) next.items = "Select at least one product";
     if (selectedItems.length > 0 && selectedForSubmit.length === 0) {
       next.items = "Select at least one item";
     }
+    if (!form.date) next.date = "Date is required";
+    if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
+    if (!form.locator_id) next.locator_id = "Store locator is required";
+    if (form.description && form.description.trim()) {
+      const descriptionMessage = getRuleValidationError("no-symbols", form.description);
+      if (descriptionMessage) next.description = descriptionMessage;
+    }
+
 
     let hasPositive = false;
     let hasInvalidSelectedQty = false;
@@ -282,10 +302,10 @@ export default function OpeningStockPage() {
           .filter((item) => Boolean(selectedOpeningSkuMap[item.sku]))
           .filter((item) => Number(item.qty) > 0)
           .map((item) => ({
-          product_id: item.product_id,
-          sku: item.sku,
-          qty: Number(item.qty),
-        })),
+            product_id: item.product_id,
+            sku: item.sku,
+            qty: Number(item.qty),
+          })),
       };
 
       const res = await apiFetch("/api/opening-stock", company, {
@@ -321,7 +341,7 @@ export default function OpeningStockPage() {
       await loadDocNo();
       await loadList();
     } catch (error: any) {
-      notify(error.message || "Save failed", {severity:"error"});
+      notify(error.message || "Save failed", { severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -442,7 +462,7 @@ export default function OpeningStockPage() {
     return selectedItems.filter((item) => {
       const matchesSearch = search
         ? `${item.product_name} ${item.product_code} ${item.sku}`.toLowerCase().includes(search)
-      : true;
+        : true;
       const category = categoryBySku.get(item.sku) || "";
       const matchesCategory = openingStockCategory ? category === openingStockCategory : true;
       return matchesSearch && matchesCategory;
@@ -654,7 +674,7 @@ export default function OpeningStockPage() {
           <button
             onClick={openForm}
             className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"
-          > 
+          >
             Add Opening Stock
           </button>
         )}
@@ -772,11 +792,10 @@ export default function OpeningStockPage() {
                         type="button"
                         onClick={() => goToPage(page)}
                         aria-current={currentPage === page ? "page" : undefined}
-                        className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${
-                          currentPage === page
-                            ? "z-10 bg-indigo-600 text-white"
-                            : "text-gray-900 hover:bg-gray-50"
-                        }`}
+                        className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${currentPage === page
+                          ? "z-10 bg-indigo-600 text-white"
+                          : "text-gray-900 hover:bg-gray-50"
+                          }`}
                       >
                         {page}
                       </button>
@@ -849,7 +868,7 @@ export default function OpeningStockPage() {
             </div>
             <div>
               <label className="text-sm font-semibold mb-1 block">
-                 Locator <span className="text-red-500">*</span>
+                Locator <span className="text-red-500">*</span>
               </label>
               <select
                 value={form.locator_id}
@@ -868,26 +887,30 @@ export default function OpeningStockPage() {
             <div>
               <label className="text-sm font-semibold mb-1 block">Description</label>
               <textarea
+                data-rules="no-symbols"
+                data-field="description"
+                data-optional="true"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={1}
-                className={inputClass("description")+ " resize-none"}
+                className={inputClass("description") + " resize-none"}
                 placeholder="Optional notes"
-              />
-            </div>
-         
+              />              {errors.description && <p className="text-red-500 text-sm mt-1">{errors.description}</p>}
 
-          <div className="md:col-start-5 flex items-end">
-            <button
-              type="button"
-              onClick={openProductModal}
-              className="ml-auto bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg "
-            >
-              Select Products
-            </button>
-            {errors.items && <p className="text-red-500 text-sm">{errors.items}</p>}
+            </div>
+
+
+            <div className="md:col-start-5 flex items-end">
+              <button
+                type="button"
+                onClick={openProductModal}
+                className="ml-auto bg-[var(--color-blue-500)] text-white px-6 py-2 rounded-lg "
+              >
+                Select Products
+              </button>
+              {errors.items && <p className="text-red-500 text-sm">{errors.items}</p>}
+            </div>
           </div>
-           </div>
 
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
             <div className="p-4 border-b bg-gray-50">
@@ -999,9 +1022,8 @@ export default function OpeningStockPage() {
                                 step="0.01"
                                 value={item.qty}
                                 onChange={(e) => updateQty(item.sku, e.target.value)}
-                                className={`w-full border rounded-lg p-2 ${
-                                  itemErrors[item.sku] ? "border-red-500" : "border-gray-200"
-                                }`}
+                                className={`w-full border rounded-lg p-2 ${itemErrors[item.sku] ? "border-red-500" : "border-gray-200"
+                                  }`}
                               />
                               {itemErrors[item.sku] && (
                                 <p className="text-red-500 text-xs mt-1">{itemErrors[item.sku]}</p>

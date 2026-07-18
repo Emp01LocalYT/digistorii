@@ -714,6 +714,15 @@ export function ProductForm({
 
 
     const currentErrors: Record<string, string> = {};
+    if (name) {
+      const err = getRuleValidationError("alphanumeric-spaces-hyphens", name);
+      if (err) currentErrors.name = err;
+    }
+
+    if (description) {
+      const err = getRuleValidationError("alphanumeric-spaces-hyphens", description);
+      if (err) currentErrors.description = err;
+    }
     if (hsnCode) {
       const err = getRuleValidationError("numeric-string", hsnCode);
       if (err) currentErrors.hsn_code = err;
@@ -742,6 +751,12 @@ export function ProductForm({
       if (v.size) {
         const err = getRuleValidationError("alphanumeric", v.size);
         if (err) currentErrors[`variant_size_${idx}`] = err;
+      }
+    });
+    images.forEach((i, idx) => {
+      if (i.alt_text) {
+        const err = getRuleValidationError("alphanumeric-spaces-hyphens", i.alt_text);
+        if (err) currentErrors[`image_alt_text_${idx}`] = err;
       }
     });
 
@@ -964,11 +979,13 @@ export function ProductForm({
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Product Name <span className="text-red-500">*</span></label>
               <input
+                data-rules="alphanumeric-spaces-hyphens"
+                data-field="name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={readOnly}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
-              />
+              />{errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
@@ -998,6 +1015,7 @@ export function ProductForm({
                   disabled={readOnly}
                   className="w-full font-sans"
                   reloadKey={categoryRefreshKey}
+
                 />
                 <Button
                   icon={<PlusOutlined />}
@@ -1023,7 +1041,7 @@ export function ProductForm({
                       .includes(input.toLowerCase())
                   }
                   className="w-full font-sans"
-
+                  getPopupContainer={(triggerNode) => triggerNode.parentNode}
                 />
                 <Button
                   icon={<PlusOutlined />}
@@ -1049,6 +1067,7 @@ export function ProductForm({
                       .includes(input.toLowerCase())
                   }
                   className="w-full font-sans"
+                  getPopupContainer={(triggerNode) => triggerNode.parentNode}
                 />
                 <Button
                   icon={<PlusOutlined />}
@@ -1091,6 +1110,7 @@ export function ProductForm({
                           .includes(input.toLowerCase())
                       }
                       className="w-full font-sans"
+                      getPopupContainer={(triggerNode) => triggerNode.parentNode}
                     />
                     <Button
                       icon={<PlusOutlined />}
@@ -1131,12 +1151,15 @@ export function ProductForm({
             <div className="md:col-span-2">
               <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
               <textarea
+                data-rules="alphanumeric-spaces-hyphens"
+                data-field="description"
+                data-optional="true"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 disabled={readOnly}
                 rows={3}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
-              />
+              />{errors.description && <p className="text-red-500 text-xs mt-1">{errors.description}</p>}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">Weight</label>
@@ -1153,7 +1176,7 @@ export function ProductForm({
               {errors.weight && <p className="text-red-500 text-xs mt-1">{errors.weight}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Length</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Length@</label>
               <input
                 type="number"
                 data-rules="decimal-number"
@@ -1287,6 +1310,7 @@ export function ProductForm({
                                   .includes(input.toLowerCase())
                               }
                               className={`w-full font-sans ${errors[`variant_color_${index}`] ? "border-red-500 rounded" : ""}`}
+                              getPopupContainer={(triggerNode) => triggerNode.parentNode}
                             />
                             <Button
                               icon={<PlusOutlined />}
@@ -1492,6 +1516,7 @@ export function ProductForm({
                               .includes(input.toLowerCase())
                           }
                           className="w-full font-sans"
+                          getPopupContainer={(triggerNode) => triggerNode.parentNode}
                         />
                         <Button icon={<PlusOutlined />} type="default" onClick={() => fileInputRef.current?.click()} />
                       </div>
@@ -1508,11 +1533,15 @@ export function ProductForm({
                         Alt Text
                       </label>
                       <input
+                        data-rules="alphanumeric-spaces-hyphens"
+                        data-field="alt_text"
+                        data-optional="true"
                         value={image.alt_text}
                         onChange={(e) => updateImage(index, "alt_text", e.target.value)}
                         disabled={readOnly}
                         className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
-                      />
+                      />              {errors.alt_text && <p className="text-red-500 text-xs mt-1">{errors.alt_text}</p>}
+
                     </div>
                     <div>
                       <label className="mb-1 block text-sm font-medium text-gray-700">

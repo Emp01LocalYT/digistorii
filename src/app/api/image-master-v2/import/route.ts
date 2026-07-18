@@ -4,6 +4,7 @@ import { pool } from "@/lib/db";
 import { getTenantSchema } from "@/lib/tenant";
 import { normalizeSku } from "@/lib/product-utils";
 import { PoolClient } from "pg";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 export const runtime = "nodejs";
 
@@ -350,6 +351,20 @@ if (missingHeaders.length > 0) {
       warnings.push(
         `Row ${rowNumber}: backorders allowed must be yes/no, true/false, or 1/0. Keeping false.`
       );
+    }
+
+    // Validate name, description, sku: only alphanumeric, spaces, hyphens, commas allowed
+    if (nameRaw) {
+      const nameErr = getRuleValidationError('alphanumeric-spaces-hyphens', nameRaw);
+      if (nameErr) errors.push(`Row ${rowNumber}: product_name: ${nameErr}`);
+    }
+    if (description) {
+      const descErr = getRuleValidationError('alphanumeric-spaces-hyphens', description);
+      if (descErr) errors.push(`Row ${rowNumber}: description: ${descErr}`);
+    }
+    if (skuRaw) {
+      const skuErr = getRuleValidationError('alphanumeric-spaces-hyphens', skuRaw);
+      if (skuErr) errors.push(`Row ${rowNumber}: sku: ${skuErr}`);
     }
 
     const parentSku = parentSkuRaw || skuRaw || `AUTO-${rowNumber}`;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   ChevronLeftIcon,
@@ -16,7 +16,10 @@ import { useTenant } from "@/context/TenantContext";
 import ProductLookupModal from "@/components/product/ProductLookupModal";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import { usePagination } from "@/hooks/usePagination";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useNotify } from "@/hooks/useNotify";
 import type { ProductLookupItem } from "@/lib/product-lookup";
+import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
 
 type Discount = {
   id?: string;
@@ -70,11 +73,13 @@ export default function DiscountSchemesPage() {
     categoryOptions: lookupCategoryOptions,
     resetFilters: resetLookupFilters,
   } = useProductLookup({ enabled: Boolean(company) });
-
+  const confirm = useConfirm();
+  const notify = useNotify();
   const [discounts, setDiscounts] = useState<Discount[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [form, setForm] = useState<Discount>(initialForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [search, setSearch] = useState("");
@@ -297,11 +302,34 @@ export default function DiscountSchemesPage() {
     }
   };
 
+  useEffect(() => {
+    if (!showForm || !formRef.current) return;
+    const cleanup = attachRuleValidationListeners(formRef.current, (fieldName, message) => {
+      setErrors((prev) => {
+        if (message) {
+          return { ...prev, [fieldName]: message };
+        }
+        const next = { ...prev };
+        delete next[fieldName];
+        return next;
+      });
+    });
+    return cleanup;
+  }, [showForm]);
   const validate = () => {
     const next: Record<string, string> = {};
     if (!form.name.trim()) next.name = "Discount name is required";
+    else {
+      const codeMessage = getRuleValidationError("tax-value", form.name);
+      if (codeMessage) next.name = codeMessage;
+    }
+    if (form.description) {
+      const codeMessage = getRuleValidationError("tax-value", form.description);
+      if (codeMessage) next.description = codeMessage;
+    }
     if (!form.discount_type) next.discount_type = "Discount type is required";
     if (Number(form.value || 0) < 0) next.value = "Discount value must be >= 0";
+
     if (form.starts_at && form.ends_at && form.starts_at > form.ends_at) {
       next.ends_at = "End date must be after start date";
     }
@@ -340,6 +368,7 @@ export default function DiscountSchemesPage() {
         });
         const data = await res.json();
         if (!data?.success) throw new Error(data?.error || "Failed to save discount");
+        notify("Discount updated successfully", { severity: "success" });
       } else if (duplicatedFromId) {
         const deactivateRes = await fetch(`/api/discounts/${duplicatedFromId}/status`, {
           method: "PATCH",
@@ -374,6 +403,8 @@ export default function DiscountSchemesPage() {
           });
           throw new Error(createData?.error || "Failed to create discount");
         }
+        notify("Discount duplicated and replaced successfully", { severity: "success" });
+
       } else {
         const res = await fetch("/api/discounts", {
           method: "POST",
@@ -385,12 +416,14 @@ export default function DiscountSchemesPage() {
         });
         const data = await res.json();
         if (!data?.success) throw new Error(data?.error || "Failed to save discount");
+        notify("Discount created successfully", { severity: "success" });
       }
       await fetchDiscounts();
       setShowForm(false);
       resetForm();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      notify(err.message || "Failed to save discount", { severity: "error" });
     } finally {
       setSaving(false);
     }
@@ -511,13 +544,13 @@ export default function DiscountSchemesPage() {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <input
-              type="text"
-              placeholder="Search discount..."
-              className="w-full pl-4 pr-4 py-2 border rounded-lg"
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <input
+                  type="text"
+                  placeholder="Search discount..."
+                  className="w-full pl-4 pr-4 py-2 border rounded-lg"
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
@@ -553,9 +586,8 @@ export default function DiscountSchemesPage() {
                         <td className="ui-table-td-center">{d.priority}</td>
                         <td className="ui-table-td-center">
                           <span
-                            className={`px-2 py-1 rounded-full text-[10px] font-bold ${
-                              d.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                            }`}
+                            className={`px-2 py-1 rounded-full text-[10px] font-bold ${d.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                              }`}
                           >
                             {d.is_active ? "ACTIVE" : "INACTIVE"}
                           </span>
@@ -656,10 +688,9 @@ export default function DiscountSchemesPage() {
                             type="button"
                             onClick={() => goToPage(page)}
                             aria-current={currentPage === page ? "page" : undefined}
-                            className={`ui-pagination-btn ${
-                              currentPage === page
-                                ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                            }`}
+                            className={`ui-pagination-btn ${currentPage === page
+                              ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                              }`}
                           >
                             {page}
                           </button>
@@ -712,6 +743,8 @@ export default function DiscountSchemesPage() {
                   Name <span className="text-red-500">*</span>
                 </label>
                 <input
+                  data-rules="tax-value"
+                  data-field="name"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="w-full border p-3 rounded"
@@ -722,10 +755,15 @@ export default function DiscountSchemesPage() {
               <div>
                 <label className="text-sm font-semibold mb-1 block">Description</label>
                 <input
+                  data-rules="tax-value"
+                  data-field="description"
+                  data-optional="true"
                   value={form.description || ""}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   className="w-full border p-3 rounded"
                 />
+                {errors.description && <p className="text-red-500 text-sm">{errors.description}</p>}
+
               </div>
 
               <div>
@@ -808,6 +846,7 @@ export default function DiscountSchemesPage() {
                 <label className="text-sm font-semibold mb-1 block">Start Date</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split('T')[0]}
                   value={form.starts_at || ""}
                   onChange={(e) => setForm({ ...form, starts_at: e.target.value })}
                   className="w-full border p-3 rounded"
@@ -817,6 +856,7 @@ export default function DiscountSchemesPage() {
                 <label className="text-sm font-semibold mb-1 block">End Date</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split('T')[0]}
                   value={form.ends_at || ""}
                   onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
                   className="w-full border p-3 rounded"

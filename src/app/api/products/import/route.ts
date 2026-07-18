@@ -10,6 +10,7 @@ import {
 } from "@/lib/product-barcode";
 import { getTenantSchema } from "@/lib/tenant";
 import { normalizeSku } from "@/lib/product-utils";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 type FieldKey =
   | "name"
@@ -201,6 +202,16 @@ function parseRows(rows: Record<string, unknown>[], mapping: MappingConfig): Par
       if (!stringValue(values[field])) {
         errors.push(`${field} is required`);
       }
+    }
+
+    // Validate name, description, sku fields to allow only alphanumeric characters, spaces, hyphens, and commas
+    const nameError = getRuleValidationError('alphanumeric-spaces-hyphens', values.name || '');
+    if (nameError) errors.push(`name: ${nameError}`);
+    const descriptionError = getRuleValidationError('alphanumeric-spaces-hyphens', values.description || '');
+    if (descriptionError) errors.push(`description: ${descriptionError}`);
+    if (values.sku) {
+      const skuError = getRuleValidationError('alphanumeric-spaces-hyphens', values.sku);
+      if (skuError) errors.push(`sku: ${skuError}`);
     }
 
     const sku = stringValue(values.sku);

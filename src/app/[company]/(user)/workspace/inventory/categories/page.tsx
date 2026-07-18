@@ -75,7 +75,7 @@ function LoadingOverlay({ loading }: { loading: boolean }) {
     </div>,
     document.body
   );
-} 
+}
 function PageHeader({ showForm, onAdd }: any) {
   return (
     <div className="flex justify-between items-center">
@@ -125,171 +125,170 @@ function CategoryTable({
   goToPreviousPage,
   goToNextPage,
 }: any) {
-  return(
-            <div className="ui-table-card">
-              <div className="ui-search-section">
-                <div className="ui-search-wrapper">
-                  <MagnifyingGlassIcon className="ui-search-icon" />
-                  <input
-                    type="text"
-                    placeholder="Search categories..."
-                    className="ui-input"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-              </div>
-            <div className="ui-table-scroll">
-              <table className="ui-table">
-                <thead className="ui-table-head">
-                  <tr className="ui-table-row">
-                    <th className="ui-table-th">Category Name</th>
-                    <th className="ui-table-th">Parent Category</th>
-                    <th className="ui-table-th">Level</th>
-                    <th className="ui-table-th-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody >
-                  {tableLoading ? (
-                    <tr>
-                      <td colSpan={4} className="ui-loading-row">
-                        Loading data...
-                      </td>
-                    </tr>
-                  ) : paged.length > 0 ? (
-                    paged.map((row : any) => (
-                      <tr key={row.id} className="ui-table-row">
-                        <td className="ui-table-td" style={{ paddingLeft: `${(row.level - 1) * 20 + 16}px` }}>
-                          {row.name}
-                        </td>
-                        <td className="ui-table-td">{row.parentName || "-"}</td>
-                        <td className="ui-table-td">{row.level}</td>
-                        <td className="ui-table-td-center">
-                          <div className="ui-table-actions">
-                            <button
-                              onClick={() => {
-                                setForm({
-                                  id: row.id,
-                                  category_name: row.name,
-                                  parent_id: row.parentId ? String(row.parentId) : "",
-                                });
-                                setErrors({});
-                                setShowForm(true);
-                              }}
-                              className="text-indigo-600"
-                            >
-                              <PencilSquareIcon className="w-5 h-5" />
-                            </button>
-                            <button onClick={() => removeCategory(row.id)} className="text-red-600">
-                              <TrashIcon className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={4} className="ui-empty-row ui-table-td-center">
-                        No records found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-                <div className="ui-pagination-wrapper">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="ui-pagination-info">
-          Showing <span className="font-medium">{showingFrom}</span> to{" "}
-          <span className="font-medium">{showingTo}</span> of{" "}
-          <span className="font-medium">{totalItems}</span> results
-        </p>
-        <div className="ui-table-actions">
-          <label htmlFor="category-rows-per-page" className="text-sm text-gray-600">
-            Rows per page
-          </label>
-          <select
-            id="category-rows-per-page"
-            value={rowsPerPage}
-            onChange={(e) => setRowsPerPage(Number(e.target.value))}
-            className="ui-pagination-select"
-          >
-            <option value={10}>10</option>
-            <option value={20}>20</option>
-            <option value={50}>50</option>
-          </select>
+  return (
+    <div className="ui-table-card">
+      <div className="ui-search-section">
+        <div className="ui-search-wrapper">
+          <MagnifyingGlassIcon className="ui-search-icon" />
+          <input
+            type="text"
+            placeholder="Search categories..."
+            className="ui-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
       </div>
-
-      <div className="mt-4 flex items-center justify-between">
-        <div className="flex flex-1 justify-between sm:hidden">
-          <button
-            type="button"
-            onClick={goToPreviousPage}
-            disabled={currentPage === 1}
-            className="ui-pagination-icon-btn rounded-md"
-          >
-            Previous
-          </button>
-          <button
-            type="button"
-            onClick={goToNextPage}
-            disabled={currentPage === totalPages}
-            className="ui-pagination-icon-btn rounded-md ml-3"
-          >
-            Next
-          </button>
+      <div className="ui-table-scroll">
+        <table className="ui-table">
+          <thead className="ui-table-head">
+            <tr className="ui-table-row">
+              <th className="ui-table-th">Category Name</th>
+              <th className="ui-table-th">Parent Category</th>
+              <th className="ui-table-th">Level</th>
+              <th className="ui-table-th-center">Action</th>
+            </tr>
+          </thead>
+          <tbody >
+            {tableLoading ? (
+              <tr>
+                <td colSpan={4} className="ui-loading-row">
+                  Loading data...
+                </td>
+              </tr>
+            ) : paged.length > 0 ? (
+              paged.map((row: any) => (
+                <tr key={row.id} className="ui-table-row">
+                  <td className="ui-table-td" style={{ paddingLeft: `${(row.level - 1) * 20 + 16}px` }}>
+                    {row.name}
+                  </td>
+                  <td className="ui-table-td">{row.parentName || "-"}</td>
+                  <td className="ui-table-td">{row.level}</td>
+                  <td className="ui-table-td-center">
+                    <div className="ui-table-actions">
+                      <button
+                        onClick={() => {
+                          setForm({
+                            id: row.id,
+                            category_name: row.name,
+                            parent_id: row.parentId ? String(row.parentId) : "",
+                          });
+                          setErrors({});
+                          setShowForm(true);
+                        }}
+                        className="text-indigo-600"
+                      >
+                        <PencilSquareIcon className="w-5 h-5" />
+                      </button>
+                      <button onClick={() => removeCategory(row.id)} className="text-red-600">
+                        <TrashIcon className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4} className="ui-empty-row ui-table-td-center">
+                  No records found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="ui-pagination-wrapper">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="ui-pagination-info">
+            Showing <span className="font-medium">{showingFrom}</span> to{" "}
+            <span className="font-medium">{showingTo}</span> of{" "}
+            <span className="font-medium">{totalItems}</span> results
+          </p>
+          <div className="ui-table-actions">
+            <label htmlFor="category-rows-per-page" className="text-sm text-gray-600">
+              Rows per page
+            </label>
+            <select
+              id="category-rows-per-page"
+              value={rowsPerPage}
+              onChange={(e) => setRowsPerPage(Number(e.target.value))}
+              className="ui-pagination-select"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+            </select>
+          </div>
         </div>
 
-        <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
-          <nav aria-label="Pagination" className="ui-pagination-nav">
+        <div className="mt-4 flex items-center justify-between">
+          <div className="flex flex-1 justify-between sm:hidden">
             <button
               type="button"
               onClick={goToPreviousPage}
               disabled={currentPage === 1}
-              className="ui-pagination-icon-btn rounded-l-md"
+              className="ui-pagination-icon-btn rounded-md"
             >
-              <span className="sr-only">Previous</span>
-              <ChevronLeftIcon className="h-5 w-5" />
+              Previous
             </button>
-
-            {pageNumbers.map((page: number | "...", idx: number) =>
-              page === "..." ? (
-                <span
-                  key={`ellipsis-${idx}`}
-                  className="ui-pagination-btn ui-pagination-btn-inactive"
-                >
-                  ...
-                </span>
-              ) : (
-                <button
-                  key={`page-${page}`}
-                  type="button"
-                  onClick={() => goToPage(page)}
-                  aria-current={currentPage === page ? "page" : undefined}
-                  className={`ui-pagination-btn ${
-                    currentPage === page ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                  }`}
-                >
-                  {page}
-                </button>
-              )
-            )}
-
             <button
               type="button"
               onClick={goToNextPage}
               disabled={currentPage === totalPages}
-              className="ui-pagination-icon-btn rounded-r-md"
+              className="ui-pagination-icon-btn rounded-md ml-3"
             >
-              <span className="sr-only">Next</span>
-              <ChevronRightIcon className="h-5 w-5" />
+              Next
             </button>
-          </nav>
+          </div>
+
+          <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
+            <nav aria-label="Pagination" className="ui-pagination-nav">
+              <button
+                type="button"
+                onClick={goToPreviousPage}
+                disabled={currentPage === 1}
+                className="ui-pagination-icon-btn rounded-l-md"
+              >
+                <span className="sr-only">Previous</span>
+                <ChevronLeftIcon className="h-5 w-5" />
+              </button>
+
+              {pageNumbers.map((page: number | "...", idx: number) =>
+                page === "..." ? (
+                  <span
+                    key={`ellipsis-${idx}`}
+                    className="ui-pagination-btn ui-pagination-btn-inactive"
+                  >
+                    ...
+                  </span>
+                ) : (
+                  <button
+                    key={`page-${page}`}
+                    type="button"
+                    onClick={() => goToPage(page)}
+                    aria-current={currentPage === page ? "page" : undefined}
+                    className={`ui-pagination-btn ${currentPage === page ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
+                      }`}
+                  >
+                    {page}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                onClick={goToNextPage}
+                disabled={currentPage === totalPages}
+                className="ui-pagination-icon-btn rounded-r-md"
+              >
+                <span className="sr-only">Next</span>
+                <ChevronRightIcon className="h-5 w-5" />
+              </button>
+            </nav>
+          </div>
         </div>
       </div>
     </div>
-          </div>
   );
 }
 
@@ -304,82 +303,83 @@ function CategoryForm({
   setErrors,
   submit,
 }: any) {
-  return(
+  return (
     <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit("close");
-          }}
-          className="bg-white p-6 rounded-xl shadow space-y-6"
-        >
-          <h2 className="text-lg font-semibold">{form.id ? "Update Category" : "Create Category"}</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div>
-              <label className="text-sm font-semibold mb-1 block">
-                Category Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                data-rules="no-symbols"
-                data-field="category_name"
-                value={form.category_name}
-                onChange={(e) => setForm({ ...form, category_name: e.target.value })}
-                className={inputClass("category_name")}
-              />
-              {errors.category_name && <p className="text-red-500 text-sm mt-1">{errors.category_name}</p>}
-            </div>
-            <div>
-              <label className="text-sm font-semibold mb-1 block">Parent Category</label>
-              <select
-                value={form.parent_id}
-                onChange={(e) => setForm({ ...form, parent_id: e.target.value })}
-                className={inputClass("parent_id")}
-              >
-                <option value="">No Parent (Top Level)</option>
-                {categoryOptions.map((opt :any ) => (
-                  <option key={opt.id} value={String(opt.id)}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit("close");
+      }}
+      className="bg-white p-6 rounded-xl shadow space-y-6"
+    >
+      <h2 className="text-lg font-semibold">{form.id ? "Update Category" : "Create Category"}</h2>
+      <div className="grid md:grid-cols-2 gap-6">
+        <div>
+          <label className="text-sm font-semibold mb-1 block">
+            Category Name <span className="text-red-500">*</span>
+          </label>
+          <input
+            data-rules="no-symbols"
+            data-field="category_name"
+            value={form.category_name}
+            onChange={(e) => setForm({ ...form, category_name: e.target.value })}
+            className={inputClass("category_name")}
+          />
+          {errors.category_name && <p className="text-red-500 text-sm mt-1">{errors.category_name}</p>}
+        </div>
+        <div>
+          <label className="text-sm font-semibold mb-1 block">Parent Category</label>
+          <select
+            value={form.parent_id}
+            onChange={(e) => setForm({ ...form, parent_id: e.target.value })}
+            className={inputClass("parent_id")}
+          >
+            <option value="">No Parent (Top Level)</option>
+            {categoryOptions.map((opt: any) => (
+              <option key={opt.id} value={String(opt.id)}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
-          <div className="ui-form-actions">
+      <div className="ui-form-actions">
+        <button
+          type="button"
+          onClick={() => {
+            setShowForm(false);
+            setForm(initialForm());
+            setErrors({});
+          }}
+          className="ui-btn ui-btn-secondary ui-btn-responsive"
+        >
+          Cancel
+        </button>
+
+        <div className="ui-btn-group">
+          {!form.id && (
             <button
               type="button"
-              onClick={() => {
-                setShowForm(false);
-                setForm(initialForm());
-                setErrors({});
-              }}
+              onClick={() => void submit("add")}
               className="ui-btn ui-btn-secondary ui-btn-responsive"
             >
-              Cancel
+              Create & Add Another
             </button>
+          )}
 
-            <div className="ui-btn-group">
-              {!form.id && (
-                <button
-                  type="button"
-                  onClick={() => void submit("add")}
-                  className="ui-btn ui-btn-secondary ui-btn-responsive"
-                >
-                  Create & Add Another
-                </button>
-              )}
-
-              <button className="ui-btn ui-btn-primary ui-btn-responsive">
-                {form.id ? "Update" : "Create"}
-              </button>
-            </div>
-          </div>
-        </form>
-       ); }
+          <button className="ui-btn ui-btn-primary ui-btn-responsive">
+            {form.id ? "Update" : "Create"}
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
 
 export default function CategoryMasterPage() {
   const { company } = useTenant();
-    const confirm = useConfirm();
-    const notify = useNotify();
+  const confirm = useConfirm();
+  const notify = useNotify();
   const [tree, setTree] = useState<CategoryNode[]>([]);
   const [form, setForm] = useState<CategoryForm>(initialForm());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -391,15 +391,14 @@ export default function CategoryMasterPage() {
   const formRef = useRef<HTMLDivElement | null>(null);
 
   const inputClass = (key: string) =>
-    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${
-      errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
+    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
     }`;
 
   async function loadCategories() {
     if (!company) return;
     try {
       setTableLoading(true);
-        const res = await apiFetch("/api/categories?format=tree", company);
+      const res = await apiFetch("/api/categories?format=tree", company);
       const data = await res.json();
       setTree(data.success ? data.data || [] : []);
     } finally {
@@ -459,14 +458,39 @@ export default function CategoryMasterPage() {
   });
 
   function validate(): boolean {
-    const next: Record<string, string> = {};
-    if (!form.category_name.trim()) next.category_name = "Category name is required";
-    else {
-      const categoryMessage = getRuleValidationError("no-symbols", form.category_name);
-      if (categoryMessage) next.category_name = categoryMessage;
-    }
-    setErrors(next);
-    return Object.keys(next).length === 0;
+    if (!formRef.current) return true;
+
+    const nextErrors: Record<string, string> = {};
+    const fields = formRef.current.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+      "[data-rules]"
+    );
+
+    fields.forEach((target) => {
+      const fieldName =
+        target.getAttribute("data-field") ||
+        target.getAttribute("name") ||
+        target.getAttribute("id") ||
+        "";
+      const rules = target.getAttribute("data-rules") || "";
+      const value = target.value;
+      const isOptional = target.getAttribute("data-optional") === "true";
+
+      // 1. Check Required Validation
+      if (!value.trim()) {
+        if (!isOptional) {
+          nextErrors[fieldName] = `${fieldName.replace("_", " ").toUpperCase()} is required`;
+        }
+      } else {
+        // 2. Check Rule Validation
+        const message = getRuleValidationError(rules, value);
+        if (message) {
+          nextErrors[fieldName] = message;
+        }
+      }
+    });
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
   }
 
   async function submit(mode: "close" | "add") {
@@ -507,7 +531,7 @@ export default function CategoryMasterPage() {
 
   async function removeCategory(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this category?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this category?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     setMessage("");
     try {
@@ -524,67 +548,67 @@ export default function CategoryMasterPage() {
 
 
   return (
-  <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 max-w-7xl mx-auto space-y-6">
 
-    <LoadingOverlay loading={loading} />
+      <LoadingOverlay loading={loading} />
 
-    <PageHeader
-      showForm={showForm}
-      onAdd={() => {
-        setForm(initialForm());
-        setErrors({});
-        setShowForm(true);
-      }}
-    />
-
-    <MessageBox message={message} />
-
-    {!showForm && (
-      <>
-        <CategoryTable
-          search={search}
-          setSearch={setSearch}
-          paged={paged}
-          tableLoading={tableLoading}
-          removeCategory={removeCategory}
-          setForm={setForm}
-          setShowForm={setShowForm}
-          setErrors={setErrors}
-          currentPage={currentPage}
-          totalItems={totalItems}
-          showingFrom={showingFrom}
-          showingTo={showingTo}
-          totalPages={totalPages}
-          rowsPerPage={rowsPerPage}
-          setRowsPerPage={setRowsPerPage}
-          pageNumbers={pageNumbers}
-          goToPage={goToPage}
-          goToPreviousPage={goToPreviousPage}
-          goToNextPage={goToNextPage}
-
-        />
-
-        
-      </>
-    )}
-
-    {showForm && (
-      <div ref={formRef}>
-      <CategoryForm
-        form={form}
-        setForm={setForm}
-        errors={errors}
-        inputClass={inputClass}
-        categoryOptions={categoryOptions}
-        setShowForm={setShowForm}
-        setErrors={setErrors}
-        submit={submit}
+      <PageHeader
+        showForm={showForm}
+        onAdd={() => {
+          setForm(initialForm());
+          setErrors({});
+          setShowForm(true);
+        }}
       />
-      </div>
-    )}
 
-  </div>
-);
+      <MessageBox message={message} />
+
+      {!showForm && (
+        <>
+          <CategoryTable
+            search={search}
+            setSearch={setSearch}
+            paged={paged}
+            tableLoading={tableLoading}
+            removeCategory={removeCategory}
+            setForm={setForm}
+            setShowForm={setShowForm}
+            setErrors={setErrors}
+            currentPage={currentPage}
+            totalItems={totalItems}
+            showingFrom={showingFrom}
+            showingTo={showingTo}
+            totalPages={totalPages}
+            rowsPerPage={rowsPerPage}
+            setRowsPerPage={setRowsPerPage}
+            pageNumbers={pageNumbers}
+            goToPage={goToPage}
+            goToPreviousPage={goToPreviousPage}
+            goToNextPage={goToNextPage}
+
+          />
+
+
+        </>
+      )}
+
+      {showForm && (
+        <div ref={formRef}>
+          <CategoryForm
+            form={form}
+            setForm={setForm}
+            errors={errors}
+            inputClass={inputClass}
+            categoryOptions={categoryOptions}
+            setShowForm={setShowForm}
+            setErrors={setErrors}
+            submit={submit}
+          />
+        </div>
+      )}
+
+    </div>
+  );
 }
 
 

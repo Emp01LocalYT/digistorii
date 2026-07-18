@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Input, Modal } from "antd";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 type ColorModalProps = {
   open: boolean;
@@ -29,6 +30,12 @@ export default function ColorModal({ open, onClose, onSaved, initialColorName = 
     if (!company) return;
     if (!colorFormName.trim()) {
       setColorFormError("Color name is required");
+      return;
+    }
+
+    const nameError = getRuleValidationError("alphanumeric-spaces-hyphens", colorFormName);
+    if (nameError) {
+      setColorFormError(nameError);
       return;
     }
     setColorSaving(true);
@@ -64,7 +71,7 @@ export default function ColorModal({ open, onClose, onSaved, initialColorName = 
       }}
       footer={null}
       destroyOnHidden
-      zIndex={1000}
+      zIndex={1500}
     >
       <div className="space-y-4">
         <div>

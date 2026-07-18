@@ -233,43 +233,33 @@ export async function PUT(
     const nextIsActive = isRowActive(parsed.effectiveDate, parsed.expiresAt);
 
     await client.query("BEGIN");
-
     if (nextIsActive) {
       await client.query(
         `
-          UPDATE "${schema}".product_pricing
-          SET is_active = FALSE, expires_at = NOW(), updated_at = NOW()
-          WHERE tenant_id = $1
-            AND variant_id = $2
-            AND id <> $3
-            AND is_active = TRUE
-        `,
-        [company, pricingRow.variant_id, pricingId]
+      UPDATE "${schema}".product_pricing
+      SET is_active = FALSE, expires_at = NOW(), updated_at = NOW()
+      WHERE tenant_id = $1
+        AND variant_id = $2
+        AND is_active = TRUE
+    `,
+        [company, pricingRow.variant_id]
       );
     }
-
     await client.query(
       `
-        UPDATE "${schema}".product_pricing
-        SET
-          base_cost = $1,
-          operational_cost = $2,
-          landed_price = $3,
-          margin_type = $4,
-          margin_value = $5,
-          margin_amount = $6,
-          unit_price = $7,
-          tax_percent = $8,
-          tax_amount = $9,
-          final_selling_price = $10,
-          active_from = $11,
-          expires_at = $12,
-          is_active = $13,
-          updated_at = NOW()
-        WHERE tenant_id = $14
-          AND id = $15
-      `,
+    INSERT INTO "${schema}".product_pricing (
+      tenant_id, product_id, variant_id, source_type,
+      base_cost, operational_cost, landed_price, 
+      margin_type, margin_value, margin_amount, 
+      unit_price, tax_percent, tax_amount, final_selling_price, 
+      active_from, expires_at, is_active, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+  `,
       [
+        company,
+        pricingRow.product_id,
+        pricingRow.variant_id,
+        pricingRow.source_type,
         parsed.baseCost,
         parsed.operationalCost,
         calculated.landedPrice,
@@ -282,9 +272,7 @@ export async function PUT(
         calculated.finalSellingPrice,
         parsed.effectiveDate,
         parsed.expiresAt,
-        nextIsActive,
-        company,
-        pricingId,
+        nextIsActive
       ]
     );
 

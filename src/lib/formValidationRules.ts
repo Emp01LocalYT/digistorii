@@ -16,20 +16,25 @@ export const ruleDefinitions: Record<string, RuleDefinition> = {
     regex: /[^a-zA-Z0-9\s]/,
     message: "Special symbols are not allowed.",
   },
+  "tax-value": {
+    key: "tax-value",
+    regex: /[^a-zA-Z0-9\s%.()_,\'@-]/,
+    message: "Only letters, numbers, spaces, %, commas, @, and apostrophes are allowed.",
+  },
   "alpha-name": {
     key: "alpha-name",
-    regex: /[^a-zA-Z\s.-]/,
-    message: "Only letters, spaces, dots and hyphens are allowed.",
+    regex: /[^a-zA-Z\s.,'-]/,
+    message: "Only letters, spaces, dots, hyphens and commas are allowed.",
   },
   "alpha-spaces-hyphens": {
     key: "alpha-spaces-hyphens",
-    regex: /[^a-zA-Z\s-]/,
-    message: "Only letters, spaces and hyphens are allowed.",
+    regex: /[^a-zA-Z\s.,'-]/,
+    message: "Only letters, spaces, hyphens and commas are allowed.",
   },
   "alphanumeric-spaces-hyphens": {
     key: "alphanumeric-spaces-hyphens",
-    regex: /[^a-zA-Z0-9\s-]/,
-    message: "Only letters, numbers, spaces and hyphens are allowed.",
+    regex: /[^a-zA-Z0-9\s.,'-]/,
+    message: "Only letters, numbers, spaces, hyphens and commas are allowed.",
   },
   "numeric-string": {
     key: "numeric-string",
@@ -63,8 +68,8 @@ export const ruleDefinitions: Record<string, RuleDefinition> = {
   },
   phone: {
     key: "phone",
-    regex: /[^0-9+\-\s]/,
-    message: "Only numbers, spaces, + and - are allowed.",
+    validate: (value) => /^\d{10}$/.test(value),
+    message: "Must be only 10 digit numbers",
   },
   boolean: {
     key: "boolean",
@@ -98,16 +103,29 @@ export const ruleDefinitions: Record<string, RuleDefinition> = {
     message: "Script tags and JavaScript are not allowed.",
   },
   'fax-phone': {
-  // Allows numbers, spaces, hyphens, parentheses, and a leading plus sign.
-  // Blocks letters and special characters like * , ! @ # $ % ^ & ; < >
-  key: "fax-phone",
-  regex: /[^0-9\s()+-]/g, 
-  message: "Invalid characters. Only numbers, spaces, hyphens, (), and + are allowed."
+    key: "fax-phone",
+    regex: /[^0-9\s()+-]/g,
+    message: "Invalid characters. Only numbers, spaces, hyphens, (), and + are allowed."
   },
   "alphanumeric": {
     key: "alphanumeric",
     regex: /[^a-zA-Z0-9]/,
     message: "Only letters and numbers are allowed.",
+  },
+  "pincode-6": {
+    key: "pincode-6",
+    validate: (value) => /^[0-9]{1,6}$/.test(value),
+    message: "Pincode must be 6 digits.",
+  },
+  "india-only": {
+    key: "india-only",
+    validate: (value) => value.toLowerCase() === "india",
+    message: "Service is currently only available in India.",
+  },
+  "min-10-digits": {
+    key: "min-10-digits",
+    validate: (value) => value.replace(/\D/g, '').length >= 10,
+    message: "Must be at least 10 digits.",
   },
 };
 
@@ -149,12 +167,12 @@ export function attachRuleValidationListeners(
       target.getAttribute("id") ||
       "";
     const rules = target.getAttribute("data-rules") || "";
-    
+
     // If there are no validation rules on this field, don't clear or set errors
-    if (!rules) return; 
+    if (!rules) return;
 
     const value = (target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;
-    
+
     // Check required fields along with your rule checks
     let message = null;
     if (!value.trim()) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { ensureDB } from "@/lib/ensure-db";
 import nodemailer from "nodemailer";
-
+import { randomBytes } from "crypto";
 // ──────────────────────────────────────────────────────────────
 //  DUMMY CREDENTIALS — Replace with your real sender email
 //  and app password before going to production.
@@ -21,7 +21,9 @@ const transporter = nodemailer.createTransport({
 export async function POST(req: NextRequest) {
   await ensureDB();
   const client = await pool.connect();
+
   try {
+    const cryptoToken = randomBytes(32).toString("hex");
     const body = await req.json();
     const company = String(body?.company || "").trim().toLowerCase();
     if (!company) {
@@ -74,6 +76,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    await client.query(
+      `UPDATE public.companies
+       SET verification_token = $1, updated_at = NOW()
+       WHERE id = $2`,
+      [cryptoToken, companyId]
+    );
+
     // Fetch subscription info
     const subResult = await client.query(
       `SELECT plan_code, max_users, max_locations, max_warehouses, ecommerce_access, billing_interval, amount
@@ -87,7 +96,8 @@ export async function POST(req: NextRequest) {
 
     const adminUrl = `digistorii/${company}/admin`;
     const shopUrl = `digistorii/${company}`;
-
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "/not_found";
+    const secureverificationLink = `${baseUrl}/api/verify-company?token=${cryptoToken}`;
     // Build email HTML
     const htmlBody = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 32px;">
@@ -141,10 +151,10 @@ export async function POST(req: NextRequest) {
           </div>
         </div>
 
-        <div style="text-align: center; margin-top: 24px;">
-          <p style="color: #64748b; font-size: 13px; margin: 0;">
-            Please verify your email to activate your workspace and go live.
-          </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${secureverificationLink}" target="_blank" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 14px 28px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+            Verify & Activate Workspace
+          </a>
         </div>
       </div>
     `;
@@ -157,13 +167,7 @@ export async function POST(req: NextRequest) {
       html: htmlBody,
     });
 
-    // Mark company as LIVE
-    await client.query(
-      `UPDATE public.companies
-       SET setup_stage = 'LIVE', updated_at = NOW()
-       WHERE id = $1`,
-      [companyId]
-    );
+
 
     return NextResponse.json({
       success: true,

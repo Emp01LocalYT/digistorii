@@ -219,7 +219,7 @@ export default function FittingMasterPage() {
                   ) : paged.length > 0 ? (
                     paged.map((row) => (
                       <tr key={row.id} className="ui-table-row">
-                        <td>{row.fitting_name}</td>
+                        <td className="ui-table-td" >{row.fitting_name}</td>
                         <td className="ui-table-td-center">
                           <div className="ui-table-actions">
                             <button

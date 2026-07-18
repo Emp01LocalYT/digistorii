@@ -14,7 +14,7 @@ import { HiEye, HiEyeOff, HiMail } from "react-icons/hi";
 export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption | null }) {
   const router = useRouter();
   const [storedPlan, setStoredPlan] = useState<PlanOption | null>(null);
-  const [isPreviewOpen, setIsPreviewOpen]= useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     setStoredPlan(selectedPlan || readPersistedSelectedPlan());
@@ -42,8 +42,7 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
   const [showPassword, setShowPassword] = useState(false);
 
   const inputClass = (field: string) =>
-    `w-full px-4 py-3 rounded-lg border ${
-      errors[field] ? "border-red-500 focus:ring-red-400" : "border-gray-300 focus:ring-blue-500"
+    `w-full px-4 py-3 rounded-lg border ${errors[field] ? "border-red-500 focus:ring-red-400" : "border-gray-300 focus:ring-blue-500"
     } focus:outline-none`;
 
   const handleOpenPreview = (e: FormEvent<HTMLFormElement>) => {
@@ -56,49 +55,53 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
   const validate = () => {
     const next: Record<string, string> = {};
 
-  if (!formData.businessName.trim()) {
-    next.businessName = "Business Name is required";
-  }
-  const slugValue = formData.slug.trim();
+    if (!formData.businessName.trim()) {
+      next.businessName = "Business Name is required";
+    }
+    const slugValue = formData.slug.trim();
 
-  if (!slugValue) {
-    next.slug = "Website URL is required";
-  } else if (/\s/.test(slugValue)) {
-    next.slug = "Spaces are not allowed in the URL";
-  } else if (/[^a-z]/.test(slugValue)) {
-    next.slug = "Special characters and numbers are not allowed";
-  }
-  if(!formData.ownerName.trim()){
-    next.ownerName="Owner Name is reqired";
-  }
-  
-  if (!formData.ownerEmail.trim()) {
-    next.ownerEmail = "Owner Email is required";
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.ownerEmail)) {
-    next.ownerEmail = "Invalid email";
-  }
+    if (!slugValue) {
+      next.slug = "Website URL is required";
+    } else if (/\s/.test(slugValue)) {
+      next.slug = "Spaces are not allowed in the URL";
+    } else if (/[^a-z]/.test(slugValue)) {
+      next.slug = "Special characters and numbers are not allowed";
+    }
+    if (!formData.ownerName.trim()) {
+      next.ownerName = "Owner Name is reqired";
+    }
+
+    if (!formData.ownerEmail.trim()) {
+      next.ownerEmail = "Owner Email is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.ownerEmail)) {
+      next.ownerEmail = "Invalid email";
+    }
 
 
-  if (!formData.ownerPhone.trim()) {
-    next.ownerPhone = "Owner Phone is required";
-  } else if (!/^\d+$/.test(formData.ownerPhone.trim())) {
-    next.ownerPhone = "Owner Phone must contain only numbers";
-  } else if (formData.ownerPhone.trim().length < 10) {
-    next.ownerPhone = "Owner Phone number must be at least 10 digits";
-  } else if (formData.ownerPhone.trim().length > 10) {
-    next.ownerPhone ="Owner Phone number must not exceed 10 digits";
-  }
+    if (!formData.ownerPhone.trim()) {
+      next.ownerPhone = "Owner Phone is required";
+    } else if (!/^\d+$/.test(formData.ownerPhone.trim())) {
+      next.ownerPhone = "Owner Phone must contain only numbers";
+    } else if (formData.ownerPhone.trim().length < 10) {
+      next.ownerPhone = "Owner Phone number must be at least 10 digits";
+    } else if (formData.ownerPhone.trim().length > 10) {
+      next.ownerPhone = "Owner Phone number must not exceed 10 digits";
+    }
 
-  if(!formData.password.trim()) {
-    next.password = "Password is required";
-  } else if (formData.password.trim().length < 8) {
-    next.password = "Password must be at least 8 characters long";
-  }
+    if (!formData.password) {
+      next.password = "Password is required.";
+    } else {
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
 
-  setErrors(next);
-  setError("");
-  return Object.keys(next).length === 0;
-};
+      if (!passwordRegex.test(formData.password)) {
+        next.password = "Password must be at least 8 characters long and contain uppercase, lowercase, numbers, and symbols.";
+      }
+    }
+
+    setErrors(next);
+    setError("");
+    return Object.keys(next).length === 0;
+  };
   const handleSubmit = async () => {
     if (!validate()) return;
     setIsPreviewOpen(false);
@@ -217,9 +220,8 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                     Website URL<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
                   <div
-                    className={`flex items-center rounded-lg overflow-hidden ${
-                      errors.slug ? "border border-red-500" : "border border-gray-300"
-                    }`}
+                    className={`flex items-center rounded-lg overflow-hidden ${errors.slug ? "border border-red-500" : "border border-gray-300"
+                      }`}
                   >
                     <span className="bg-gray-100 px-4 py-3 text-gray-600 text-sm">
                       digistorii/
@@ -280,12 +282,22 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
                     Owner Phone<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
-                  <input
-                    type="tel"
-                    value={formData.ownerPhone}
-                    onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
-                    className={inputClass("ownerPhone")}
-                  />
+                  <div
+                    className={`flex items-center rounded-lg border bg-white focus-within:ring-2 ${errors.ownerPhone
+                      ? "border-red-500 focus-within:ring-red-400"
+                      : "border-gray-300 focus-within:ring-blue-500"
+                      }`}
+                  >
+                    <span className="pl-4 pr-2 text-gray-600 font-medium select-none border-r border-gray-200 py-3 bg-gray-200 rounded-l-lg">
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      value={formData.ownerPhone}
+                      onChange={(e) => setFormData({ ...formData, ownerPhone: e.target.value })}
+                      className="w-full px-3 py-3 rounded-r-lg focus:outline-none bg-transparent"
+                    />
+                  </div>
                   {errors.ownerPhone && (
                     <p className="mt-2 text-sm text-red-600">{errors.ownerPhone}</p>
                   )}
@@ -296,9 +308,8 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
                     Password for Admin Portal<span className="ml-1 text-red-600 text-base font-semibold">*</span>
                   </label>
                   <div
-                    className={`flex items-center rounded-lg border ${
-                      errors.password ? "border-red-500 focus-within:ring-red-400" : "border-gray-300 focus-within:ring-blue-500"
-                    }`}
+                    className={`flex items-center rounded-lg border ${errors.password ? "border-red-500 focus-within:ring-red-400" : "border-gray-300 focus-within:ring-blue-500"
+                      }`}
                   >
                     <input
                       type={showPassword ? "text" : "password"}
@@ -345,17 +356,17 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
           </form>
         </div>
       </div>
-    {/* --- PREVIEW DIALOG MODAL --- */}
+      {/* --- PREVIEW DIALOG MODAL --- */}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl max-w-2xl w-full p-6 md:p-8 shadow-2xl border border-gray-100 transform transition-all scale-100">
             <h3 className="text-xl font-bold text-gray-900 mb-2">
-  Confirm Workspace Details
-</h3>
+              Confirm Workspace Details
+            </h3>
 
-<p className="text-sm text-gray-500 mb-6">
-  Please review your workspace details before continuing. If you can't complete the setup now, you can sign in later using your workspace URL and continue from where you left off.
-</p>
+            <p className="text-sm text-gray-500 mb-6">
+              Please review your workspace details before continuing. If you can't complete the setup now, you can sign in later using your workspace URL and continue from where you left off.
+            </p>
 
             <div className="space-y-4 bg-gray-50 rounded-xl p-5 border border-gray-100 text-sm">
               <div className="grid grid-cols-3 gap-2">

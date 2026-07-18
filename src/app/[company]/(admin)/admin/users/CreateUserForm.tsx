@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  PlusIcon, 
+import {
+  PlusIcon,
   TrashIcon,
-  PencilSquareIcon, 
+  PencilSquareIcon,
   UserCircleIcon,
-  ArrowLeftIcon,EyeIcon, EyeSlashIcon 
+  ArrowLeftIcon, EyeIcon, EyeSlashIcon
 } from "@heroicons/react/24/outline";
 import { useNotify } from "@/hooks/useNotify";
 
@@ -27,9 +27,8 @@ const FormField = ({
   // Local state to toggle showing the password text string
   const [showPassword, setShowPassword] = useState(false);
 
-  const baseInputStyles = `w-full px-3 py-2 border rounded-md text-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
-    error ? "border-red-500 focus:ring-red-500/20 focus:border-red-500" : "border-gray-300"
-  } ${readOnly ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-white text-gray-900"}`;
+  const baseInputStyles = `w-full px-3 py-2 border rounded-md text-sm transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${error ? "border-red-500 focus:ring-red-500/20 focus:border-red-500" : "border-gray-300"
+    } ${readOnly ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-white text-gray-900"}`;
 
   const isPassword = type === "password";
   const computedType = isPassword && showPassword ? "text" : type;
@@ -39,7 +38,7 @@ const FormField = ({
       <label className="text-xs font-semibold text-gray-700 tracking-wide uppercase">
         {label} {required && <span className="text-red-500">*</span>}
       </label>
-      
+
       {isSelect ? (
         <select
           value={value ?? ""}
@@ -74,12 +73,12 @@ const FormField = ({
           )}
         </div>
       )}
- 
+
       {error && <p className="text-xs text-red-500 font-medium mt-0.5">{error}</p>}
     </div>
   );
 };
- 
+
 type User = {
   id?: string;
   full_name: string;
@@ -108,7 +107,7 @@ type ResponsibilityOption = {
   id: number;
   responsibility_name: string;
 };
- 
+
 interface Props {
   company?: string | string[];
   userId?: string;
@@ -119,7 +118,7 @@ function getDefaultResponsibilityId(options: ResponsibilityOption[]) {
     options.find((option) => option.responsibility_name === "Sales Person") || options[0];
   return preferred ? String(preferred.id) : "";
 }
- 
+
 export default function CreateUserForm({ company, userId }: Props) {
   const router = useRouter();
   const tenant = Array.isArray(company) ? company[0] : company;
@@ -131,8 +130,8 @@ export default function CreateUserForm({ company, userId }: Props) {
   const [locations, setLocations] = useState<LocationOption[]>([]);
   const [responsibilities, setResponsibilities] = useState<ResponsibilityOption[]>([]);
   const hasFetched = useRef(false);
-    const notify = useNotify();
-  
+  const notify = useNotify();
+
   const [users, setUsers] = useState<User[]>([
     {
       id: "",
@@ -155,7 +154,7 @@ export default function CreateUserForm({ company, userId }: Props) {
       warehouses[0];
     const defaultWarehouseId = defaultWarehouse ? String(defaultWarehouse.id) : "";
     const defaultResponsibilityId = getDefaultResponsibilityId(responsibilities);
-    
+
     setUsers([
       ...users,
       {
@@ -181,7 +180,7 @@ export default function CreateUserForm({ company, userId }: Props) {
     const updatedErrors = errors.filter((_: any, i: number) => i !== index);
     setErrors(updatedErrors);
   };
- 
+
   // Fetch user data for edit
   useEffect(() => {
     if (!tenant || !userId) return;
@@ -190,7 +189,7 @@ export default function CreateUserForm({ company, userId }: Props) {
         const res = await fetch(`/api/admin/users/${userId}`, {
           headers: { "x-tenant": tenant },
         });
- 
+
         const data = await res.json();
         if (res.ok && data.success) {
           setUsers([
@@ -215,7 +214,7 @@ export default function CreateUserForm({ company, userId }: Props) {
         setApiError("Server error. Please try again.");
       }
     };
- 
+
     fetchUser();
   }, [tenant, userId]);
 
@@ -263,8 +262,8 @@ export default function CreateUserForm({ company, userId }: Props) {
         const nextWarehouseId = selectedWarehouseMatchesLocation
           ? String(selectedWarehouse.id)
           : matchingWarehouse
-          ? String(matchingWarehouse.id)
-          : defaultWarehouseId;
+            ? String(matchingWarehouse.id)
+            : defaultWarehouseId;
 
         return {
           ...user,
@@ -275,53 +274,64 @@ export default function CreateUserForm({ company, userId }: Props) {
       })
     );
   }, [locations, warehouses, responsibilities]);
- 
+
   const handleChange = (index: number, field: keyof User, value: any) => {
     const updated = [...users];
     (updated[index] as any)[field] = value;
     setUsers(updated);
- 
+
     const updatedErrors = [...errors];
     if (updatedErrors[index]) {
       updatedErrors[index][field] = "";
     }
     setErrors(updatedErrors);
   };
- 
+
   const validate = () => {
     let newErrors = users.map(() => ({}));
     const emailCount: any = {};
     const usernameCount: any = {};
     const phoneCount: any = {};
     const nameCount: any = {};
- 
+
     users.forEach((user) => {
       if (user.full_name) nameCount[user.full_name] = (nameCount[user.full_name] || 0) + 1;
       if (user.username) usernameCount[user.username] = (usernameCount[user.username] || 0) + 1;
       if (user.email) emailCount[user.email] = (emailCount[user.email] || 0) + 1;
       if (user.phone) phoneCount[user.phone] = (phoneCount[user.phone] || 0) + 1;
     });
- 
+
     users.forEach((user, index) => {
       let err: any = {};
- 
-      if (!user.full_name) err.full_name = "Required";
-      else if (nameCount[user.full_name] > 1) err.full_name = "Duplicate name";
 
-      if (!user.username) err.username = "Required";
-      else if (usernameCount[user.username] > 1) err.username = "Duplicate username";
- 
+      const explicitSymbolsRegex = /^[a-zA-Z0-9\s,.'\-]*$/;
+
+      if (!user.full_name) {
+        err.full_name = "Required";
+      } else if (nameCount[user.full_name] > 1) {
+        err.full_name = "Duplicate name";
+      } else if (!explicitSymbolsRegex.test(user.full_name)) {
+        err.full_name = "Special characters are not allowed except , . ' -";
+      }
+
+      if (!user.username) {
+        err.username = "Required";
+      } else if (usernameCount[user.username] > 1) {
+        err.username = "Duplicate username";
+      } else if (!explicitSymbolsRegex.test(user.username)) {
+        err.username = "Special characters are not allowed except , . ' -";
+      }
       if (!user.email) err.email = "Required";
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) err.email = "Invalid format";
       else if (emailCount[user.email] > 1) err.email = "Duplicate email";
- 
+
       if (!user.phone) err.phone = "Required";
       else if (!/^[0-9]{10}$/.test(user.phone)) err.phone = "Must be 10 digits";
       else if (phoneCount[user.phone] > 1) err.phone = "Duplicate phone";
 
       if (!user.responsibility_id) err.responsibility_id = "Required";
       if (!user.location_id) err.location_id = "Required";
-      
+
       if (!user.warehouse_id) {
         err.warehouse_id = "Required";
       } else if (user.location_id) {
@@ -332,37 +342,48 @@ export default function CreateUserForm({ company, userId }: Props) {
       }
 
       if (!userId) {
-        if (!user.password) err.password = "Required";
-        else if (user.password.length < 6) err.password = "Min 6 chars";
-      } else if (user.password && user.password.length < 6) {
-        err.password = "Min 6 chars";
+        if (!user.password) {
+          err.password = "Required";
+        } else {
+          const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+          if (!passwordRegex.test(user.password)) {
+            err.password = "Password must be at least 8 characters long and contain uppercase, lowercase, numbers, and symbols.";
+          }
+        }
+      } else {
+        if (user.password) {
+          const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+          if (!passwordRegex.test(user.password)) {
+            err.password = "Password must be at least 8 characters long and contain uppercase, lowercase, numbers, and symbols.";
+          }
+        }
       }
- 
+
       newErrors[index] = err;
     });
- 
+
     return newErrors;
   };
- 
+
   const handleSubmit = async () => {
     if (!tenant) {
       setApiError("Tenant/company is required");
       return;
     }
- 
+
     const validationErrors = validate();
     setErrors(validationErrors);
     setApiError("");
     setSuccess("");
- 
+
     const hasError = validationErrors.some((e) => Object.keys(e).length > 0);
     if (hasError) return;
- 
+
     try {
       setLoading(true);
       const url = users[0].id ? `/api/admin/users/${users[0].id}` : "/api/admin/users";
       const method = users[0].id ? "PUT" : "POST";
- 
+
       const res = await fetch(url, {
         method,
         headers: {
@@ -371,9 +392,9 @@ export default function CreateUserForm({ company, userId }: Props) {
         },
         body: JSON.stringify({ users }),
       });
- 
+
       const data = await res.json();
- 
+
       if (!res.ok) {
         if (data.index !== undefined && data.field) {
           const newErrors = [...validationErrors];
@@ -387,7 +408,7 @@ export default function CreateUserForm({ company, userId }: Props) {
         }
         return;
       }
-      
+
       setSuccess(userId ? "User updated successfully!" : "Users created successfully!");
       router.push(`/${tenant}/admin`);
     } catch (err: any) {
@@ -399,10 +420,10 @@ export default function CreateUserForm({ company, userId }: Props) {
       setLoading(false);
     }
   };
- 
+
   return (
     <div className="p-6 max-w-7xl mx-auto w-full transition-all duration-300">
-      
+
       {/* Header Topbar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-5 mb-6 border-b border-gray-200">
         <div className="flex items-center gap-3">
@@ -420,31 +441,31 @@ export default function CreateUserForm({ company, userId }: Props) {
             <p className="text-xs text-gray-500 mt-0.5">Tenant Organization: <span className="font-semibold text-gray-700">{tenant}</span></p>
           </div>
         </div>
-        
-        <button 
-          type="button" 
-          onClick={() => router.push(`/${tenant}/admin`)} 
+
+        <button
+          type="button"
+          onClick={() => router.push(`/${tenant}/admin`)}
           className="flex items-center gap-2 px-3 py-1.5 border border-gray-300 text-gray-700 rounded-md text-sm hover:bg-gray-50 bg-white shadow-sm font-medium self-start md:self-auto"
         >
           <ArrowLeftIcon className="w-4 h-4" /> Back to Directory
         </button>
       </div>
- 
+
       {/* Messages */}
       {apiError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in">{apiError}</div>}
       {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in">{success}</div>}
- 
+
       {/* Dynamic Grid Layout Wrapper */}
       <div className="flex flex-col gap-6">
         {users.map((user, index) => (
           <div key={index} className="relative border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
-            
+
             {/* Inner Block Title Bar */}
             <div className="bg-gray-50 border-b border-gray-100 px-4 py-3 flex justify-between items-center">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-500">
                 {userId ? "Configuration Profile" : `User Identity Entry #${index + 1}`}
               </span>
-              
+
               {!userId && users.length > 1 && (
                 <button
                   type="button"
@@ -455,10 +476,10 @@ export default function CreateUserForm({ company, userId }: Props) {
                 </button>
               )}
             </div>
- 
+
             {/* Fully Uniform Fields Grid Layout */}
             <div className="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-5 items-start">
-              
+
               <FormField
                 label="Full Name"
                 value={user.full_name}
@@ -467,7 +488,7 @@ export default function CreateUserForm({ company, userId }: Props) {
                 error={errors[index]?.full_name}
                 onChange={(e: any) => handleChange(index, "full_name", e.target.value)}
               />
- 
+
               <FormField
                 label="Username"
                 value={user.username}
@@ -476,7 +497,7 @@ export default function CreateUserForm({ company, userId }: Props) {
                 error={errors[index]?.username}
                 onChange={(e: any) => handleChange(index, "username", e.target.value)}
               />
- 
+
               <FormField
                 label="Email Address"
                 value={user.email}
@@ -485,7 +506,7 @@ export default function CreateUserForm({ company, userId }: Props) {
                 error={errors[index]?.email}
                 onChange={(e: any) => handleChange(index, "email", e.target.value)}
               />
- 
+
               <FormField
                 label="Phone Number"
                 value={user.phone}
@@ -520,7 +541,7 @@ export default function CreateUserForm({ company, userId }: Props) {
                   const filteredWh = warehouses.filter((w) => String(w.location_id) === nextLoc);
                   const match = filteredWh.some((w) => String(w.id) === user.warehouse_id);
                   const nextWhId = match ? user.warehouse_id : filteredWh[0] ? String(filteredWh[0].id) : "";
-                  
+
                   const updated = [...users];
                   updated[index] = { ...updated[index], location_id: nextLoc, warehouse_id: nextWhId };
                   setUsers(updated);
@@ -574,7 +595,7 @@ export default function CreateUserForm({ company, userId }: Props) {
           </div>
         ))}
       </div>
- 
+
       {/* Global Control Button Footer */}
       <div className="flex flex-col sm:flex-row items-center justify-end gap-3 mt-8 pt-5 border-t border-gray-200">
         {!userId && (

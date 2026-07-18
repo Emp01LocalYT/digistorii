@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Input, Modal } from "antd";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { getRuleValidationError } from "@/lib/formValidationRules";
 
 type FittingModalProps = {
   open: boolean;
@@ -26,6 +27,12 @@ export default function FittingModal({ open, onClose, onSaved }: FittingModalPro
     if (!company) return;
     if (!fittingFormName.trim()) {
       setFittingFormError("Fitting name is required");
+      return;
+    }
+
+    const nameError = getRuleValidationError("alphanumeric-spaces-hyphens", fittingFormName);
+    if (nameError) {
+      setFittingFormError(nameError);
       return;
     }
     setFittingSaving(true);
@@ -60,7 +67,7 @@ export default function FittingModal({ open, onClose, onSaved }: FittingModalPro
       }}
       footer={null}
       destroyOnHidden
-      zIndex={1000}
+      zIndex={1500}
     >
       <div className="space-y-4">
         <div>

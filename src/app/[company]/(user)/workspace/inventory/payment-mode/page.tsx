@@ -22,7 +22,7 @@ type PaymentMode = {
 };
 
 function getInitialForm(): PaymentMode {
-  return {  payment_mode_name: "" };
+  return { payment_mode_name: "" };
 }
 
 export default function PaymentModeMasterPage() {
@@ -116,7 +116,7 @@ export default function PaymentModeMasterPage() {
 
   async function removeItem(id?: number) {
     if (!company || !id) return;
-    const ok = await confirm("Delete this Payment Mode?", {type: "warning", title: "Delete Confirmation"});
+    const ok = await confirm("Delete this Payment Mode?", { type: "warning", title: "Delete Confirmation" });
     if (!ok) return;
     try {
       const res = await apiFetch(`/api/payment-mode/${id}`, company, { method: "DELETE" });
@@ -129,12 +129,12 @@ export default function PaymentModeMasterPage() {
     }
   }
 
-const filtered = useMemo(() => {
-  const q = search.toLowerCase();
-  return items.filter((row) =>
-    ` ${row.payment_mode_name ?? ""}`.toLowerCase().includes(q)
-  );
-}, [items, search]);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return items.filter((row) =>
+      ` ${row.payment_mode_name ?? ""}`.toLowerCase().includes(q)
+    );
+  }, [items, search]);
 
   const sortedData = useMemo(() => filtered, [filtered]);
 
@@ -192,22 +192,21 @@ const filtered = useMemo(() => {
           <div className="ui-table-card">
             <div className="ui-search-section">
               <div className="ui-search-wrapper">
-            <MagnifyingGlassIcon className="ui-search-icon" />
-            <input
-              type="text"
-              placeholder="Search..."
-              //className="w-full pl-10 pr-4 py-2 border rounded-lg"
-              className="ui-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+                <MagnifyingGlassIcon className="ui-search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  //className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                  className="ui-input"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
             </div>
             <div className="ui-table-scroll">
               <table className="ui-table">
                 <thead className="ui-table-head">
                   <tr className="ui-table-row">
-                    <th className="ui-table-th">Payment Mode Code</th>
                     <th className="ui-table-th">Payment Mode Name</th>
                     <th className="ui-table-th-center">Action</th>
                   </tr>
@@ -222,13 +221,12 @@ const filtered = useMemo(() => {
                   ) : paginatedData.length > 0 ? (
                     paginatedData.map((row) => (
                       <tr key={row.id} className="ui-table-row">
-                        <td className="ui-table-td">{row.id}</td>
                         <td className="ui-table-td">{row.payment_mode_name || ""}</td>
                         <td className="ui-table-td-center">
                           <div className="ui-table-actions">
                             <button
                               onClick={() => {
-                                setForm({ id: row.id,  payment_mode_name: row.payment_mode_name ?? ""});
+                                setForm({ id: row.id, payment_mode_name: row.payment_mode_name ?? "" });
                                 setErrors({});
                                 setShowForm(true);
                               }}
@@ -323,10 +321,9 @@ const filtered = useMemo(() => {
                           type="button"
                           onClick={() => goToPage(page)}
                           aria-current={currentPage === page ? "page" : undefined}
-                          className={`ui-pagination-btn ${
-                            currentPage === page
+                          className={`ui-pagination-btn ${currentPage === page
                               ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
-                          }`}
+                            }`}
                         >
                           {page}
                         </button>
@@ -361,7 +358,7 @@ const filtered = useMemo(() => {
         >
           <h2 className="text-lg font-semibold">{form.id ? "Update Payment Mode" : "Create Payment Mode"}</h2>
           <div className="grid md:grid-cols-2 gap-6">
-            
+
             <div>
               <label className="text-sm font-semibold mb-1 block">
                 Payment Mode Name <span className="text-red-500">*</span>
@@ -376,43 +373,43 @@ const filtered = useMemo(() => {
               {errors.payment_mode_name && <p className="text-red-500 text-sm mt-1">{errors.payment_mode_name}</p>}
             </div>
           </div>
-<div className="ui-form-actions">
-  
-  {/* Left side */}
-  <button
-    type="button"
-    onClick={() => {
-      setShowForm(false);
-      setForm(getInitialForm());
-      setErrors({});
-    }}
-    className="ui-btn ui-btn-secondary ui-btn-responsive"
-  >
-    Cancel
-  </button>
+          <div className="ui-form-actions">
 
-  {/* Right side */}
-  <div className="ui-btn-group">
-    {!form.id && (
-      <button
-        type="button"
-        onClick={() => void submit("add")}
-        className="ui-btn ui-btn-secondary ui-btn-responsive"
-      >
-        Create & Add Another
-      </button>
-    )}
+            {/* Left side */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                setForm(getInitialForm());
+                setErrors({});
+              }}
+              className="ui-btn ui-btn-secondary ui-btn-responsive"
+            >
+              Cancel
+            </button>
 
-    <button className="ui-btn ui-btn-primary ui-btn-responsive">
-      {form.id ? "Update" : "Create"}
-    </button>
-  </div>
+            {/* Right side */}
+            <div className="ui-btn-group">
+              {!form.id && (
+                <button
+                  type="button"
+                  onClick={() => void submit("add")}
+                  className="ui-btn ui-btn-secondary ui-btn-responsive"
+                >
+                  Create & Add Another
+                </button>
+              )}
 
-</div>
+              <button className="ui-btn ui-btn-primary ui-btn-responsive">
+                {form.id ? "Update" : "Create"}
+              </button>
+            </div>
+
+          </div>
         </form>
       )}
     </div>
-  );  
+  );
 }
 
 

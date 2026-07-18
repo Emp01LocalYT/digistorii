@@ -77,7 +77,7 @@ function normalizeCust(row: any): Cust {
 
 export default function CustPage() {
   const { company } = useTenant();
-  const  notify  = useNotify();
+  const notify = useNotify();
   const [custs, setCusts] = useState<Cust[]>([]);
   const [cust, setCust] = useState<Cust>(getInitialCust());
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -131,36 +131,40 @@ export default function CustPage() {
       });
     }
   }, [showForm]);
-
   const validate = () => {
     const next: Record<string, string> = {};
-    const rulesMap: Record<string, [string, string, boolean]> = {
-      name: [cust.name, "alpha-name", false],
-      phone: [cust.phone, "phone", false],
-      email: [cust.email, "email", true],
-      city: [cust.address.city, "alpha-spaces-hyphens", true],
-      state: [cust.address.state, "alpha-spaces-hyphens", true],
-      country: [cust.address.country, "alpha-spaces-hyphens", true],
-      pincode: [cust.address.pincode, "alphanumeric-spaces-hyphens", true],
-    };
 
-    for (const [field, [value, rules, isOptional]] of Object.entries(rulesMap)) {
-      const val = value || "";
-      if (!val.trim() && !isOptional) {
-        next[field] = `${field.replace("_", " ").toUpperCase()} is required`;
-        continue;
+    // 1. Target your form layout dynamically
+    const formElement = document.querySelector("form");
+    if (!formElement) return true;
+
+    // 2. Query all element fields holding active rule attributes
+    const fields = formElement.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      "[data-rules]"
+    );
+
+    fields.forEach((target) => {
+      const fieldName = target.getAttribute("data-field") || target.getAttribute("id") || "";
+      if (!fieldName) return;
+
+      // Support space-separated rules chains (e.g., data-rules="phone min-10-chars")
+      const rules = target.getAttribute("data-rules") || "";
+      const value = target.value || "";
+      const isOptional = target.getAttribute("data-optional") === "true";
+
+      // Validate Empty State Requirements
+      if (!value.trim()) {
+        if (!isOptional) {
+          next[fieldName] = `${fieldName.replace("_", " ").toUpperCase()} is required`;
+        }
+      } else {
+        // Validate Custom Definitions
+        const error = getRuleValidationError(rules, value);
+        if (error) {
+          next[fieldName] = error;
+        }
       }
-      if (val.trim() && rules) {
-        const error = getRuleValidationError(rules, val);
-        if (error) next[field] = error;
-      }
-    }
-    if (!cust.phone.trim()) {
-      next.phone = "Phone number is required";
-    }
-    else if (cust.phone.length < 10) {
-      next.phone = "Phone number must be at least 10 digits.";
-    }
+    });
 
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -204,7 +208,7 @@ export default function CustPage() {
         setShowForm(false);
       }
     } catch (err: any) {
-      notify(err.message,{severity:"error"});
+      notify(err.message, { severity: "error" });
     } finally {
       setFormLoading(false);
     }
@@ -320,7 +324,7 @@ export default function CustPage() {
                         </td>
                         <td className="ui-table-td-center">
                           <div className="ui-table-actions">
-                            <button type="button" onClick={() => { setCust(normalizeCust(cus)); setShowForm(true); }} className="text-indigo-600"><PencilSquareIcon className="w-5 h-5" /></button>
+                            <button type="button" onClick={() => { setCust(cus); setShowForm(true); }} className="text-indigo-600"><PencilSquareIcon className="w-5 h-5" /></button>
                           </div>
                         </td>
                       </tr>
@@ -481,6 +485,9 @@ export default function CustPage() {
             <div>
               <label className="text-sm font-semibold mb-1 block">Address Line 1</label>
               <input
+                data-field="address_line1"
+                data-rules="alphanumeric-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.address_line1}
                 onChange={(e) =>
                   setCust({
@@ -490,11 +497,15 @@ export default function CustPage() {
                 }
                 className={inputClass("address_line1")}
               />
+              {errors.address_line1 && <p className="text-red-500 text-sm mt-1">{errors.address_line1}</p>}
             </div>
 
             <div>
               <label className="text-sm font-semibold mb-1 block">Address Line 2</label>
               <input
+                data-field="address_line2"
+                data-rules="alphanumeric-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.address_line2}
                 onChange={(e) =>
                   setCust({
@@ -504,11 +515,15 @@ export default function CustPage() {
                 }
                 className={inputClass("address_line2")}
               />
+              {errors.address_line2 && <p className="text-red-500 text-sm mt-1">{errors.address_line2}</p>}
             </div>
 
             <div>
               <label className="text-sm font-semibold mb-1 block">Address Line 3</label>
               <input
+                data-field="address_line3"
+                data-rules="alphanumeric-spaces-hyphens"
+                data-optional="true"
                 value={cust.address.address_line3}
                 onChange={(e) =>
                   setCust({
@@ -518,13 +533,13 @@ export default function CustPage() {
                 }
                 className={inputClass("address_line3")}
               />
-            </div>
+              {errors.address_line3 && <p className="text-red-500 text-sm mt-1">{errors.address_line3}</p>}</div>
 
             <div>
               <label className="text-sm font-semibold mb-1 block">Country</label>
               <select
                 data-field="country"
-                data-rules="alpha-spaces-hyphens"
+                data-rules="india-only"
                 data-optional="true"
                 value={cust.address.country}
                 onChange={(e) =>
@@ -602,7 +617,7 @@ export default function CustPage() {
               <label className="text-sm font-semibold mb-1 block">Pincode</label>
               <input
                 data-field="pincode"
-                data-rules="alphanumeric-spaces-hyphens"
+                data-rules="pincode-6"
                 data-optional="true"
                 value={cust.address.pincode}
                 onChange={(e) =>
