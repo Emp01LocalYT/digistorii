@@ -1,25 +1,25 @@
 import { pool } from "../lib/db";
 import { ensureResponsibilitySchema } from "./userResponsibilities";
- 
+
 declare global {
   var dbInitialized: boolean | undefined;
 }
- 
+
 export async function initializeDatabase() {
   // Skip if already initialized (memory level)
   if (global.dbInitialized) {
     return;
   }
- 
+
   const client = await pool.connect();
 
   try {
     console.log("Running DB initialization / migrations...");
     await client.query("BEGIN");
- 
+
     // Enable UUID extension
     await client.query(`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`);
- 
+
     // ===============================
     // COMPANIES TABLE
     // ===============================
@@ -32,7 +32,7 @@ export async function initializeDatabase() {
         currency VARCHAR(10),
         address TEXT,
         city VARCHAR(100),
-        state VARCHAR(100),
+                state VARCHAR(100),
         country VARCHAR(100),
         subdomain_url VARCHAR(200) NOT NULL UNIQUE,
         schema_name VARCHAR(100) NOT NULL UNIQUE,
@@ -40,7 +40,9 @@ export async function initializeDatabase() {
         setup_stage VARCHAR(40) DEFAULT 'ACCOUNT_CREATED',
         status VARCHAR(20) DEFAULT 'ACTIVE',
         created_at TIMESTAMP DEFAULT now(),
-        updated_at TIMESTAMP DEFAULT now()
+        updated_at TIMESTAMP DEFAULT now(),
+        verification_token TEXT UNIQUE
+
       );
     `);
 
@@ -80,7 +82,7 @@ export async function initializeDatabase() {
   created_at     TIMESTAMP DEFAULT NOW()
 );
 `);
-await client.query(`
+    await client.query(`
   CREATE TABLE IF NOT EXISTS company_subscriptions (
   id                    SERIAL PRIMARY KEY,
   company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -104,7 +106,7 @@ await client.query(`
   created_at            TIMESTAMP DEFAULT NOW(),
   updated_at            TIMESTAMP DEFAULT NOW()
 );`);
-      await client.query(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS payments (
         id                    SERIAL PRIMARY KEY,
         company_id            INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -128,7 +130,7 @@ await client.query(`
 
 
 
-await client.query(`
+    await client.query(`
   CREATE TABLE IF NOT EXISTS onboarding_otps (
     id SERIAL PRIMARY KEY,
     company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -141,7 +143,7 @@ await client.query(`
     created_at TIMESTAMP DEFAULT NOW()
   );
 `);
-await client.query(`
+    await client.query(`
   CREATE TABLE IF NOT EXISTS plan_features (
   id           SERIAL PRIMARY KEY,
   plan_id      INTEGER NOT NULL REFERENCES plans(id) ON DELETE CASCADE,
@@ -152,7 +154,7 @@ await client.query(`
 );`);
 
 
-await client.query(`
+    await client.query(`
   CREATE UNIQUE INDEX IF NOT EXISTS uq_company_subscriptions_company
   ON company_subscriptions(company_id);
 `);
@@ -175,7 +177,7 @@ await client.query(`
   `);
 
 
-        await client.query(`
+    await client.query(`
 INSERT INTO plans (name,price_monthly,price_yearly,billing_period,features,display_order,is_active
 )
 VALUES
