@@ -163,7 +163,10 @@ export default function CompanySettingsPage() {
                 )
             }
  
-            <h1 className="text-2xl font-bold">Company Settings</h1>
+            <div>
+                <h1 className="text-2xl font-bold">Company Settings</h1>
+                <p className="text-sm text-gray-500">Configure business profiles, contact details, and operational preferences for your store.</p>
+            </div>
  
             {error && <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg">{error}</div>}
             {success && <div className="bg-green-50 text-green-600 px-3 py-2 rounded-lg">{success}</div>}

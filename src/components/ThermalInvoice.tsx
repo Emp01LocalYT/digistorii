@@ -11,7 +11,8 @@ type TaxComponent = {
 type PaymentRow = {
   payment_mode_name?: string;
   mode_name?: string;
-  amount?: number;
+  name?: string;
+  amount?: number | string;
 };
 
 type Detail = {
@@ -40,6 +41,7 @@ type Header = {
   total_amount: number;
   company_name?: string;
   company_address?: string;
+  address?: string;
   company_phone?: string;
   company_gstin?: string;
   gst_number?: string;
@@ -48,7 +50,10 @@ type Header = {
   pincode?: string;
   salesman_name?: string;
   sales_person_name?: string;
-  sales_person_id?: number | string;
+  sales_person?: string;
+  salesperson?: string;
+  created_by_name?: string;
+  user_name?: string;
   payment_modes?: PaymentRow[];
   payments?: PaymentRow[];
 };
@@ -56,6 +61,7 @@ type Header = {
 type Props = {
   header: Header;
   details: Detail[];
+  onDataReady?: () => void;
 };
 
 const currency = (n: number) => Number(n || 0).toFixed(2);
@@ -94,37 +100,101 @@ const valueStyle: React.CSSProperties = {
   wordBreak: "break-word",
 };
 
-const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, ref) => {
+const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details, onDataReady }, ref) => {
   const { company } = useTenant();
+  const [thermalData, setThermalData] = React.useState<{
+    company?: { company_name?: string; gst_number?: string };
+    location?: Record<string, string>;
+    salesmanName?: string;
+    paymentModes?: { name?: string; payment_mode_name?: string; amount?: number }[];
+  } | null>(null);
 
-  const companyName = header.company_name || company || "YOUR COMPANY";
-  const companyGstin = header.company_gstin || header.gst_number || "";
-  const companyPhone = header.company_phone || "";
-  const cityStatePin = [header.city, header.state, header.pincode]
-    .map((value) => String(value || "").trim())
+  React.useEffect(() => {
+    if (company && header.sales_no) {
+      fetch(`/api/thermal-invoice?sales_no=${encodeURIComponent(header.sales_no)}`, {
+        headers: { "x-tenant": company },
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then((data) => {
+          console.log("Thermal Invoice Data Loaded:", data);
+          if (data && !data.error) {
+            setThermalData(data);
+          }
+        })
+        .catch((err) => console.error("Error fetching thermal invoice:", err));
+    }
+  }, [company, header.sales_no]);
+
+  // Signal parent that data is ready to print (fires after thermalData state update renders)
+  React.useEffect(() => {
+    if (thermalData && onDataReady) {
+      onDataReady();
+    }
+  }, [thermalData, onDataReady]);
+
+
+
+  // GSTIN
+  const companyGstin =
+    thermalData?.company?.gst_number ||
+    header?.company_gstin ||
+    header?.gst_number ||
+    "";
+
+  // Phone
+  const companyPhone =
+    thermalData?.location?.mobile ||
+    header?.company_phone ||
+    "";
+
+  // Address fallback – combine location fields from API or props
+  const locationAddress = [
+    thermalData?.location?.registered_address_line_1,
+    thermalData?.location?.registered_address_line_2,
+    thermalData?.location?.registered_city,
+    thermalData?.location?.registered_state,
+    thermalData?.location?.registered_pincode,
+    thermalData?.location?.registered_country,
+  ]
     .filter(Boolean)
-    .join(", ");
-  const salesmanName = header.salesman_name || header.sales_person_name || "";
-  const payments = Array.isArray(header.payments)
-    ? header.payments
-    : Array.isArray(header.payment_modes)
-      ? header.payment_modes
-      : [];
+    .join(", ") || header.company_address || header.address || header.customer_address || "";
+
+
+  const companyName =
+    thermalData?.company?.company_name ||
+    header?.company_name ||
+    "YOUR COMPANY";
+
+  // 2. Fix Salesman (Fallback if header has it or thermalData has it)
+  const salesmanName =
+    thermalData?.salesmanName ||
+    header?.salesman_name ||
+    "-";
+
+  // 3. Fix Payments Mapping (API returns Array of { name, amount })
+  const rawPayments: any[] =
+    (Array.isArray(thermalData?.paymentModes) && thermalData.paymentModes) ||
+    (Array.isArray(header?.payments) && header.payments) ||
+    [];
+
+  const payments = rawPayments.map((p: any) => ({
+    mode_name: p.name || p.payment_mode_name || p.mode_name || "Payment",
+    amount: Number(p.amount ?? 0),
+  }));
 
   const totals = useMemo(() => {
     const totalQty = details.reduce((sum, row) => sum + Number(row.qty || 0), 0);
     const totalDiscount = details.reduce((sum, row) => sum + Number(row.discount || 0), 0);
     const amount = Number(header.subtotal || 0) + totalDiscount;
-    const rounding = Number(header.total_amount || 0) - Number(header.subtotal || 0) - Number(header.tax_amount || 0);
-    const savings = totalDiscount;
+    const rounding =
+      Number(header.total_amount || 0) -
+      Number(header.subtotal || 0) -
+      Number(header.tax_amount || 0);
 
-    return {
-      totalQty,
-      totalDiscount,
-      amount,
-      rounding,
-      savings,
-    };
+    return { totalQty, totalDiscount, amount, rounding, savings: totalDiscount };
   }, [details, header.subtotal, header.tax_amount, header.total_amount]);
 
   const taxGroups = useMemo(() => {
@@ -186,8 +256,7 @@ const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, r
     >
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: "15px", fontWeight: 700 }}>{companyName}</div>
-        {header.company_address ? <div>{header.company_address}</div> : null}
-        {cityStatePin ? <div>{cityStatePin}</div> : null}
+        {locationAddress ? <div>{locationAddress}</div> : null}
         {companyPhone ? <div>Ph: {companyPhone}</div> : null}
         {companyGstin ? <div>GST: {companyGstin}</div> : null}
         <div style={{ marginTop: "4px", fontWeight: 700 }}>TAX INVOICE</div>
@@ -212,12 +281,6 @@ const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, r
           <span style={labelStyle}>Mobile No        :</span>
           <span style={valueStyle}>{header.customer_phone || "-"}</span>
         </div>
-        {salesmanName ? (
-          <div style={keyRowStyle}>
-            <span style={labelStyle}>Salesman         :</span>
-            <span style={valueStyle}>{salesmanName}</span>
-          </div>
-        ) : null}
       </div>
 
       <div style={{ margin: "9px 0" }}>{divider}</div>
@@ -243,7 +306,7 @@ const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, r
 
         return (
           <div key={`${productName}-${index}`} style={{ marginBottom: "4px" }}>
-            <div style={{  whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {productName}
             </div>
             {(sku || hsn) && (
@@ -295,13 +358,7 @@ const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, r
 
       <div style={{ margin: "4px 0" }}>{divider}</div>
 
-      <div
-        style={{
-          ...keyRowStyle,
-          fontWeight: 700,
-          fontSize: "13px",
-        }}
-      >
+      <div style={{ ...keyRowStyle, fontWeight: 700, fontSize: "13px" }}>
         <span style={labelStyle}>TOTAL AMOUNT    :</span>
         <span style={valueStyle}>{currency(Number(header.total_amount || 0))}</span>
       </div>
@@ -359,33 +416,26 @@ const ThermalInvoice = forwardRef<HTMLDivElement, Props>(({ header, details }, r
         </>
       ) : null}
 
-      {salesmanName ? (
-        <>
-          <div style={{ margin: "4px 0" }}>{divider}</div>
-          <div style={keyRowStyle}>
-            <span style={labelStyle}>Salesman :</span>
-            <span style={valueStyle}>{salesmanName}</span>
-          </div>
-        </>
-      ) : null}
+      {/* SALESMAN SECTION */}
+      <div style={{ margin: "4px 0" }}>{divider}</div>
+      <div style={keyRowStyle}>
+        <span style={labelStyle}>Salesman        :</span>
+        <span style={valueStyle}>{salesmanName}</span>
+      </div>
 
-      {payments.length ? (
+      {/* PAYMENT DETAILS SECTION */}
+      {payments.length > 0 && (
         <>
           <div style={{ margin: "4px 0" }}>{divider}</div>
           <div style={{ fontWeight: 700, marginBottom: "2px" }}>PAYMENT DETAILS</div>
-          {payments.map((payment, index) => (
-            <div
-              key={`${payment.payment_mode_name || payment.mode_name || "payment"}-${index}`}
-              style={keyRowStyle}
-            >
-              <span style={labelStyle}>
-                {payment.payment_mode_name || payment.mode_name || "Payment"}
-              </span>
-              <span style={valueStyle}>{currency(Number(payment.amount || 0))}</span>
+          {payments.map((p, idx) => (
+            <div key={`payment-${idx}`} style={keyRowStyle}>
+              <span style={labelStyle}>{p.mode_name} :</span>
+              <span style={valueStyle}>{currency(p.amount)}</span>
             </div>
           ))}
         </>
-      ) : null}
+      )}
 
       <div style={{ margin: "4px 0" }}>{divider}</div>
 

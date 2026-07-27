@@ -177,7 +177,10 @@ export default function DespatchTermsMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Despatch Terms Master" : "Despatch Terms List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Despatch Terms Master" : "Despatch Terms List"}</h1>
+          <p className="text-sm text-gray-500">Define shipping and dispatch conditions for sales and orders.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

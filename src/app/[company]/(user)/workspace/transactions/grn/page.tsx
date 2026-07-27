@@ -177,7 +177,10 @@ export default function GRNList() {
       }
 
       <div className="flex justify-between">
-        <h1 className="text-2xl font-bold">GRN (Goods Receipt Node) List</h1>
+        <div>
+          <h1 className="text-2xl font-bold">GRN (Goods Receipt Node) List</h1>
+          <p className="text-sm text-gray-500">Track and manage received goods shipments and delivery receipts.</p>
+        </div>
 
         <button
           onClick={() => router.push(`/${company}/workspace/transactions/grn/add`)}

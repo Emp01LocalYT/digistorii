@@ -32,17 +32,33 @@ export async function GET(req: NextRequest) {
     const pricingFilter = parsePricingFilter(
       String(req.nextUrl.searchParams.get("pricingFilter") || "unpriced")
     );
-
+    const useLastPurchasePrice = req.nextUrl.searchParams.get("useLastPurchasePrice") === "true";
     const includePriced = pricingFilter === "priced" || pricingFilter === "both";
     const includeUnpriced = pricingFilter === "unpriced" || pricingFilter === "both";
+const baseCostSelect = useLastPurchasePrice
+      ? `COALESCE(lp.rate::numeric, pp.base_cost) AS base_cost`
+      : `pp.base_cost`;
 
+    const latestPurchaseJoin = useLastPurchasePrice
+      ? `
+        LEFT JOIN (
+          SELECT DISTINCT ON (d.product_id)
+            d.product_id,
+            d.rate
+          FROM "${schema}".purchase_detail d
+          JOIN "${schema}".purchase_header h ON d.purchase_id = h.id
+          WHERE h.status IN ('Completed', 'Partial')
+          ORDER BY d.product_id, h.purchase_date DESC, h.id DESC
+        ) lp ON lp.product_id = pv.id
+      `
+      : "";
     const skuResult = await client.query<TemplateRow>(
       `
         SELECT
           pv.id AS variant_id,p.product_code,p.name AS product_name,
           pv.sku,
             pv.barcode,
-          pp.base_cost,
+          ${baseCostSelect},
           pp.operational_cost,
           pp.margin_type,
           pp.margin_value,
@@ -57,6 +73,7 @@ export async function GET(req: NextRequest) {
           AND pp.is_active = TRUE
           AND CURRENT_DATE >= pp.active_from::date
           AND (pp.expires_at IS NULL OR CURRENT_DATE <= pp.expires_at::date)
+          ${latestPurchaseJoin}
         WHERE pv.status IN ('draft', 'active', 'out_of_stock')
           AND p.status = 1
           AND (

@@ -79,9 +79,12 @@ function LoadingOverlay({ loading }: { loading: boolean }) {
 function PageHeader({ showForm, onAdd }: any) {
   return (
     <div className="flex justify-between items-center">
-      <h1 className="text-2xl font-bold">
-        {showForm ? "Category Master" : "Category List"}
-      </h1>
+      <div>
+        <h1 className="text-2xl font-bold">
+          {showForm ? "Category Master" : "Category List"}
+        </h1>
+        <p className="text-sm text-gray-500">Organize and manage product categories for your catalog.</p>
+      </div>
 
       {!showForm && (
         <button

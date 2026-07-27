@@ -669,7 +669,10 @@ export default function OpeningStockPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Opening Stock Update" : "Opening Stock List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Opening Stock Update" : "Opening Stock List"}</h1>
+          <p className="text-sm text-gray-500">Record initial product stock levels and quantities for your store.</p>
+        </div>
         {!showForm && (
           <button
             onClick={openForm}

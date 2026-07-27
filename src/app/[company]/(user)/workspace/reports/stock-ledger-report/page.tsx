@@ -167,7 +167,10 @@ export default function StockLedgerReport() {
       }
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Stock Ledger Report</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Stock Ledger Report</h1>
+          <p className="text-sm text-gray-500">Track detailed stock movement histories and inventory transactions for your business.</p>
+        </div>
         {message && <div className="text-red-500 font-medium">{message}</div>}
       </div>
 

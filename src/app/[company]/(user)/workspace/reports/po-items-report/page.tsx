@@ -208,9 +208,12 @@ export default function POItemsSupplierReport() {
  
             {/* HEADER */}
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">
-                    Purchase Order Item Details (Supplier Wise)
-                </h1>
+                <div>
+                    <h1 className="text-2xl font-bold">
+                        Purchase Order Item Details (Supplier Wise)
+                    </h1>
+                    <p className="text-sm text-gray-500">Analyze line-item details and quantities for supplier purchase orders.</p>
+                </div>
  
                 {message && (
                     <div className="text-red-500 font-medium">

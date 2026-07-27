@@ -178,7 +178,10 @@ export default function MaterialMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Material Master" : "Material List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Material Master" : "Material List"}</h1>
+          <p className="text-sm text-gray-500">Track raw materials and fabric compositions used for your products.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

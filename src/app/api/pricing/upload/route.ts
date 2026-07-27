@@ -11,7 +11,7 @@ import { getTenantSchema } from "@/lib/tenant";
 type UploadRowInput = {
   rowNumber: number;
   variantId: string;
-  baseCost: number;
+  baseCost: number | null;
   operationalCost: number;
   marginType: "percentage" | "amount";
   marginValue: number;
@@ -54,7 +54,7 @@ function normalizeHeader(value: unknown): string {
   return cellAsText(value).toLowerCase().replace(/\s+/g, " ");
 }
 
-function parseWorksheetRows(buffer: Buffer): {
+function parseWorksheetRows(buffer: Buffer, useLastPurchasePrice = false): {
   rows: UploadRowInput[];
   errors: UploadValidationError[];
 } {
@@ -141,7 +141,14 @@ function parseWorksheetRows(buffer: Buffer): {
       if (!Number.isFinite(Number(variantId))) {
         throw new Error("Variant ID must be numeric");
       }
-      const baseCost = parseNonNegativeNumber(baseCostRaw, "Base Cost", true);
+      
+      let baseCost: number | null = null;
+      if (baseCostRaw === "" && useLastPurchasePrice) {
+        baseCost = null;
+      } else {
+        baseCost = parseNonNegativeNumber(baseCostRaw, "Base Cost", true);
+      }
+
       const operationalCost = parseNonNegativeNumber(operationalCostRaw || "0", "Operational Cost", true);
 
       const today = new Date().toISOString().slice(0, 10);
@@ -202,12 +209,45 @@ export async function POST(req: NextRequest) {
     }
 
     
+    const useLastPurchasePrice = String(req.nextUrl.searchParams.get("useLastPurchasePrice") || "").toLowerCase() === "true";
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = parseWorksheetRows(buffer);
+    const parsed = parseWorksheetRows(buffer, useLastPurchasePrice);
 
     // if (parsed.rows.length === 0) {
     //   return NextResponse.json({ message: "No pricing rows found in upload file" }, { status: 400 });
     // }
+
+    // Fetch purchase prices if useLastPurchasePrice is active
+    const purchasePriceMap = new Map<number, number>();
+    if (useLastPurchasePrice && parsed.rows.length > 0) {
+      const uniqueVariantIds = Array.from(
+        new Set(
+          parsed.rows
+            .map((r) => Number(r.variantId))
+            .filter((id) => !isNaN(id))
+        )
+      );
+
+      if (uniqueVariantIds.length > 0) {
+        const purchaseRes = await client.query(
+          `
+          SELECT DISTINCT ON (d.product_id)
+            d.product_id AS variant_id,
+            d.rate::numeric AS rate
+          FROM "${schema}".purchase_detail d
+          JOIN "${schema}".purchase_header h ON d.purchase_id = h.id
+          WHERE d.product_id = ANY($1::bigint[])
+            AND h.status IN ('Approved', 'Partial')
+          ORDER BY d.product_id, h.purchase_date DESC, h.id DESC
+          `,
+          [uniqueVariantIds]
+        );
+
+        for (const row of purchaseRes.rows) {
+          purchasePriceMap.set(Number(row.variant_id), Number(row.rate));
+        }
+      }
+    }
 
     const variantResult = await client.query<{
       variant_id: number;
@@ -254,9 +294,17 @@ export async function POST(req: NextRequest) {
           message: "Duplicate Variant ID in upload",
         });
       }
-      if (variantMeta) {
-        // source type is resolved from DB; upload no longer carries a type column
+      
+      // Check if base cost is missing and no purchase price is found
+      const latestPrice = purchasePriceMap.get(Number(row.variantId));
+      if (row.baseCost === null && latestPrice === undefined) {
+        validationErrors.push({
+          row: row.rowNumber,
+          variantId: row.variantId,
+          message: "Base Cost is required (no purchase history found to auto-populate)",
+        });
       }
+      
       seenVariant.add(row.variantId);
     }
 
@@ -337,8 +385,15 @@ export async function POST(req: NextRequest) {
       const taxKey = String(row.taxName || "").trim().toLowerCase();
       const resolvedTaxPercent = taxKey ? taxByName.get(taxKey) ?? 0 : 0;
 
+      const latestPrice = purchasePriceMap.get(Number(row.variantId));
+      const resolvedBaseCost = latestPrice !== undefined ? latestPrice : row.baseCost;
+
+      if (resolvedBaseCost === null) {
+        throw new Error(`Base cost is missing for Variant ID "${row.variantId}"`);
+      }
+
       const calculated = calculatePricing({
-        baseCost: row.baseCost,
+        baseCost: resolvedBaseCost,
         operationalCost: row.operationalCost,
         marginType: row.marginType,
         marginValue: row.marginValue,
@@ -348,7 +403,7 @@ export async function POST(req: NextRequest) {
       previewRows.push({
         variant_id: row.variantId,
         sku: variantMeta.sku,
-        base_cost: row.baseCost,
+        base_cost: resolvedBaseCost,
         operational_cost: row.operationalCost,
         landed_price: calculated.landedPrice,
         margin_amount: calculated.marginAmount,
@@ -358,7 +413,7 @@ export async function POST(req: NextRequest) {
       });
 
       variantIds.push(row.variantId);
-      baseCosts.push(row.baseCost);
+      baseCosts.push(resolvedBaseCost);
       operationalCosts.push(row.operationalCost);
       landedPrices.push(calculated.landedPrice);
       marginTypes.push(row.marginType);

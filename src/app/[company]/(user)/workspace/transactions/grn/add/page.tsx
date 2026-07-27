@@ -573,9 +573,12 @@ export default function GRNForm() {
             <div className="flex items-center justify-between mb-4">
 
                 {/* Left Side - Title */}
-                <h1 className="text-2xl font-bold">
-                    {isEdit ? "Edit GRN (Goods Receipt Node)" : "Create GRN (Goods Receipt Node)"}
-                </h1>
+                <div>
+                    <h1 className="text-2xl font-bold">
+                        {isEdit ? "Edit GRN (Goods Receipt Node)" : "Create GRN (Goods Receipt Node)"}
+                    </h1>
+                    <p className="text-sm text-gray-500">Record incoming stock items and verify quantities against purchase orders.</p>
+                </div>
 
                 {/* Right Side - Validation */}
                 {errors.details && (

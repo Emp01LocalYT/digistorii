@@ -206,7 +206,10 @@ export default function PurchaseList() {
       }
  
       <div className="flex justify-between">
-        <h1 className="text-2xl font-bold">Purchase List</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Purchase List</h1>
+          <p className="text-sm text-gray-500">Create and manage purchase orders and vendor orders for your business.</p>
+        </div>
  
         <Link
           href={`/${company}/workspace/transactions/purchase/add`}

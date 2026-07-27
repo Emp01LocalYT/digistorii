@@ -37,7 +37,9 @@ export function middleware(req: NextRequest) {
   // If no company in URL
   if (
     pathname.startsWith(`/${company}/workspace/login`) ||
-    pathname.startsWith(`/${company}/admin/login`)
+    pathname.startsWith(`/${company}/admin/login`) ||
+    pathname.startsWith(`/${company}/workspace/reset-password`) ||
+    pathname.startsWith(`/${company}/admin/reset-password`)
   ) {
     return NextResponse.next();
   }

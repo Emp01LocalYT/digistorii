@@ -1,11 +1,11 @@
 "use client";
-import React, { useState,useEffect  } from "react";
+import React, { useState, useEffect } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
 import { useUser } from "@/context/CurrentUserContext";
- 
+
 
 interface User {
   id: string;
@@ -13,20 +13,20 @@ interface User {
   username: string;
   email: string;
 }
- 
+
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   //  const [user, setUser] = useState<User | null>(null);
-   const { user } = useUser();
- const router = useRouter();
- const pathname = usePathname();
-   const company = pathname.split("/")[1] || "";
- 
- 
+  const { user } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+  const company = pathname.split("/")[1] || "";
+
+
   const handleSignOut = async () => {
     await fetch("/api/auth/logout", {
-    method: "POST",
-  });
+      method: "POST",
+    });
     localStorage.removeItem("user");
     localStorage.clear();
     localStorage.removeItem("user");
@@ -35,44 +35,43 @@ export default function UserDropdown() {
     // router.push(`/${company}/workspace/login`); // Redirect to login page
     router.replace(`/${company}/workspace/login`);
   };
- 
-function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
-  e.stopPropagation();
-  setIsOpen((prev) => !prev);
-}
- 
+
+  function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
+    e.stopPropagation();
+    setIsOpen((prev) => !prev);
+  }
+
   function closeDropdown() {
     setIsOpen(false);
   }
- 
- const initials = user?.name
+
+  const initials = user?.name
     ? user.name
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .toUpperCase()
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
     : "";
- 
- 
+
+
   if (!user) return null;
- 
+
   return (
     <div className="relative">
       <button
         onClick={toggleDropdown}
         className="flex items-center text-gray-700 dark:text-gray-400 dropdown-toggle"
       >
-       <div className="flex items-center">
-  <div className="bg-blue-600 w-11 h-11 flex items-center justify-center text-white rounded-full font-bold mr-3">
-    {initials}
-  </div>
-  <span className="font-medium text-theme-sm">{user.name}</span>
-</div>
- 
+        <div className="flex items-center">
+          <div className="bg-blue-600 w-11 h-11 flex items-center justify-center text-white rounded-full font-bold mr-3">
+            {initials}
+          </div>
+          <span className="font-medium text-theme-sm">{user.name}</span>
+        </div>
+
         <svg
-          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""
+            }`}
           width="18"
           height="20"
           viewBox="0 0 18 20"
@@ -88,7 +87,7 @@ function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
           />
         </svg>
       </button>
- 
+
       <Dropdown
         isOpen={isOpen}
         onClose={closeDropdown}
@@ -102,13 +101,13 @@ function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
             {user.email}
           </span>
         </div>
- 
+
         <ul className="flex flex-col gap-1 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
           <li>
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
-              href={`/${company}/profile`}
+              href={`/${company}/workspace/profile`}
               className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -132,24 +131,23 @@ function toggleDropdown(e: React.MouseEvent<HTMLButtonElement, MouseEvent>) {
           </li>
         </ul>
         <DropdownItem onItemClick={closeDropdown} tag="button" onClick={handleSignOut}
-        className="flex items-center gap-3 px-3 py-2 font-medium text-red-600 rounded-lg hover:bg-red-50">
+          className="flex items-center gap-3 px-3 py-2 font-medium text-red-600 rounded-lg hover:bg-red-50">
           <svg
-    className="w-5 h-5"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="1.5"
-      d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-7.5A2.25 2.25 0 003.75 5.25v13.5A2.25 2.25 0 006 21h7.5A2.25 2.25 0 0015.75 18.75V15M18 12l3-3m0 0l-3-3m3 3H9"
-    />
-  </svg>
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.5"
+              d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-7.5A2.25 2.25 0 003.75 5.25v13.5A2.25 2.25 0 006 21h7.5A2.25 2.25 0 0015.75 18.75V15M18 12l3-3m0 0l-3-3m3 3H9"
+            />
+          </svg>
           Sign out
         </DropdownItem>
       </Dropdown>
     </div>
   );
 }
- 

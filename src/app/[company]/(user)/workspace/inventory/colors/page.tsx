@@ -173,7 +173,10 @@ export default function ColorMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Color Master" : "Color List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Color Master" : "Color List"}</h1>
+          <p className="text-sm text-gray-500">Manage color attributes and options for your inventory items.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

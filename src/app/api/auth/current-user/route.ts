@@ -27,7 +27,7 @@ export async function GET() {
   try {
     const result = await client.query(
       `SELECT u.id, u.username, u.name, u.email, u.phone, u.company_id,
-              c.id as company_id, c.company_name, c.subdomain_url
+              c.id as company_id, c.company_name AS real_company_name, c.subdomain_url as company_name
          FROM public.users u
          JOIN public.companies c ON u.company_id = c.id
         WHERE u.id = $1`,

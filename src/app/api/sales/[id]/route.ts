@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getTenantSchema } from "@/lib/tenant";
- 
+
 async function resolveVariantId(
     client: any,
     schema: string,
@@ -103,19 +103,19 @@ async function replaceSalesPayments(
         );
     }
 }
- 
+
 export async function GET(
     req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
- 
+
     const client = await pool.connect();
- 
+
     try {
- 
+
         const { schema } = await getTenantSchema(req);
         const { id: saleId } = await context.params;
- 
+
         const headerRes = await client.query(
             `SELECT sh.*,s.name as customer_name,
             s.email as customer_email,
@@ -131,7 +131,7 @@ export async function GET(
             WHERE sh.id=$1`,
             [saleId]
         );
- 
+
         const detailRes = await client.query(
             `SELECT
                 d.*,
@@ -180,7 +180,7 @@ export async function GET(
             ORDER BY sp.id ASC`,
             [saleId]
         );
- 
+
         return NextResponse.json({
             success: true,
             data: {
@@ -189,11 +189,11 @@ export async function GET(
                 payments: paymentsRes.rows
             }
         });
- 
+
     } catch (error: any) {
- 
+
         console.error("Fetch Sale Error:", error);
- 
+
         return NextResponse.json(
             {
                 success: false,
@@ -201,30 +201,30 @@ export async function GET(
             },
             { status: 500 }
         );
- 
+
     } finally {
- 
+
         client.release();
- 
+
     }
 }
- 
+
 export async function PUT(
     req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
- 
+
     const client = await pool.connect();
- 
+
     try {
- 
+
         const { schema } = await getTenantSchema(req);
         const { id: salesId } = await context.params;
- 
+
         const body = await req.json();
- 
+
         const { header, details, payments } = body;
- 
+
         const {
             customer_id,
             sales_date,
@@ -237,8 +237,7 @@ export async function PUT(
             total_amount,
             user_name
         } = header;
-        console.log("Received Update Data:", body);
- 
+
         await client.query("BEGIN");
 
         const normalizedWarehouseId = toPositiveInt(warehouse_id);
@@ -261,7 +260,7 @@ export async function PUT(
             throw new Error("Paid amount cannot exceed grand total");
         }
         const calculatedPaymentStatus = calculatePaymentStatus(normalizedTotalAmount, paidAmount);
- 
+
         // UPDATE HEADER
         await client.query(
             `
@@ -305,24 +304,24 @@ export async function PUT(
             warehouseContext.location_id,
             warehouseContext.warehouse_id
         );
- 
+
         // FETCH existing detail ids from DB
         const existingRes = await client.query(
             `SELECT id FROM ${schema}.sales_detail WHERE sales_id=$1`,
             [salesId]
         );
- 
+
         const existingIds = existingRes.rows.map((r) => r.id);
- 
+
         const incomingIds = details
             .filter((d: any) => d.id)
             .map((d: any) => d.id);
- 
+
         // FIND deleted rows
         const deletedIds = existingIds.filter(
             (id: number) => !incomingIds.includes(id)
         );
- 
+
         if (deletedIds.length > 0) {
             await client.query(
                 `DELETE FROM ${schema}.sales_detail
@@ -330,14 +329,14 @@ export async function PUT(
                 [deletedIds]
             );
         }
- 
+
         // LOOP details
         for (const item of details) {
             const taxMasterId = item.tax_id && item.tax_id > 0 ? item.tax_id : null;
             const variantId = await resolveVariantId(client, schema, item.product_id);
- 
+
             if (item.id) {
- 
+
                 // UPDATE EXISTING ROW
                 await client.query(
                     `
@@ -367,9 +366,9 @@ export async function PUT(
                         item.id
                     ]
                 );
- 
+
             } else {
- 
+
                 // INSERT NEW ROW
                 await client.query(
                     `
@@ -404,22 +403,22 @@ export async function PUT(
                 );
             }
         }
- 
+
         await client.query("COMMIT");
- 
+
         return NextResponse.json({
             success: true,
             message: "Sale Updated Successfully",
             id: Number(salesId),
             payment_status: calculatedPaymentStatus
         });
- 
+
     } catch (error: any) {
- 
+
         await client.query("ROLLBACK");
- 
+
         console.error("Sale Update Error:", error);
- 
+
         return NextResponse.json(
             {
                 success: false,
@@ -427,10 +426,10 @@ export async function PUT(
             },
             { status: 500 }
         );
- 
+
     } finally {
- 
+
         client.release();
- 
+
     }
 }

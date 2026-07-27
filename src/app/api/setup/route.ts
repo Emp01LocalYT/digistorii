@@ -150,12 +150,29 @@ export async function POST(req: Request) {
     });
   } catch (err: any) {
     await client.query("ROLLBACK");
+
+    // Check for PostgreSQL Unique Violation error code
     if (err.code === "23505") {
+      let customMessage = "Duplicate entry detected";
+
+      if (err.detail) {
+        if (err.detail.includes("email")) {
+          customMessage = "This email address is already registered.";
+        } else if (err.detail.includes("phone")) {
+          customMessage = "This phone number is already registered.";
+        } else if (err.detail.includes("subdomain_url") || err.detail.includes("slug")) {
+          customMessage = "This business URL/slug is already taken.";
+        }
+      } else if (err.message) {
+        customMessage = err.message;
+      }
+
       return NextResponse.json(
-        { success: false, message: "Duplicate entry detected" },
+        { success: false, message: customMessage },
         { status: 400 }
       );
     }
+
     return NextResponse.json(
       { success: false, message: err.message || "Something went wrong" },
       { status: 400 }

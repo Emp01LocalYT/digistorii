@@ -170,7 +170,10 @@ export default function FittingMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Fitting Master" : "Fitting List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Fitting Master" : "Fitting List"}</h1>
+          <p className="text-sm text-gray-500">Manage apparel fitting styles and size specifications for your products.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

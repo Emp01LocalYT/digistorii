@@ -102,7 +102,7 @@ function getInitialSupplier(): Supplier {
     address_line1: "",
     address_line2: "",
     address_line3: "",
-    country: "",
+    country: "India",
     state: "",
     city: "",
     pincode: "",
@@ -441,7 +441,10 @@ export default function SupplierPage() {
       {tableLoading && createPortal(<div className="fixed inset-0 z-[99999] bg-black/20 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center gap-3"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div><p className="text-gray-700 font-semibold text-lg">Loading suppliers...</p></div></div>, document.body)}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Supplier Master" : "Supplier List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Supplier Master" : "Supplier List"}</h1>
+          <p className="text-sm text-gray-500">Manage vendor contacts, GST details, and purchasing terms for your suppliers.</p>
+        </div>
         {!showForm && <button
           onClick={() => {
             setSupplier({
@@ -736,6 +739,7 @@ export default function SupplierPage() {
                     data-field="country"
                     data-optional="true"
                     data-rules="india-only"
+                    disabled
                     value={supplier.country || ""}
                     onChange={(e) =>
                       setSupplier({ ...supplier, country: e.target.value ?? "", state: "", city: "" })

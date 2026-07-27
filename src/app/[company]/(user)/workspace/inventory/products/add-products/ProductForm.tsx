@@ -1176,7 +1176,7 @@ export function ProductForm({
               {errors.weight && <p className="text-red-500 text-xs mt-1">{errors.weight}</p>}
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Length@</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Length</label>
               <input
                 type="number"
                 data-rules="decimal-number"

@@ -419,9 +419,12 @@ export default function TaxMasterPage() {
 
             {/* HEADER */}
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">
-                    {showForm ? "Tax Master" : "Tax Master List"}
-                </h1>
+                <div>
+                    <h1 className="text-2xl font-bold">
+                        {showForm ? "Tax Master" : "Tax Master List"}
+                    </h1>
+                    <p className="text-sm text-gray-500">Configure tax rates, HSN codes, and tax categories for your products.</p>
+                </div>
 
                 {!showForm && (
                     <button

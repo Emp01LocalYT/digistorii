@@ -1012,9 +1012,12 @@ export default function PurchasePage() {
       {errorMessage && <div className="text-red-600 font-semibold">{errorMessage}</div>}
 
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">
-          {isEdit ? "Edit Purchase" : isRenewMode ? "Renew Purchase" : "Create Purchase"}
-        </h1>
+        <div>
+          <h1 className="text-2xl font-bold">
+            {isEdit ? "Edit Purchase" : isRenewMode ? "Renew Purchase" : "Create Purchase"}
+          </h1>
+          <p className="text-sm text-gray-500">Fill in supplier details, line items, and terms for your purchase order.</p>
+        </div>
 
         <div className="flex items-center gap-3">
           {computedHeader.approval_status && (

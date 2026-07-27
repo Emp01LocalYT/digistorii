@@ -157,7 +157,10 @@ export default function UserSettingsPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "User Settings" : "User Settings List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "User Settings" : "User Settings List"}</h1>
+          <p className="text-sm text-gray-500">Manage team member preferences and system access settings.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

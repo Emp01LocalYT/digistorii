@@ -240,7 +240,7 @@ const defaultBusinessSettings = {
   business_address: "",
   city: "",
   state: "",
-  country: "",
+  country: "India",
   currency: "INR",
   timezone: "Asia/Kolkata",
   invoice_prefix: "INV",
@@ -276,19 +276,19 @@ const defaultLocation: LocationSetupForm = {
   description: "",
   registered_address_line_1: "",
   registered_address_line_2: "",
-  registered_country: "",
+  registered_country: "India",
   registered_state: "",
   registered_city: "",
   registered_pincode: "",
   bill_address_line_1: "",
   bill_address_line_2: "",
-  bill_country: "",
+  bill_country: "India",
   bill_state: "",
   bill_city: "",
   bill_pincode: "",
   ship_address_line_1: "",
   ship_address_line_2: "",
-  ship_country: "",
+  ship_country: "India",
   ship_state: "",
   ship_city: "",
   ship_pincode: "",
@@ -426,28 +426,28 @@ export default function OnboardingWizard({
   }, [subscription]);
 
   const countryOptions = useMemo(() => Country.getAllCountries(), []);
-  const selectedBusinessCountry = useMemo(
-    () => countryOptions.find((entry) => entry.name === businessSettings.country),
-    [countryOptions, businessSettings.country]
-  );
-  const businessStateOptions = useMemo(
-    () =>
-      selectedBusinessCountry
-        ? State.getStatesOfCountry(selectedBusinessCountry.isoCode)
-        : [],
-    [selectedBusinessCountry]
-  );
-  const selectedBusinessState = useMemo(
-    () => businessStateOptions.find((entry) => entry.name === businessSettings.state),
-    [businessStateOptions, businessSettings.state]
-  );
-  const businessCityOptions = useMemo(
-    () =>
-      selectedBusinessCountry && selectedBusinessState
-        ? City.getCitiesOfState(selectedBusinessCountry.isoCode, selectedBusinessState.isoCode)
-        : [],
-    [selectedBusinessCountry, selectedBusinessState]
-  );
+
+  // 1. Fallback to an explicit 'IN' configuration object if the lookup fails
+  const selectedBusinessCountry = useMemo(() => {
+    const found = countryOptions.find((entry) => entry.name === businessSettings.country);
+    return found || { isoCode: "IN", name: "India" };
+  }, [countryOptions, businessSettings.country]);
+
+  // 2. States will now accurately load using "IN" no matter what
+  const businessStateOptions = useMemo(() => {
+    return State.getStatesOfCountry(selectedBusinessCountry.isoCode || "IN");
+  }, [selectedBusinessCountry]);
+
+  const selectedBusinessState = useMemo(() => {
+    return businessStateOptions.find((entry) => entry.name === businessSettings.state);
+  }, [businessStateOptions, businessSettings.state]);
+
+  // 3. Cities will populate smoothly
+  const businessCityOptions = useMemo(() => {
+    return selectedBusinessCountry && selectedBusinessState
+      ? City.getCitiesOfState(selectedBusinessCountry.isoCode || "IN", selectedBusinessState.isoCode)
+      : [];
+  }, [selectedBusinessCountry, selectedBusinessState]);
   const businessGstStateCode = useMemo(
     () => getGstStateCodeForState(businessSettings.state),
     [businessSettings.state]
@@ -860,10 +860,7 @@ export default function OnboardingWizard({
     if (businessSettings.business_address && !noSymbolsRegex.test(businessSettings.business_address)) {
       validationErrors.business_address = "Special characters/symbols are not allowed.";
     }
-    // 1. Check Country "india-only" Rule
-    if (!businessSettings.country || businessSettings.country.toLowerCase() !== "india") {
-      validationErrors.country = "Service is currently only available in India.";
-    }
+
 
 
     if (Object.keys(validationErrors).length > 0) {
@@ -980,16 +977,6 @@ export default function OnboardingWizard({
       validationErrors.ship_address_line2 = "Symbols are not allowed.";
     }
 
-    // India-only country validation
-    if (location.registered_country && location.registered_country.toLowerCase() !== "india") {
-      validationErrors.registered_country = "Service is currently only available in India.";
-    }
-    if (location.bill_country && location.bill_country.toLowerCase() !== "india") {
-      validationErrors.bill_country = "Service is currently only available in India.";
-    }
-    if (location.ship_country && location.ship_country.toLowerCase() !== "india") {
-      validationErrors.ship_country = "Service is currently only available in India.";
-    }
 
     const pincodeRegex = /^[0-9]{1,6}$/;
     if (location.registered_pincode && !pincodeRegex.test(location.registered_pincode)) {
@@ -1124,7 +1111,7 @@ export default function OnboardingWizard({
           }
 
           const data = await res.json();
-          const currentStage = data?.setup_stage || data?.data?.setup_stage;
+          const currentStage = data?.company?.setup_stage || data?.setup_stage || data?.data?.setup_stage;
           if (currentStage === "LIVE") {
             setStage("LIVE");
             clearInterval(intervalId);
@@ -1325,9 +1312,13 @@ export default function OnboardingWizard({
       if (!password) {
         next[i].password = "Password is required";
         valid = false;
-      } else if (password.length <= 8) {
-        next[i].password = "Password must be more than 8 characters";
-        valid = false;
+      } else {
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&#])[A-Za-z\d@$!%*?&#]{8,}$/;
+
+        if (!passwordRegex.test(password)) {
+          next[i].password = "Password must be at least 8 characters long and contain uppercase, lowercase, numbers, and symbols.";
+          valid = false;
+        }
       }
       const phone = String(user.phone || "").trim();
       if (!phone) {
@@ -1484,8 +1475,6 @@ export default function OnboardingWizard({
               <div>
                 <label className={formLabelClass}>Country <span className="text-red-500">*</span></label>
                 <select
-                  data-field="country"
-                  data-rules="india-only"
                   value={businessSettings.country}
                   onChange={(e) =>
                     setBusinessSettings((prev) => {
@@ -1502,8 +1491,9 @@ export default function OnboardingWizard({
                   }
                   className={formFieldClass}
                   required
+                  disabled
                 >
-                  <option value="">Select Country</option>
+                  <option value="India">India</option>
                   {countryOptions.map((country) => (
                     <option key={country.isoCode} value={country.name}>
                       {country.name}
@@ -1547,7 +1537,7 @@ export default function OnboardingWizard({
                 {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
               </div>
               <div>
-                <label className={formLabelClass}>City<span className="text-red-500">*</span></label>
+                <label className={formLabelClass}>City</label>
                 <select
                   data-field="city"
                   value={businessSettings.city}
@@ -1555,7 +1545,6 @@ export default function OnboardingWizard({
                     setBusinessSettings((prev) => ({ ...prev, city: e.target.value }))
                   }
                   className={formFieldClass}
-                  required
                 >
                   <option value="">Select City</option>
                   {businessCityOptions.map((city) => (
@@ -1812,6 +1801,7 @@ export default function OnboardingWizard({
                 <select
                   data-field="registered_country"
                   data-optional="true"
+                  disabled
                   value={location.registered_country}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -1949,6 +1939,7 @@ export default function OnboardingWizard({
                 <select
                   data-field="bill_country"
                   data-optional="true"
+                  disabled
                   value={location.bill_country}
                   onChange={(e) =>
                     updateLocation((prev) => ({
@@ -2084,6 +2075,7 @@ export default function OnboardingWizard({
                 <select
                   data-field="ship_country"
                   data-optional="true"
+                  disabled
                   value={location.ship_country}
                   onChange={(e) =>
                     updateLocation((prev) => ({

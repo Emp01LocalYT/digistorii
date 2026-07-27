@@ -4,7 +4,7 @@ import { generateSalesNo } from "@/lib/document-number-generator";
 import { getTenantSchema } from "@/lib/tenant";
 import { isFinalStatus } from "@/lib/stockLedger";
 import { allocateSalesStockFIFO } from "@/lib/stockAllocation";
- 
+
 async function resolveVariantId(
   client: any,
   schema: string,
@@ -127,14 +127,14 @@ async function validatePaymentModes(
     throw new Error("One or more payment modes are invalid");
   }
 }
- 
- 
+
+
 // ---------------- GET: fetch all sales with details ----------------
 export async function GET(req: NextRequest) {
   try {
- 
+
     const { company, schema } = await getTenantSchema(req);
- 
+
     const res = await pool.query(`
       SELECT
         h.*,
@@ -161,28 +161,28 @@ export async function GET(req: NextRequest) {
       ON ca.customer_id = s.id 
       ORDER BY h.id DESC
     `);
- 
+
     // console.log("Fetched Sales:", res.rows);
     return NextResponse.json({ success: true, data: res.rows });
- 
+
   } catch (err: any) {
- 
+
     console.error("Sales Fetch DB Error:", err);
- 
+
     if (err.code === "42P01") {
       return NextResponse.json(
         { success: false, error: "Table sales_header or sales_detail does not exist" },
         { status: 500 }
       );
     }
- 
+
     if (err.code === "28P01") {
       return NextResponse.json(
         { success: false, error: "Database authentication failed" },
         { status: 500 }
       );
     }
- 
+
     return NextResponse.json(
       {
         success: false,
@@ -192,15 +192,12 @@ export async function GET(req: NextRequest) {
     );
   }
 }
- 
+
 export async function POST(req: NextRequest) {
-  console.log("STEP A - API HIT /api/sales");
   const client = await pool.connect();
   try {
     const { company, schema } = await getTenantSchema(req);
-    console.log("STEP B - tenant:", company, schema);
     const userId = getUserIdFromCookie(req);
-    console.log("STEP C - userId:", userId);
     if (!userId) {
       return NextResponse.json(
         { success: false, error: "Unauthorized" },
@@ -218,7 +215,6 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    console.log("STEP D - body received", body);
     const { header, details, payments } = body;
 
     if (!header || !details?.length) {
@@ -227,7 +223,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    console.log("STEP E - starting transaction");
     await client.query("BEGIN");
 
     const warehouseContext = await resolveWarehouseContext(client, schema, warehouseId);
@@ -249,7 +244,6 @@ export async function POST(req: NextRequest) {
 
     // Generate sales_no
     const salesNo = await generateSalesNo(schema);
-    console.log("STEP F - generated sales no:", salesNo);
     // Insert header
     const headerQuery = `
       INSERT INTO ${schema}.sales_header
@@ -273,9 +267,7 @@ export async function POST(req: NextRequest) {
       header.total_amount,
       userId,
     ];
-    console.log("STEP G - inserting header");
     const headerRes = await client.query(headerQuery, headerValues);
-    console.log("STEP H - header inserted", headerRes.rows);
     if (!headerRes.rows.length) throw new Error("Failed to save sales header");
 
     const salesId = headerRes.rows[0].id;
@@ -288,7 +280,7 @@ export async function POST(req: NextRequest) {
       warehouseContext.location_id,
       warehouseContext.warehouse_id
     );
- 
+
     const shouldAllocate = isFinalStatus(statusValue);
     let allocationWarehouseId: number | null = warehouseContext.warehouse_id;
     if (shouldAllocate) {
@@ -304,7 +296,6 @@ export async function POST(req: NextRequest) {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
       RETURNING id
     `;
-    console.log("STEP I - inserting details:", details.length);
     for (const d of details) {
       const variantId = await resolveVariantId(client, schema, d.product_id);
       const taxMasterId = d.tax_id && d.tax_id > 0 ? d.tax_id : null;
@@ -320,9 +311,7 @@ export async function POST(req: NextRequest) {
         d.line_total,
         userId
       ]);
-      console.log("STEP J - inserting detail:", d.product_id);
       if (shouldAllocate) {
-        console.log("STEP J - allocating stock for detail id:", detailRes.rows[0].id);
         const salesDetailId = Number(detailRes.rows[0]?.id);
         await allocateSalesStockFIFO(client, {
           schema,
@@ -336,10 +325,8 @@ export async function POST(req: NextRequest) {
         });
       }
     }
-    console.log("STEP K - committing transaction");
     await client.query("COMMIT");
-    console.log(`Sales ${salesNo} saved with ID ${salesId}`);
- 
+
     return NextResponse.json({
       success: true,
       message: "Sales saved successfully",

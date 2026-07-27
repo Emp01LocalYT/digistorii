@@ -57,6 +57,8 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
 
     if (!formData.businessName.trim()) {
       next.businessName = "Business Name is required";
+    } else if (/[^a-zA-Z -]/.test(formData.businessName)) {
+      next.businessName = "Special characters and numbers are not allowed";
     }
     const slugValue = formData.slug.trim();
 
@@ -69,6 +71,8 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
     }
     if (!formData.ownerName.trim()) {
       next.ownerName = "Owner Name is reqired";
+    } else if (/[^a-zA-Z -]/.test(formData.ownerName)) {
+      next.ownerName = "Special characters and numbers are not allowed";
     }
 
     if (!formData.ownerEmail.trim()) {
@@ -142,6 +146,7 @@ export default function GetService({ selectedPlan }: { selectedPlan?: PlanOption
         )}&billing_cycle=${encodeURIComponent(storedPlan.billing_cycle)}`
         : baseOnboardingUrl;
       router.push(onboardingUrl);
+
     } catch {
       setError("Unable to create your account right now. Please try again.");
     } finally {

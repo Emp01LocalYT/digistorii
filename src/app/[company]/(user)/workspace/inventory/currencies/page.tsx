@@ -177,7 +177,10 @@ export default function CurrencyMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Currency Master</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Currency Master</h1>
+          <p className="text-sm text-gray-500">Manage supported currencies and base currency settings for your store.</p>
+        </div>
       </div>
 
       <div className="ui-table-card">

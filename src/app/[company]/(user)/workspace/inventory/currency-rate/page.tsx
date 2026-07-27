@@ -211,7 +211,10 @@ export default function CurrencyRatePage() {
             }
  
             <div className="flex justify-between">
-                <h1 className="text-2xl font-bold">Currency - Conversion Rate</h1>
+                <div>
+                    <h1 className="text-2xl font-bold">Currency - Conversion Rate</h1>
+                    <p className="text-sm text-gray-500">Maintain exchange rates and conversion factors for multi-currency transactions.</p>
+                </div>
                 {error && (
                     <div className="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm font-medium">
                         {error}

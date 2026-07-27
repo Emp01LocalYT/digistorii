@@ -18,6 +18,16 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// const transporter = nodemailer.createTransport({
+//   host: process.env.SMTP_HOST,
+//   port: Number(process.env.SMTP_PORT),
+//   secure: process.env.SMTP_SECURE === "true",
+//   auth: {
+//     user: process.env.SMTP_USER,
+//     pass: process.env.SMTP_PASS,
+//   },
+// });
+
 export async function POST(req: NextRequest) {
   await ensureDB();
   const client = await pool.connect();
@@ -95,7 +105,7 @@ export async function POST(req: NextRequest) {
     const sub = subResult.rows[0] || null;
 
     const adminUrl = `digistorii/${company}/admin`;
-    const shopUrl = `digistorii/${company}`;
+    const shopUrl = `digistorii/${company}/workspace`;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "/not_found";
     const secureverificationLink = `${baseUrl}/api/verify-company?token=${cryptoToken}`;
     // Build email HTML
@@ -161,9 +171,9 @@ export async function POST(req: NextRequest) {
 
     // Send the email
     await transporter.sendMail({
-      from: `"DigiStorii" <${SENDER_EMAIL}>`,
+      from: `"DigiStorii" <${process.env.SMTP_USER}>`,
       to: ownerEmail,
-      subject: `🚀 Welcome to DigiStorii — Your workspace "${companyRow.company_name}" is ready!`,
+      subject: ` Welcome to DigiStorii — Your workspace "${companyRow.company_name}" is ready!`,
       html: htmlBody,
     });
 

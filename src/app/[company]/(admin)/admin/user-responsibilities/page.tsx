@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
+import { useRouter } from "next/navigation";
 
 type Responsibility = {
   id?: number;
@@ -43,11 +44,32 @@ function getDefaultForm(): Responsibility {
 
 export default function UserResponsibilitiesPage() {
   const { company } = useTenant();
+  const router = useRouter();
   const [items, setItems] = useState<Responsibility[]>([]);
   const [form, setForm] = useState<Responsibility>(getDefaultForm());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const selectAllRef = useRef<HTMLInputElement>(null);
+
+  const allChecked = accessFields.every((field) => form[field.key]);
+  const someChecked = accessFields.some((field) => form[field.key]) && !allChecked;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someChecked;
+    }
+  }, [someChecked]);
+
+  const handleSelectAll = () => {
+    const nextValue = !allChecked;
+    const updates: Partial<Responsibility> = {};
+    accessFields.forEach((field) => {
+      updates[field.key as keyof Responsibility] = nextValue as any;
+    });
+    setForm((prev) => ({ ...prev, ...updates }));
+  };
 
   async function loadData() {
     if (!company) return;
@@ -74,8 +96,21 @@ export default function UserResponsibilitiesPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!company) return;
+
     if (!form.responsibility_name.trim()) {
-      setError("Responsibility name is required");
+      setError("Responsibility name is required.");
+      return;
+    }
+
+    const noSymbolsRegex = /^[a-zA-Z0-9\s]+$/;
+    if (!noSymbolsRegex.test(form.responsibility_name)) {
+      setError("Symbols are not allowed in responsibility name.");
+      return;
+    }
+
+    const hasAtLeastOnePermission = accessFields.some((field) => form[field.key]);
+    if (!hasAtLeastOnePermission) {
+      setError("At least one permission must be selected.");
       return;
     }
 
@@ -107,11 +142,22 @@ export default function UserResponsibilitiesPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">User Responsibilities</h1>
-        <p className="text-sm text-gray-600">
-          Create or update responsibility-based access profiles for this company.
-        </p>
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => router.push(`/${company}/admin`)}
+          className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors"
+          title="Go Back"
+        >
+          <svg className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">User Responsibilities</h1>
+          <p className="text-sm text-gray-600">
+            Create or update responsibility-based access profiles for this company.
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -120,8 +166,8 @@ export default function UserResponsibilitiesPage() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[380px,1fr]">
-        <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+      <div className="grid gap-6 lg:grid-cols-[400px,1fr]">
+        <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-5 h-fit">
           <div>
             <label className="mb-1 block text-sm font-semibold text-gray-700">
               Responsibility Name
@@ -130,37 +176,51 @@ export default function UserResponsibilitiesPage() {
               value={form.responsibility_name}
               onChange={(e) => setForm((prev) => ({ ...prev, responsibility_name: e.target.value }))}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g. Area Manager"
             />
           </div>
 
-          <div className="grid gap-3">
-            {accessFields.map((field) => (
-              <label key={String(field.key)} className="inline-flex items-center gap-3 text-sm text-gray-700">
-                <input
-                  type="checkbox"
-                  checked={Boolean(form[field.key])}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, [field.key]: e.target.checked }))
-                  }
-                  className="h-4 w-4 rounded border-gray-300 text-indigo-600"
-                />
-                {field.label}
-              </label>
-            ))}
+          <div className="space-y-4">
+            <label className="inline-flex items-center gap-3 text-sm font-semibold text-gray-900 pb-3 border-b border-gray-100 w-full cursor-pointer">
+              <input
+                type="checkbox"
+                ref={selectAllRef}
+                checked={allChecked}
+                onChange={handleSelectAll}
+                className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Select All Permissions
+            </label>
+
+            <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+              {accessFields.map((field) => (
+                <label key={String(field.key)} className="inline-flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form[field.key])}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, [field.key]: e.target.checked }))
+                    }
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {field.label}
+                </label>
+              ))}
+            </div>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex gap-3 pt-2">
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-70"
             >
-              {saving ? "Saving..." : form.id ? "Update" : "Create"}
+              {saving ? "Saving..." : form.id ? "Update Profile" : "Create Profile"}
             </button>
             <button
               type="button"
               onClick={() => setForm(getDefaultForm())}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700"
+              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
             >
               Reset
             </button>
@@ -169,35 +229,43 @@ export default function UserResponsibilitiesPage() {
 
         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           {loading ? (
-            <div className="text-sm text-gray-500">Loading responsibilities...</div>
+            <div className="text-sm text-gray-500 flex justify-center py-8">Loading responsibilities...</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-gray-600">
-                    <th className="px-3 py-2 font-semibold">Responsibility Name</th>
+                    <th className="px-3 py-3 font-semibold">Profile Name</th>
                     {accessFields.map((field) => (
-                      <th key={field.label} className="px-3 py-2 font-semibold">
+                      <th key={field.label} className="px-2 py-3 font-semibold text-center whitespace-nowrap">
                         {field.label}
                       </th>
                     ))}
-                    <th className="px-3 py-2 font-semibold">Action</th>
+                    <th className="px-3 py-3 font-semibold text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item) => (
-                    <tr key={item.id} className="border-b border-gray-100">
-                      <td className="px-3 py-2 font-medium text-gray-900">{item.responsibility_name}</td>
+                    <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+                      <td className="px-3 py-3 font-medium text-gray-900 whitespace-nowrap">{item.responsibility_name}</td>
                       {accessFields.map((field) => (
-                        <td key={`${item.id}-${field.label}`} className="px-3 py-2 text-gray-600">
-                          {item[field.key] ? "Yes" : "No"}
+                        <td key={`${item.id}-${field.label}`} className="px-2 py-3 text-center">
+                          {item[field.key] ? (
+                            <svg className="h-5 w-5 text-green-500 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-5 w-5 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
+                            </svg>
+                          )}
                         </td>
                       ))}
-                      <td className="px-3 py-2">
+                      <td className="px-3 py-3 text-right">
                         <button
                           type="button"
                           onClick={() => setForm(item)}
-                          className="text-sm font-semibold text-blue-600"
+                          className="text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors"
                         >
                           Edit
                         </button>
@@ -206,7 +274,7 @@ export default function UserResponsibilitiesPage() {
                   ))}
                   {!items.length && (
                     <tr>
-                      <td colSpan={accessFields.length + 2} className="px-3 py-6 text-center text-gray-500">
+                      <td colSpan={accessFields.length + 2} className="px-3 py-8 text-center text-gray-500">
                         No responsibilities found.
                       </td>
                     </tr>

@@ -67,19 +67,19 @@ function getInitialForm(): Location {
     description: "",
     registered_address_line_1: "",
     registered_address_line_2: "",
-    registered_country: "",
+    registered_country: "India",
     registered_state: "",
     registered_city: "",
     registered_pincode: "",
     bill_address_line_1: "",
     bill_address_line_2: "",
-    bill_country: "",
+    bill_country: "India",
     bill_state: "",
     bill_city: "",
     bill_pincode: "",
     ship_address_line_1: "",
     ship_address_line_2: "",
-    ship_country: "",
+    ship_country: "India",
     ship_state: "",
     ship_city: "",
     ship_pincode: "",
@@ -325,7 +325,10 @@ export default function LocationMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Store Location Master" : "Store Location List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Store Location Master" : "Store Location List"}</h1>
+          <p className="text-sm text-gray-500">Manage physical stores, branches, and outlet locations for your business.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {
@@ -615,6 +618,7 @@ export default function LocationMasterPage() {
                       data-field="registered_country"
                       data-rules="india-only"
                       data-optional="true"
+                      disabled
                       value={form.registered_country}
                       onChange={(e) =>
                         updateForm((prev) => ({
@@ -736,6 +740,7 @@ export default function LocationMasterPage() {
                     <select
                       data-field="bill_country"
                       data-optional="true"
+                      disabled
                       value={form.bill_country}
                       onChange={(e) =>
                         updateForm((prev) => ({
@@ -857,6 +862,7 @@ export default function LocationMasterPage() {
                     <select
                       data-field="ship_country"
                       data-optional="true"
+                      disabled
                       value={form.ship_country}
                       onChange={(e) =>
                         updateForm((prev) => ({

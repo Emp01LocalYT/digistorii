@@ -9,6 +9,7 @@ type User = {
   user_id?: number;
   company_id?: number;
   company_name?: string;
+  real_company_name?: string;
   subdomain_url?: string;
   username: string;
   name: string;

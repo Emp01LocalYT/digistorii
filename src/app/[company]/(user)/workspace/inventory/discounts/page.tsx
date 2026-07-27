@@ -527,7 +527,10 @@ export default function DiscountSchemesPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Discount Scheme" : "Discount Schemes"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Discount Scheme" : "Discount Schemes"}</h1>
+          <p className="text-sm text-gray-500">Configure promotional discount rules and pricing schemes for your store.</p>
+        </div>
         {!showForm && (
           <button
             onClick={openCreate}

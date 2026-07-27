@@ -46,7 +46,10 @@ export default function CompanyLayout({
   useEffect(() => {
     const checkAuthAndOnboarding = async () => {
       try {
-        if (pathname?.endsWith("/workspace/login")) {
+        if (
+          pathname?.endsWith("/workspace/login") ||
+          pathname?.endsWith("/workspace/reset-password")
+        ) {
           setCheckingAuth(false);
           return;
         }
@@ -91,7 +94,8 @@ export default function CompanyLayout({
   }
 
   // LOGIN PAGE ALLOWED
-  if (pathname?.endsWith("/workspace/login")) {
+  if (pathname?.endsWith("/workspace/login") || pathname?.endsWith("/workspace/reset-password")
+  ) {
     return <div className={inter.className}>{children}</div>;
   }
 

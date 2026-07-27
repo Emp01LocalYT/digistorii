@@ -171,7 +171,10 @@ export default function PaymentModeMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Payment Mode Master" : "Payment Mode List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Payment Mode Master" : "Payment Mode List"}</h1>
+          <p className="text-sm text-gray-500">Configure payment options like cash, card, or UPI for transactions.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

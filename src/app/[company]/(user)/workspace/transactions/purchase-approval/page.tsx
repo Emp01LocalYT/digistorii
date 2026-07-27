@@ -182,7 +182,10 @@ export default function PurchaseApprovalList() {
       }
  
       <div className="flex justify-between">
-        <h1 className="text-2xl font-bold">Purchase Approval List</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Purchase Approval List</h1>
+          <p className="text-sm text-gray-500">Review, approve, or reject pending purchase orders for your business.</p>
+        </div>
       </div>
  
       {/* SEARCH */}

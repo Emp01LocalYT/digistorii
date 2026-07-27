@@ -233,6 +233,7 @@ export default function PricingPage() {
   const [bulkTaxPercent, setBulkTaxPercent] = useState("");
   const [bulkTaxId, setBulkTaxId] = useState("");
   const entryHeaderCheckboxRef = useRef<HTMLInputElement>(null);
+  const [useLastPurchasePrice, setUseLastPurchasePrice] = useState(false);
 
   async function loadPricing() {
     setLoading(true);
@@ -266,7 +267,10 @@ export default function PricingPage() {
     setDownloading(true);
     setStatusMessage("");
     try {
-      const query = new URLSearchParams({ pricingFilter });
+      const query = new URLSearchParams({
+      pricingFilter,
+      useLastPurchasePrice: String(useLastPurchasePrice),
+    });
       const response = await apiFetch(`/api/pricing/template?${query.toString()}`, company);
       if (!response.ok) {
         const payload = await response.json();
@@ -293,7 +297,11 @@ export default function PricingPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await apiFetch("/api/pricing/upload?preview=true", company, {
+      const query = new URLSearchParams({
+        preview: "true",
+        useLastPurchasePrice: String(useLastPurchasePrice),
+      });
+      const response = await apiFetch(`/api/pricing/upload?${query.toString()}`, company, {
         method: "POST",
         body: formData,
       });
@@ -334,7 +342,10 @@ export default function PricingPage() {
       const formData = new FormData();
       formData.append("file", selectedFile);
 
-      const response = await apiFetch("/api/pricing/upload", company, {
+      const query = new URLSearchParams({
+        useLastPurchasePrice: String(useLastPurchasePrice),
+      });
+      const response = await apiFetch(`/api/pricing/upload?${query.toString()}`, company, {
         method: "POST",
         body: formData,
       });
@@ -364,6 +375,42 @@ export default function PricingPage() {
       setUploading(false);
     }
   }
+
+  async function fetchLatestPurchasePricesForEntries(ids: number[]) {
+    if (ids.length === 0) return {};
+    try {
+      const response = await apiFetch("/api/pricing/latest-purchase-price", company, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variantIds: ids }),
+      });
+      const payload = await response.json();
+      if (response.ok && payload.success) {
+        return payload.prices as Record<string, number>;
+      }
+    } catch (err) {
+      console.error("Failed to fetch latest purchase prices", err);
+    }
+    return {};
+  }
+
+  useEffect(() => {
+    if (useLastPurchasePrice && entryRows.length > 0) {
+      const idsToFetch = entryRows.map((r) => Number(r.variant_id));
+      fetchLatestPurchasePricesForEntries(idsToFetch).then((prices) => {
+        if (!prices) return;
+        setEntryRows((prev) =>
+          prev.map((row) => {
+            const key = String(row.variant_id);
+            if (prices[key] !== undefined) {
+              return { ...row, base_cost: String(prices[key]) };
+            }
+            return row;
+          })
+        );
+      });
+    }
+  }, [useLastPurchasePrice]);
 
   useEffect(() => {
     if (!company) return;
@@ -548,28 +595,44 @@ export default function PricingPage() {
 
   function applySelectedProducts() {
     const selected = lookupItems.filter((row) => selectedVariantMap[String(row.variant_id)]);
-    setEntryRows((prev) => {
-      const existing = new Set(prev.map((r) => String(r.variant_id)));
-      const next = [...prev];
-      selected.forEach((row) => {
-        if (existing.has(String(row.variant_id))) return;
-        next.push({
-          variant_id: row.variant_id,
-          product_id: row.product_id,
-          product_code: row.product_code || row.code,
-          product_name: row.name,
-          sku: row.sku,
-          product_type: row.type || null,
-          color: row.color,
-          base_cost: "",
-          operational_cost: "0",
-          margin_value: "",
-          tax_id: "",
-          tax_percent: "0",
+    const existing = new Set(entryRows.map((r) => String(r.variant_id)));
+    const newSelected = selected.filter((row) => !existing.has(String(row.variant_id)));
+
+    if (newSelected.length === 0) {
+      setSelectProductsModalOpen(false);
+      return;
+    }
+
+    const newEntries = newSelected.map((row) => ({
+      variant_id: Number(row.variant_id),
+      product_id: Number(row.product_id),
+      product_code: row.product_code || row.code,
+      product_name: row.name,
+      sku: row.sku,
+      product_type: row.type || null,
+      color: row.color,
+      base_cost: "",
+      operational_cost: "0",
+      margin_value: "",
+      tax_id: "",
+      tax_percent: "0",
+    }));
+
+    if (useLastPurchasePrice) {
+      const idsToFetch = newEntries.map((e) => e.variant_id);
+      fetchLatestPurchasePricesForEntries(idsToFetch).then((prices) => {
+        const entriesWithPrices = newEntries.map((row) => {
+          const key = String(row.variant_id);
+          if (prices && prices[key] !== undefined) {
+            return { ...row, base_cost: String(prices[key]) };
+          }
+          return row;
         });
+        setEntryRows((prev) => [...prev, ...entriesWithPrices]);
       });
-      return next;
-    });
+    } else {
+      setEntryRows((prev) => [...prev, ...newEntries]);
+    }
     setSelectProductsModalOpen(false);
   }
   function removeRow(variantId: number) {
@@ -676,6 +739,15 @@ export default function PricingPage() {
     setEditEffectiveDate(asDate(row.active_from) || todayYyyyMmDd());
     setEditExpiresAt(asDate(row.expires_at) || "");
     setEditModalOpen(true);
+
+    if (useLastPurchasePrice) {
+      fetchLatestPurchasePricesForEntries([Number(row.variant_id)]).then((prices) => {
+        const key = String(row.variant_id);
+        if (prices && prices[key] !== undefined) {
+          setEditBaseCost(String(prices[key]));
+        }
+      });
+    }
   }
 
   async function saveEditedPricing() {
@@ -733,19 +805,33 @@ export default function PricingPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Product Pricing</h1>
           <p className="text-sm text-gray-500">Multi-product pricing in one form.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={openCreateModal}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"
-          >
-            + Add Pricing Form
-          </button>
-          <button
-            onClick={() => setBulkModalOpen(true)}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
-          >
-            Bulk Import Excel
-          </button>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={openCreateModal}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+            >
+              + Add Pricing Form
+            </button>
+            <button
+              onClick={() => setBulkModalOpen(true)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
+            >
+              Bulk Import Excel
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              id="use-last-purchase-price"
+              type="checkbox"
+              checked={useLastPurchasePrice}
+              onChange={(e) => setUseLastPurchasePrice(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="use-last-purchase-price" className="text-sm text-gray-600 select-none cursor-pointer">
+              Use Last Purchase Price
+            </label>
+          </div>
         </div>
       </div>
 

@@ -242,7 +242,10 @@ export default function WarehouseMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Warehouse Master" : "Warehouse List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Warehouse Master" : "Warehouse List"}</h1>
+          <p className="text-sm text-gray-500">Manage warehouses and stock storage facilities for your business.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {

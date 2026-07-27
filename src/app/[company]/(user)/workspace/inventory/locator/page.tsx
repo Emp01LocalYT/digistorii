@@ -8,7 +8,7 @@ import {
   MagnifyingGlassIcon,
   PencilSquareIcon,
   PlusIcon,
-  TrashIcon,
+  TrashIcon, InformationCircleIcon
 } from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
@@ -257,7 +257,10 @@ export default function LocatorMasterPage() {
         )}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Locator Master" : "Locator List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Locator Master" : "Locator List"}</h1>
+          <p className="text-sm text-gray-500">Configure warehouse aisles, racks, and bin storage locations.</p>
+        </div>
         {!showForm && (
           <button
             onClick={() => {
@@ -458,8 +461,27 @@ export default function LocatorMasterPage() {
 
             <div className="grid md:grid-cols-4 gap-6">
               <div>
-                <label className="text-sm font-semibold mb-1 block">Locator Name</label>
-                <input value={previewName} readOnly className="w-full mt-2 border rounded-lg p-3 bg-gray-100 text-gray-600" />
+                <label className="text-sm font-semibold mb-1 flex items-center gap-2">
+                  Locator Name
+
+                  <div className="relative group">
+                    <InformationCircleIcon className="w-4 h-4 text-gray-400 cursor-pointer" />
+
+                    <div className="absolute left-6 top-1/2 -translate-y-1/2 hidden group-hover:block z-20 w-64 rounded-md bg-gray-900 text-white text-xs p-3 shadow-lg">
+                      Enter values for <strong>Row</strong>, <strong>Rack</strong>, and{" "}
+                      <strong>Bin</strong>. The <strong>Locator Name</strong> will be
+                      generated automatically in the format:
+                      <br />
+                      <span className="text-blue-300 font-medium">R-RK-B</span>
+                    </div>
+                  </div>
+                </label>
+
+                <input
+                  value={previewName}
+                  readOnly
+                  className="w-full mt-2 border rounded-lg p-3 bg-gray-100 text-gray-600"
+                />
               </div>
               <div>
                 <label className="text-sm font-semibold mb-1 block">

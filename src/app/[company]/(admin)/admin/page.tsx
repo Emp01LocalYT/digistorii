@@ -72,9 +72,12 @@ export default function AdminPage() {
     <div className="p-6 min-h-screen bg-gray-50">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-        <h1 className="text-3xl font-bold text-gray-800">
-          Admin Console
-        </h1>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">
+            Admin Console
+          </h1>
+          <p className="text-sm text-gray-500">Manage user access permissions and company system configurations.</p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => router.push(`/${company}/admin/user-responsibilities`)}

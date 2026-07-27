@@ -359,13 +359,15 @@ const AppSidebar: React.FC = () => {
         <Link href={`/${company || ""}/workspace`} className="flex items-center gap-3">
           {/* Icon */}
           <div className="bg-blue-600 rounded-full w-10 h-10 flex items-center justify-center text-white font-bold text-lg">
-            {company.charAt(0).toUpperCase()}
+            {(user?.real_company_name || user?.company_name || company)
+              .charAt(0)
+              .toUpperCase()}
           </div>
 
           {/* Company Name */}
           {(isExpanded || isHovered || isMobileOpen) && (
             <span className="text-lg font-semibold text-gray-800 dark:text-white">
-              {user?.company_name || (company.charAt(0).toUpperCase() + company.slice(1))}
+              {user?.real_company_name || user?.company_name || (company.charAt(0).toUpperCase() + company.slice(1))}
             </span>
           )}
         </Link>

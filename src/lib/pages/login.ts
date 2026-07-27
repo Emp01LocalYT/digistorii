@@ -2,64 +2,67 @@
 import { pool } from "../db";
 import { verifyPassword } from "../hash";
 import { ensureCompanyResponsibilities } from "../userResponsibilities";
- 
+
 export async function loginUser(company: string, email: string, password: string) {
   if (!company) throw new Error("Company required");
-try {
-  // Get schema for company
-  const companyData = await pool.query(
-    "SELECT id,schema_name FROM public.companies WHERE subdomain_url = $1",
-    [company]
-  );
-  if (!companyData.rows.length) throw new Error("Company not found");
- 
-  const schema = companyData.rows[0].schema_name;
-  console.log("Company found:", company, "with schema:", schema);
-  const companyId = companyData.rows[0].id;
-  console.log("CompanyId : ",companyId);
-  const client = await pool.connect();
   try {
-    await ensureCompanyResponsibilities(client, companyId);
-  } finally {
-    client.release();
-  }
- 
-  // Query user in company schema only
-  const userResult = await pool.query(
-    `SELECT * FROM public.users WHERE email = $1 AND company_id = $2 AND is_active=true`,
-    [email,companyId]
-  );
-  if (!userResult.rows.length)
-     return {
+
+    // Get schema for company
+    const companyData = await pool.query(
+      "SELECT id,schema_name,company_name FROM public.companies WHERE subdomain_url = $1",
+      [company]
+    );
+    console.log("Company data:", companyData);
+    if (!companyData.rows.length) throw new Error("Company not found");
+
+    const schema = companyData.rows[0].schema_name;
+    const realCompanyName = companyData.rows[0]?.company_name || "-";
+    console.log("Company found:", company, "with schema:", schema, "Business name", realCompanyName);
+    const companyId = companyData.rows[0].id;
+    console.log("CompanyId : ", companyId);
+    const client = await pool.connect();
+    try {
+      await ensureCompanyResponsibilities(client, companyId);
+    } finally {
+      client.release();
+    }
+
+    // Query user in company schema only
+    const userResult = await pool.query(
+      `SELECT * FROM public.users WHERE email = $1 AND company_id = $2 AND is_active=true`,
+      [email, companyId]
+    );
+    if (!userResult.rows.length)
+      return {
         success: false,
         message:
           "Incorrect email or password. Please try again."
       };
     // throw new Error("Invalid credentials");
- 
-  const user = userResult.rows[0];
-  console.log("User found:", user);
-  console.log("Verifying password for user:", email);
-  const validPassword = await verifyPassword(password, user.password_hash);
-  console.log("Password valid:", validPassword);
-  if (!validPassword)
-    // throw new Error("Invalid credentials");
-   return {
+
+    const user = userResult.rows[0];
+    console.log("User found:", user);
+    console.log("Verifying password for user:", email);
+    const validPassword = await verifyPassword(password, user.password_hash);
+    console.log("Password valid:", validPassword);
+    if (!validPassword)
+      // throw new Error("Invalid credentials");
+      return {
         success: false,
         message: "Invalid credentials."
       };
- 
-  // return { user: { id: user.id,name:user.name,username:user.username,email: user.email,phone:user.phone }, schema };
-  // const settingsRes = await pool.query(
-  //   `SELECT default_warehouse_id, default_locator_id, branch_name
-  //    FROM "${schema}".user_settings
-  //    WHERE user_id = $1
-  //    LIMIT 1`,
-  //   [user.id]
-  // );
-  // const settings = settingsRes.rows[0] || {};
-  const userMapResult = await pool.query(
-    `SELECT
+
+    // return { user: { id: user.id,name:user.name,username:user.username,email: user.email,phone:user.phone }, schema };
+    // const settingsRes = await pool.query(
+    //   `SELECT default_warehouse_id, default_locator_id, branch_name
+    //    FROM "${schema}".user_settings
+    //    WHERE user_id = $1
+    //    LIMIT 1`,
+    //   [user.id]
+    // );
+    // const settings = settingsRes.rows[0] || {};
+    const userMapResult = await pool.query(
+      `SELECT
        cum.location_id,
        cum.warehouse_id,
        COALESCE(cum.responsibility_id, u.responsibility_id) AS responsibility_id,
@@ -80,12 +83,12 @@ try {
        AND cum.is_active = TRUE
      ORDER BY cum.id DESC
      LIMIT 1`,
-    [user.id, companyId]
-  );
-  let mappedUser = userMapResult.rows[0] || {};
-  if (!userMapResult.rowCount && user.responsibility_id) {
-    const responsibilityResult = await pool.query(
-      `SELECT
+      [user.id, companyId]
+    );
+    let mappedUser = userMapResult.rows[0] || {};
+    if (!userMapResult.rowCount && user.responsibility_id) {
+      const responsibilityResult = await pool.query(
+        `SELECT
          id AS responsibility_id,
          responsibility_name,
          dashboard_access,
@@ -98,13 +101,13 @@ try {
        FROM public.user_responsibilities
        WHERE id = $1 AND company_id = $2
        LIMIT 1`,
-      [user.responsibility_id, companyId]
-    );
-    mappedUser = responsibilityResult.rows[0] || {};
-  }
+        [user.responsibility_id, companyId]
+      );
+      mappedUser = responsibilityResult.rows[0] || {};
+    }
 
-  const subscriptionResult = await pool.query(
-    `SELECT
+    const subscriptionResult = await pool.query(
+      `SELECT
        cs.plan_id,
        COALESCE(
          cs.max_warehouses,
@@ -133,20 +136,23 @@ try {
      WHERE cs.company_id = $1
      ORDER BY cs.updated_at DESC, cs.id DESC
      LIMIT 1`,
-    [companyId]
-  );
-  const subscription = subscriptionResult.rows[0] || {};
-  const maxWarehouse = Number(subscription.max_warehouses ?? 1);
-  const maxLocation = Number(subscription.max_locations ?? maxWarehouse);
+      [companyId]
+    );
+    const subscription = subscriptionResult.rows[0] || {};
+    const maxWarehouse = Number(subscription.max_warehouses ?? 1);
+    const maxLocation = Number(subscription.max_locations ?? maxWarehouse);
 
- console.log("Login successful for user:", email, "in company:", company);
-  return {
+    console.log("Login successful for user:", email, "in company:", company);
+    return {
       success: true,
       message: "Login successful!",
       user: {
         id: user.id,
         user_id: user.id,
         company_id: companyId,
+        real_company_name: realCompanyName,
+        company_name: company,
+        subdomain_url: company,
         location_id: mappedUser.location_id ?? null,
         warehouse_id: mappedUser.warehouse_id ?? null,
         plan_id: subscription.plan_id ?? null,
@@ -175,7 +181,7 @@ try {
       },
       schema,
     };
-   
+
   } catch (err) {
     console.error("Login error:", err);
     return { success: false, message: "Something went wrong during login. Please try again later." };

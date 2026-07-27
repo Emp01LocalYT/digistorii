@@ -49,73 +49,73 @@ export const RESPONSIBILITY_ACCESS_FIELDS: ResponsibilityAccessKey[] = [
 export const DEFAULT_RESPONSIBILITIES: Array<
   Omit<ResponsibilityRecord, "id" | "company_id">
 > = [
-  {
-    responsibility_name: "Admin",
-    dashboard_access: true,
-    purchase_access: true,
-    inventory_access: true,
-    sales_access: true,
-    sales_billing_access: true,
-    reports_access: true,
-    settings_access: true,
-    is_system: true,
-  },
-  {
-    responsibility_name: "Inventory Manager",
-    dashboard_access: true,
-    purchase_access: false,
-    inventory_access: true,
-    sales_access: false,
-    sales_billing_access: false,
-    reports_access: true,
-    settings_access: false,
-    is_system: true,
-  },
-  {
-    responsibility_name: "Purchasing Agent",
-    dashboard_access: true,
-    purchase_access: true,
-    inventory_access: false,
-    sales_access: false,
-    sales_billing_access: false,
-    reports_access: true,
-    settings_access: false,
-    is_system: true,
-  },
-  {
-    responsibility_name: "Sales Person",
-    dashboard_access: true,
-    purchase_access: false,
-    inventory_access: false,
-    sales_access: true,
-    sales_billing_access: true,
-    reports_access: false,
-    settings_access: false,
-    is_system: true,
-  },
-  {
-    responsibility_name: "Sales Manager",
-    dashboard_access: true,
-    purchase_access: false,
-    inventory_access: false,
-    sales_access: true,
-    sales_billing_access: true,
-    reports_access: true,
-    settings_access: false,
-    is_system: true,
-  },
-  {
-    responsibility_name: "Accountant",
-    dashboard_access: true,
-    purchase_access: false,
-    inventory_access: false,
-    sales_access: false,
-    sales_billing_access: false,
-    reports_access: true,
-    settings_access: false,
-    is_system: true,
-  },
-];
+    {
+      responsibility_name: "Admin",
+      dashboard_access: true,
+      purchase_access: true,
+      inventory_access: true,
+      sales_access: true,
+      sales_billing_access: true,
+      reports_access: true,
+      settings_access: true,
+      is_system: true,
+    },
+    {
+      responsibility_name: "Inventory Manager",
+      dashboard_access: true,
+      purchase_access: false,
+      inventory_access: true,
+      sales_access: false,
+      sales_billing_access: false,
+      reports_access: true,
+      settings_access: false,
+      is_system: true,
+    },
+    {
+      responsibility_name: "Purchasing Agent",
+      dashboard_access: true,
+      purchase_access: true,
+      inventory_access: false,
+      sales_access: false,
+      sales_billing_access: false,
+      reports_access: true,
+      settings_access: false,
+      is_system: true,
+    },
+    {
+      responsibility_name: "Sales Person",
+      dashboard_access: true,
+      purchase_access: false,
+      inventory_access: false,
+      sales_access: true,
+      sales_billing_access: true,
+      reports_access: false,
+      settings_access: false,
+      is_system: true,
+    },
+    {
+      responsibility_name: "Sales Manager",
+      dashboard_access: true,
+      purchase_access: false,
+      inventory_access: false,
+      sales_access: true,
+      sales_billing_access: true,
+      reports_access: true,
+      settings_access: false,
+      is_system: true,
+    },
+    {
+      responsibility_name: "Accountant",
+      dashboard_access: true,
+      purchase_access: false,
+      inventory_access: false,
+      sales_access: false,
+      sales_billing_access: false,
+      reports_access: true,
+      settings_access: false,
+      is_system: true,
+    },
+  ];
 
 function legacyRoleToResponsibilityName(role: string | null | undefined) {
   const normalized = String(role || "").trim().toUpperCase();
@@ -167,54 +167,10 @@ export async function ensureResponsibilitySchema(client: PoolClient) {
       updated_at TIMESTAMP DEFAULT NOW()
     );
   `);
-
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS dashboard_access BOOLEAN DEFAULT TRUE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS purchase_access BOOLEAN DEFAULT FALSE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS inventory_access BOOLEAN DEFAULT FALSE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS sales_access BOOLEAN DEFAULT FALSE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS sales_billing_access BOOLEAN DEFAULT FALSE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS reports_access BOOLEAN DEFAULT FALSE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS settings_access BOOLEAN DEFAULT FALSE;
-  `);
-  await client.query(`
-    ALTER TABLE public.user_responsibilities
-    ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT FALSE;
-  `);
-
   await client.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS uq_user_responsibilities_company_name
     ON public.user_responsibilities(company_id, responsibility_name);
   `);
-
-  await client.query(`
-    ALTER TABLE public.users
-    ADD COLUMN IF NOT EXISTS responsibility_id INT;
-  `);
-  await client.query(`
-    ALTER TABLE public.company_user_map
-    ADD COLUMN IF NOT EXISTS responsibility_id INT;
-  `);
-
   await client.query(`
     DO $$
     BEGIN

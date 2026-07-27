@@ -155,7 +155,10 @@ export default function BillingList() {
       }
 
       <div className="flex justify-between">
-        <h1 className="text-2xl font-bold">Billing List</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Billing List</h1>
+          <p className="text-sm text-gray-500">View and manage customer invoices and POS sales transactions.</p>
+        </div>
 
         <button
           onClick={() => router.push(`/${company}/workspace/transactions/sales/add`)}

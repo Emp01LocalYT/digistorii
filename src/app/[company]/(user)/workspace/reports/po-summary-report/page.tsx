@@ -219,7 +219,10 @@ export default function POSummarySupplierReport() {
  
       {/* HEADER */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Purchase Order Summary (Supplier Wise)</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Purchase Order Summary (Supplier Wise)</h1>
+          <p className="text-sm text-gray-500">View overall purchase order totals and status summarized by supplier.</p>
+        </div>
         {message && <div className="text-red-500 font-medium">{message}</div>}
       </div>
  

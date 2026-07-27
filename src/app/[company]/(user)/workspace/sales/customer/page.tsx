@@ -46,7 +46,7 @@ function getInitialCust(): Cust {
       city: "",
       state: "",
       pincode: "",
-      country: "",
+      country: "India",
       is_default: true,
     },
   };
@@ -278,7 +278,10 @@ export default function CustPage() {
       {tableLoading && createPortal(<div className="fixed inset-0 z-[99999] bg-black/20 backdrop-blur-sm flex items-center justify-center"><div className="bg-white p-8 rounded-xl shadow-2xl flex flex-col items-center gap-3"><div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div><p className="text-gray-700 font-semibold text-lg">Loading customers...</p></div></div>, document.body)}
 
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{showForm ? "Customer Master" : "Customer List"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold">{showForm ? "Customer Master" : "Customer List"}</h1>
+          <p className="text-sm text-gray-500">Manage customer records, contact information, and billing profiles.</p>
+        </div>
         {!showForm && <button onClick={() => { setCust(getInitialCust()); setErrors({}); setShowForm(true); }} className="bg-[var(--color-blue-500)] flex items-center gap-2 text-white px-4 py-2 rounded-lg"><PlusIcon className="w-4 h-4" />Add Customer</button>}
       </div>
 
@@ -541,6 +544,7 @@ export default function CustPage() {
                 data-field="country"
                 data-rules="india-only"
                 data-optional="true"
+                disabled
                 value={cust.address.country}
                 onChange={(e) =>
                   setCust({
