@@ -480,6 +480,15 @@ export default function OnboardingWizard({
 
   const shouldShowBusinessGstError =
     gstAvailable && businessGstSuffix.length > 0 && !isBusinessGstValid;
+  useEffect(() => {
+    if (!gstAvailable) {
+      setBusinessSettings((prev) => ({
+        ...prev,
+        gst_number: "",
+        pan_number: "",
+      }));
+    }
+  }, [gstAvailable]);
 
   const selectedRegisteredCountry = useMemo(
     () => countryOptions.find((entry) => entry.name === location.registered_country),
@@ -857,7 +866,6 @@ export default function OnboardingWizard({
       };
     });
   };
-
   const handleBusinessSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -879,7 +887,7 @@ export default function OnboardingWizard({
       return;
     }
 
-    // Strict GST/PAN Checks when GST is available
+    // Only validate GST/PAN if GST Available is explicitly checked
     if (gstAvailable) {
       if (!businessSettings.gst_number || businessSettings.gst_number.length < GSTIN_MAX_LENGTH) {
         setError("Please complete the full 15-character GST number.");
@@ -895,7 +903,8 @@ export default function OnboardingWizard({
       }
     }
 
-    // Clean payload: Clear GST and PAN completely if GST Available is NOT checked
+    // FINAL SANITIZATION BEFORE API CALL:
+    // If gstAvailable is false, explicitly set gst_number and pan_number to ""
     const payload = {
       ...businessSettings,
       gst_number: gstAvailable ? businessSettings.gst_number : "",
@@ -905,7 +914,6 @@ export default function OnboardingWizard({
 
     await saveStep("BUSINESS_SETUP", payload);
   };
-
   const handleWarehouseSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -1517,25 +1525,19 @@ export default function OnboardingWizard({
                 <select
                   data-field="state"
                   value={businessSettings.state}
-                  onChange={(e) =>
-                    setBusinessSettings((prev) => {
-                      const nextState = e.target.value;
-                      const stateCode = getGstStateCodeForState(nextState);
+                  onChange={(e) => {
+                    const nextState = e.target.value;
+                    const stateCode = getGstStateCodeForState(nextState);
 
-                      // Maintain/format GST only if GST Available is checked
-                      const gst_number = gstAvailable
-                        ? formatGstinInput(prev.gst_number, stateCode)
-                        : "";
-
-                      return {
-                        ...prev,
-                        state: nextState,
-                        city: "",
-                        gst_number,
-                        pan_number: gstAvailable ? getNextPanValue(gst_number, prev.pan_number, isPanManuallyEdited) : "",
-                      };
-                    })
-                  }
+                    setBusinessSettings((prev) => ({
+                      ...prev,
+                      state: nextState,
+                      city: "",
+                      // STRICT GUARD: If GST Available is false, force empty strings!
+                      gst_number: gstAvailable ? formatGstinInput(prev.gst_number, stateCode) : "",
+                      pan_number: gstAvailable ? getNextPanValue(prev.gst_number, prev.pan_number, isPanManuallyEdited) : "",
+                    }));
+                  }}
                   className={formFieldClass}
                   required
                 >
@@ -1548,7 +1550,6 @@ export default function OnboardingWizard({
                 </select>
                 {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
               </div>
-
               <div>
                 <label className={formLabelClass}>City</label>
                 <select
@@ -1649,10 +1650,10 @@ export default function OnboardingWizard({
                       </label>
                       <div
                         className={`mt-2 flex overflow-hidden rounded-lg ${shouldShowBusinessGstError
-                            ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
-                            : isBusinessGstValid
-                              ? "border border-green-500 focus-within:ring-2 focus-within:ring-green-500"
-                              : "border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500"
+                          ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
+                          : isBusinessGstValid
+                            ? "border border-green-500 focus-within:ring-2 focus-within:ring-green-500"
+                            : "border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500"
                           }`}
                       >
                         <span className="flex items-center bg-gray-100 px-3 text-sm font-bold text-gray-700 border-r border-gray-300">
