@@ -183,8 +183,24 @@ export async function GET(req: NextRequest) {
        LIMIT 1`
     );
     const businessRow = businessSettings.rows[0] || null;
-    const gstNumber = context.gst_number || businessRow?.gst_number || null;
-    const panNumber = context.pan_number || businessRow?.pan_number || null;
+    const stateCode = getGstStateCodeForState(String(businessRow?.state || "").trim());
+
+    const rawGst = String(businessRow?.gst_number || "").trim();
+
+    const gstNumber =
+      rawGst.length > 2
+        ? normalizeGstin(rawGst, stateCode)
+        : "";
+
+    const panInput =
+      gstNumber
+        ? normalizePan(String(businessRow?.pan_number || "").trim())
+        : "";
+
+    const panNumber =
+      gstNumber
+        ? panInput || extractPanFromGstin(gstNumber)
+        : "";
     const currency = context.currency || businessRow?.currency || null;
 
     if (
