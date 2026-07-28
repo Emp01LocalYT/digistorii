@@ -785,16 +785,7 @@ export default function OnboardingWizard({
     setLocation((prev) => syncLocationDependents(recipe(prev)));
   };
 
-  const updateBusinessGst = (value: string, stateCode = businessGstStateCode) => {
-    setBusinessSettings((prev) => {
-      const gst_number = formatGstinInput(value, stateCode);
-      return {
-        ...prev,
-        gst_number,
-        pan_number: getNextPanValue(gst_number, prev.pan_number, isPanManuallyEdited),
-      };
-    });
-  };
+
 
   const saveStep = async (step: string, data: Record<string, unknown> = {}) => {
     setSaving(true);
@@ -851,6 +842,22 @@ export default function OnboardingWizard({
     }
   };
 
+  // Place/replace these functions inside your component:
+
+  const updateBusinessGst = (value: string, stateCode = businessGstStateCode) => {
+    setBusinessSettings((prev) => {
+      // Standardize input formatting
+      const rawSuffix = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const fullGstNumber = stateCode ? `${stateCode}${rawSuffix}` : rawSuffix;
+
+      return {
+        ...prev,
+        gst_number: fullGstNumber,
+        pan_number: getNextPanValue(fullGstNumber, prev.pan_number, isPanManuallyEdited),
+      };
+    });
+  };
+
   const handleBusinessSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError("");
@@ -861,11 +868,9 @@ export default function OnboardingWizard({
       validationErrors.business_address = "Special characters/symbols are not allowed.";
     }
 
-
-
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
-      return; // Stops execution and prevents saving
+      return;
     }
     setErrors({});
 
@@ -873,19 +878,24 @@ export default function OnboardingWizard({
       setError("Currency is required.");
       return;
     }
-    if (gstAvailable && !businessSettings.gst_number) {
-      setError("GST number is required when GST Available is checked.");
-      return;
-    }
-    if (gstAvailable && !isValidGstin(businessSettings.gst_number)) {
-      setError("GST number must match the format 33AAAAA9999A1Z5");
-      return;
-    }
-    if (gstAvailable && businessSettings.pan_number && !isValidPan(businessSettings.pan_number)) {
-      setError("PAN number must match the format AAAAA9999A.");
-      return;
+
+    // Strict GST/PAN Checks when GST is available
+    if (gstAvailable) {
+      if (!businessSettings.gst_number || businessSettings.gst_number.length < GSTIN_MAX_LENGTH) {
+        setError("Please complete the full 15-character GST number.");
+        return;
+      }
+      if (!isValidGstin(businessSettings.gst_number)) {
+        setError("GST number must match the valid format (e.g., 33AAAAA9999A1Z5).");
+        return;
+      }
+      if (businessSettings.pan_number && !isValidPan(businessSettings.pan_number)) {
+        setError("PAN number must match the format AAAAA9999A.");
+        return;
+      }
     }
 
+    // Clean payload: Clear GST and PAN completely if GST Available is NOT checked
     const payload = {
       ...businessSettings,
       gst_number: gstAvailable ? businessSettings.gst_number : "",
@@ -1467,7 +1477,6 @@ export default function OnboardingWizard({
             loading={saving}
           />
         )}
-
         {currentStep === 4 && (
           <form onSubmit={handleBusinessSubmit} className="space-y-6 bg-white p-6 rounded-xl shadow">
             <h2 className="text-2xl font-bold text-gray-900">Step 4: Business Setup</h2>
@@ -1502,8 +1511,9 @@ export default function OnboardingWizard({
                 </select>
                 {errors.country && <p className="text-red-500 text-sm mt-1">{errors.country}</p>}
               </div>
+
               <div>
-                <label className={formLabelClass}>State<span className="text-red-500">*</span></label>
+                <label className={formLabelClass}>State <span className="text-red-500">*</span></label>
                 <select
                   data-field="state"
                   value={businessSettings.state}
@@ -1511,16 +1521,18 @@ export default function OnboardingWizard({
                     setBusinessSettings((prev) => {
                       const nextState = e.target.value;
                       const stateCode = getGstStateCodeForState(nextState);
+
+                      // Maintain/format GST only if GST Available is checked
                       const gst_number = gstAvailable
                         ? formatGstinInput(prev.gst_number, stateCode)
-                        : prev.gst_number;
+                        : "";
 
                       return {
                         ...prev,
                         state: nextState,
                         city: "",
                         gst_number,
-                        pan_number: getNextPanValue(gst_number, prev.pan_number, isPanManuallyEdited),
+                        pan_number: gstAvailable ? getNextPanValue(gst_number, prev.pan_number, isPanManuallyEdited) : "",
                       };
                     })
                   }
@@ -1536,6 +1548,7 @@ export default function OnboardingWizard({
                 </select>
                 {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
               </div>
+
               <div>
                 <label className={formLabelClass}>City</label>
                 <select
@@ -1558,6 +1571,7 @@ export default function OnboardingWizard({
                 </select>
                 {errors.city && <p className="text-red-500 text-sm mt-1">{errors.city}</p>}
               </div>
+
               <div className="md:col-span-2">
                 <label className={formLabelClass}>Business Address</label>
                 <textarea
@@ -1574,7 +1588,6 @@ export default function OnboardingWizard({
                 />
                 {errors.business_address && <p className="text-red-500 text-sm mt-1">{errors.business_address}</p>}
               </div>
-
 
               <div>
                 <label className={formLabelClass}>Currency</label>
@@ -1596,8 +1609,9 @@ export default function OnboardingWizard({
                 </select>
                 {errors.currency && <p className="text-red-500 text-sm mt-1">{errors.currency}</p>}
               </div>
+
               <div className="md:col-span-3 rounded-lg border border-gray-200 p-4 space-y-4">
-                <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <label className="inline-flex items-center gap-2 text-sm text-gray-700 font-semibold cursor-pointer">
                   <input
                     type="checkbox"
                     checked={gstAvailable}
@@ -1605,10 +1619,14 @@ export default function OnboardingWizard({
                       const checked = e.target.checked;
                       setGstAvailable(checked);
                       setIsPanManuallyEdited(false);
+
                       setBusinessSettings((prev) => {
+                        // If unchecked: purge GST and PAN entirely
                         if (!checked) {
                           return { ...prev, gst_number: "", pan_number: "" };
                         }
+
+                        // If checked: rebuild state code digits automatically
                         const gst_number = formatGstinInput(prev.gst_number, businessGstStateCode);
                         return {
                           ...prev,
@@ -1622,41 +1640,49 @@ export default function OnboardingWizard({
                   GST Available
                 </label>
 
+                {/* Render GST and PAN inputs ONLY when GST Available is checked */}
                 {gstAvailable && (
-                  <div className="grid md:grid-cols-2 gap-6">
+                  <div className="grid md:grid-cols-2 gap-6 pt-2">
                     <div>
-                      <label className={formLabelClass}>GST Number</label>
+                      <label className={formLabelClass}>
+                        GST Number <span className="text-red-500">*</span>
+                      </label>
                       <div
                         className={`mt-2 flex overflow-hidden rounded-lg ${shouldShowBusinessGstError
-                          ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
-                          : isBusinessGstValid
-                            ? "border border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500"
-                            : "border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500"
+                            ? "border border-red-500 focus-within:ring-2 focus-within:ring-red-500"
+                            : isBusinessGstValid
+                              ? "border border-green-500 focus-within:ring-2 focus-within:ring-green-500"
+                              : "border border-gray-300 focus-within:ring-2 focus-within:ring-indigo-500"
                           }`}
                       >
-                        <span className="flex items-center bg-gray-100 px-3 text-sm font-semibold text-gray-700">
+                        <span className="flex items-center bg-gray-100 px-3 text-sm font-bold text-gray-700 border-r border-gray-300">
                           {businessGstStateCode || "--"}
                         </span>
                         <input
                           data-field="gst_number"
                           data-rules="code"
-                          data-optional="true"
                           type="text"
+                          required
                           value={businessGstSuffix}
                           onChange={(e) => updateBusinessGst(e.target.value)}
-                          maxLength={businessGstStateCode ? GSTIN_MAX_LENGTH - 2 : GSTIN_MAX_LENGTH}
-                          className="w-full p-3 outline-none"
-                          placeholder="Enter remaining GSTIN characters"
+                          maxLength={13}
+                          className="w-full p-3 outline-none uppercase font-mono tracking-wider"
+                          placeholder="AAAAA1111A1Z5"
                         />
                       </div>
+                      {shouldShowBusinessGstError && (
+                        <p className="text-red-500 text-xs mt-1">
+                          Please enter valid remaining 13 GSTIN characters.
+                        </p>
+                      )}
                       {errors.gst_number && <p className="text-red-500 text-sm mt-1">{errors.gst_number}</p>}
                     </div>
+
                     <div>
                       <label className={formLabelClass}>PAN Number</label>
                       <input
                         data-field="pan_number"
                         data-rules="code"
-                        data-optional="true"
                         type="text"
                         value={businessSettings.pan_number}
                         onChange={(e) => {
@@ -1667,7 +1693,8 @@ export default function OnboardingWizard({
                           }));
                         }}
                         maxLength={10}
-                        className={formFieldClass}
+                        className={`${formFieldClass} uppercase font-mono tracking-wider`}
+                        placeholder="AAAAA1111A"
                       />
                       {errors.pan_number && <p className="text-red-500 text-sm mt-1">{errors.pan_number}</p>}
                     </div>
@@ -1675,10 +1702,11 @@ export default function OnboardingWizard({
                 )}
               </div>
             </div>
+
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-white font-semibold hover:bg-blue-700 disabled:opacity-70"
+              className="rounded-lg bg-blue-600 px-5 py-2.5 text-white font-semibold hover:bg-blue-700 disabled:opacity-70 transition-colors"
             >
               {saving ? "Saving..." : "Save & Continue"}
             </button>
