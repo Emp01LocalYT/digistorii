@@ -193,58 +193,6 @@ VALUES
     ]'::jsonb,
     1,
     TRUE
-),
-(
-    'ECOM',1000,10000,'Monthly / Yearly',
-    '[
-        "Dedicated E-Commerce Website",
-        "1 Warehouse + 1 Store Location",
-        "Up to 5 User Accounts",
-        "Inventory, Purchase, Sales & Reports Included",
-        "Online Order & Catalog Management",
-        "Suitable for Businesses Selling Online Only"
-    ]'::jsonb,
-    2,
-    TRUE
-),
-(
-    'BASIC',1500,16500,'Monthly / Yearly',
-    '[
-        "E-Commerce Website + In-Store POS",
-        "1 Warehouse + 1 Store Location",
-        "Up to 5 User Accounts",
-        "Inventory, Purchase, Sales & Reports Included",
-        "Unified Online & Offline Sales Management",
-        "Ideal for Small Businesses"
-    ]'::jsonb,
-    3,
-    TRUE
-),
-(
-    'GROWTH',6000,56000,'Monthly / Yearly',
-    '[
-        "E-Commerce Website + In-Store POS",
-        "Up to 5 Warehouses + 5 Store Locations",
-        "Up to 10 User Accounts",
-        "Inventory, Purchase, Sales & Reports Included",
-        "Multi-Location Business Management",
-        "Designed for Growing Businesses"
-    ]'::jsonb,
-    4,
-    TRUE
-),
-(
-    'ENTERPRISE', 22500,247500,'Monthly / Yearly',
-    '[
-        "E-Commerce Website + In-Store POS",
-        "Unlimited Warehouses + Store Locations",
-        "Unlimited User Accounts",
-        "Inventory, Purchase, Sales & Reports Included",
-        "Advanced Multi-Branch Operations",
-        "Built for Large Enterprise Organizations"
-    ]'::jsonb,
-    5,
-    TRUE
 )
 ON CONFLICT (name) DO UPDATE
 SET
@@ -265,24 +213,8 @@ JOIN (
         ('INSTORE', 'max_users', 5, NULL::BOOLEAN),
         ('INSTORE', 'max_locations', 1, NULL::BOOLEAN),
         ('INSTORE', 'max_warehouses', 1, NULL::BOOLEAN),
-        ('INSTORE', 'ecommerce_access', NULL::INTEGER, FALSE),
-        ('ECOM', 'max_users', 5, NULL::BOOLEAN),
-        ('ECOM', 'max_locations', 1, NULL::BOOLEAN),
-        ('ECOM', 'max_warehouses', 1, NULL::BOOLEAN),
-        ('ECOM', 'ecommerce_access', NULL::INTEGER, TRUE),
-        ('BASIC', 'max_users', 5, NULL::BOOLEAN),
-        ('BASIC', 'max_locations', 1, NULL::BOOLEAN),
-        ('BASIC', 'max_warehouses', 1, NULL::BOOLEAN),
-        ('BASIC', 'ecommerce_access', NULL::INTEGER, TRUE),
-        ('GROWTH', 'max_users', 10, NULL::BOOLEAN),
-        ('GROWTH', 'max_locations', 5, NULL::BOOLEAN),
-        ('GROWTH', 'max_warehouses', 5, NULL::BOOLEAN),
-        ('GROWTH', 'ecommerce_access', NULL::INTEGER, TRUE),
-        ('ENTERPRISE', 'max_users', -1, NULL::BOOLEAN),
-        ('ENTERPRISE', 'max_locations', -1, NULL::BOOLEAN),
-        ('ENTERPRISE', 'max_warehouses', -1, NULL::BOOLEAN),
-        ('ENTERPRISE', 'ecommerce_access', NULL::INTEGER, TRUE)
-) AS v(plan_name, feature_key, value_int, value_bool)
+        ('INSTORE', 'ecommerce_access', NULL::INTEGER, FALSE)
+       ) AS v(plan_name, feature_key, value_int, value_bool)
     ON v.plan_name = p.name
 ON CONFLICT (plan_id, feature_key) DO UPDATE
 SET
