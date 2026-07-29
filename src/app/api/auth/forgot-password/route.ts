@@ -3,28 +3,28 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { pool } from "@/lib/db";
 
-const SENDER_EMAIL = process.env.LAUNCH_SENDER_EMAIL || "ytsample98@gmail.com";
-const SENDER_PASSWORD = process.env.LAUNCH_SENDER_PASSWORD || "ozjf cupa vukc edsp";
+// const SENDER_EMAIL = process.env.LAUNCH_SENDER_EMAIL || "ytsample98@gmail.com";
+// const SENDER_PASSWORD = process.env.LAUNCH_SENDER_PASSWORD || "ozjf cupa vukc edsp";
 
-const transporter = SENDER_EMAIL && SENDER_PASSWORD
-  ? nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: SENDER_EMAIL,
-      pass: SENDER_PASSWORD,
-    },
-  })
-  : null;
+// const transporter = SENDER_EMAIL && SENDER_PASSWORD
+//   ? nodemailer.createTransport({
+//     service: "gmail",
+//     auth: {
+//       user: SENDER_EMAIL,
+//       pass: SENDER_PASSWORD,
+//     },
+//   })
+//   : null;
 
-// const transporter = nodemailer.createTransport({
-//   host: process.env.SMTP_HOST,
-//   port: Number(process.env.SMTP_PORT),
-//   secure: process.env.SMTP_SECURE === "true",
-//   auth: {
-//     user: process.env.SMTP_USER,
-//     pass: process.env.SMTP_PASS,
-//   },
-// });
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT),
+  secure: process.env.SMTP_SECURE === "true",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 
 export async function POST(req: NextRequest) {
