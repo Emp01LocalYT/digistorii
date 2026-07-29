@@ -28,10 +28,10 @@ export default function AdminLayout({
   const companyParam = params.company;
 
   // Ensure tenant is always a string
-  const tenant =Array.isArray(companyParam)? companyParam[0]: companyParam || "default-tenant"; 
+  const tenant = Array.isArray(companyParam) ? companyParam[0] : companyParam || "default-tenant";
 
-//   // Idle logout after 5 minutes
-  useIdleLogout(tenant,"admin");
+  //   // Idle logout after 5 minutes
+  useIdleLogout(tenant, "admin");
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -44,10 +44,10 @@ export default function AdminLayout({
 
         if (!user) {
           const res = await fetch(`/api/admin/current-user`);
-           if (!res.ok) {
-          router.replace(`/${tenant}/admin/login`);
-          return;
-        }
+          if (!res.ok) {
+            router.replace(`/${tenant}/admin/login`);
+            return;
+          }
           const data = await res.json();
 
           if (data.success) {
@@ -57,6 +57,10 @@ export default function AdminLayout({
             router.replace(`/${tenant}/admin/login`);
           }
         } else {
+          if (user.company_name !== tenant) {
+            router.replace(`/${tenant}/admin/login`);
+            return;
+          }
           const onboardingRes = await fetch(
             `/api/onboarding?company=${encodeURIComponent(tenant)}`
           );
@@ -87,7 +91,7 @@ export default function AdminLayout({
   if (checkingAuth) {
     return (
       <div className="flex items-center justify-center h-screen text-gray-500">
-         Loading Admin Panel...
+        Loading Admin Panel...
       </div>
     );
   }
