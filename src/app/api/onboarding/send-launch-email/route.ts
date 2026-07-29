@@ -110,64 +110,82 @@ export async function POST(req: NextRequest) {
     const secureverificationLink = `${baseUrl}/api/verify-company?token=${cryptoToken}`;
     // Build email HTML
     const htmlBody = `
-      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; background: #f8fafc; padding: 32px;">
-        <div style="background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); border-radius: 16px; padding: 32px; text-align: center; color: white;">
-          <h1 style="margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">🚀 Welcome to DigiStorii!</h1>
-          <p style="margin: 0; opacity: 0.9; font-size: 16px;">Your workspace is almost ready</p>
-        </div>
+  <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #f8fafc; padding: 32px 16px;">
+    
+    <!-- Header Block -->
+    <div style="background-color: #2563eb; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); border-radius: 16px; padding: 32px; text-align: center; color: #ffffff;">
+      <h1 style="margin: 0 0 8px 0; font-size: 26px; font-weight: 700; color: #ffffff;">Welcome to DigiStorii</h1>
+      <p style="margin: 0; opacity: 0.9; font-size: 15px; color: #ffffff;">Your workspace is almost ready</p>
+    </div>
 
-        <div style="background: white; border-radius: 16px; padding: 28px; margin-top: 20px; border: 1px solid #e2e8f0;">
-          <h2 style="margin: 0 0 20px 0; color: #1e293b; font-size: 20px;">Your Account Details</h2>
-          
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Company</td>
-              <td style="padding: 10px 0; color: #1e293b; font-weight: 600; font-size: 14px;">${companyRow.company_name}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Owner Email</td>
-              <td style="padding: 10px 0; color: #1e293b; font-weight: 600; font-size: 14px;">${ownerEmail}</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Plan</td>
-              <td style="padding: 10px 0; color: #1e293b; font-weight: 600; font-size: 14px;">${sub?.plan_code || "N/A"} (${sub?.billing_interval || "monthly"})</td>
-            </tr>
-            <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Admin Console</td>
-              <td style="padding: 10px 0; font-size: 14px;"><a href="https://${adminUrl}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${adminUrl}</a></td>
-            </tr>
-            <tr>
-              <td style="padding: 10px 0; color: #64748b; font-size: 14px;">Operations Portal</td>
-              <td style="padding: 10px 0; font-size: 14px;"><a href="https://${shopUrl}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${shopUrl}</a></td>
-            </tr>
-          </table>
-        </div>
+    <!-- Account Details Block -->
+    <div style="background-color: #ffffff; border-radius: 16px; padding: 28px; margin-top: 20px; border: 1px solid #e2e8f0;">
+      <h2 style="margin: 0 0 16px 0; color: #1e293b; font-size: 18px;">Your Account Details</h2>
+      
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Company</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; font-size: 14px; text-align: right;">${companyRow.company_name}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Owner Email</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; font-size: 14px; text-align: right;">${ownerEmail}</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Plan</td>
+          <td style="padding: 8px 0; color: #1e293b; font-weight: 600; font-size: 14px; text-align: right;">${sub?.plan_code || "N/A"} (${sub?.billing_interval || "monthly"})</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Admin Console</td>
+          <td style="padding: 8px 0; font-size: 14px; text-align: right;"><a href="https://${adminUrl}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${adminUrl}</a></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Operations Portal</td>
+          <td style="padding: 8px 0; font-size: 14px; text-align: right;"><a href="https://${shopUrl}" style="color: #2563eb; text-decoration: none; font-weight: 600;">${shopUrl}</a></td>
+        </tr>
+      </table>
+    </div>
 
-        <div style="background: white; border-radius: 16px; padding: 28px; margin-top: 16px; border: 1px solid #e2e8f0;">
-          <h2 style="margin: 0 0 16px 0; color: #1e293b; font-size: 20px;">Plan Features</h2>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 120px; background: #f1f5f9; border-radius: 12px; padding: 16px; text-align: center;">
-              <p style="margin: 0; font-size: 24px; font-weight: 700; color: #2563eb;">${sub?.max_users ?? 5}</p>
-              <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Users</p>
-            </div>
-            <div style="flex: 1; min-width: 120px; background: #f1f5f9; border-radius: 12px; padding: 16px; text-align: center;">
-              <p style="margin: 0; font-size: 24px; font-weight: 700; color: #2563eb;">${sub?.max_locations ?? 1}</p>
-              <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Locations</p>
-            </div>
-            <div style="flex: 1; min-width: 120px; background: #f1f5f9; border-radius: 12px; padding: 16px; text-align: center;">
-              <p style="margin: 0; font-size: 24px; font-weight: 700; color: #2563eb;">${sub?.max_warehouses ?? 1}</p>
-              <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Warehouses</p>
-            </div>
-          </div>
-        </div>
+    <!-- Plan Features Block (Converted from Flexbox to Table) -->
+    <div style="background-color: #ffffff; border-radius: 16px; padding: 28px; margin-top: 16px; border: 1px solid #e2e8f0;">
+      <h2 style="margin: 0 0 16px 0; color: #1e293b; font-size: 18px;">Plan Features</h2>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width: 100%; border-collapse: collapse;">
+        <tr>
+          <td width="32%" style="background-color: #f1f5f9; border-radius: 12px; padding: 16px; text-align: center;">
+            <p style="margin: 0; font-size: 22px; font-weight: 700; color: #2563eb;">${sub?.max_users ?? 5}</p>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Users</p>
+          </td>
+          <td width="2%">&nbsp;</td> <!-- Spacer -->
+          <td width="32%" style="background-color: #f1f5f9; border-radius: 12px; padding: 16px; text-align: center;">
+            <p style="margin: 0; font-size: 22px; font-weight: 700; color: #2563eb;">${sub?.max_locations ?? 1}</p>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Locations</p>
+          </td>
+          <td width="2%">&nbsp;</td> <!-- Spacer -->
+          <td width="32%" style="background-color: #f1f5f9; border-radius: 12px; padding: 16px; text-align: center;">
+            <p style="margin: 0; font-size: 22px; font-weight: 700; color: #2563eb;">${sub?.max_warehouses ?? 1}</p>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Warehouses</p>
+          </td>
+        </tr>
+      </table>
+    </div>
 
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${secureverificationLink}" target="_blank" style="background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 14px 28px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
-            Verify & Activate Workspace
-          </a>
-        </div>
-      </div>
-    `;
+    <!-- Outlook-Safe Call to Action Button -->
+    <div style="text-align: center; margin: 32px 0;">
+      <!--[if mso]>
+      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${secureverificationLink}" style="height:48px;v-text-anchor:middle;width:240px;" arcsize="15%" stroke="f" fillcolor="#2563eb">
+        <w:anchorlock/>
+        <center style="color:#ffffff;font-family:sans-serif;font-size:15px;font-weight:bold;">Verify & Activate Workspace</center>
+      </v:roundrect>
+      <![endif]-->
+      <!--[if !mso]><!-->
+      <a href="${secureverificationLink}" target="_blank" style="background-color: #2563eb; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff; padding: 14px 28px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);">
+        Verify & Activate Workspace
+      </a>
+      <!--<![endif]-->
+    </div>
+
+  </div>
+`;
 
     // Send the email
     await transporter.sendMail({
