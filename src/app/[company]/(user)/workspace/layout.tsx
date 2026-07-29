@@ -58,6 +58,10 @@ export default function CompanyLayout({
           router.replace(`/${tenant}/workspace/login`);
           return;
         }
+        if (user.company_name !== tenant) {
+          router.replace(`/${tenant}/workspace/login`);
+          return;
+        }
 
         const onboardingRes = await fetch(
           `/api/onboarding?company=${encodeURIComponent(tenant)}`
@@ -98,6 +102,9 @@ export default function CompanyLayout({
   ) {
     return <div className={inter.className}>{children}</div>;
   }
+
+
+
 
   const isLiveBilling = pathname?.includes("/workspace/transactions/sales/add");
 

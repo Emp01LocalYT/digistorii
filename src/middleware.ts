@@ -81,6 +81,15 @@ export function middleware(req: NextRequest) {
     );
   }
 
+  const currentUser = JSON.parse(user);
+
+  if (currentUser?.company_name !== company) {
+    return NextResponse.redirect(
+      new URL(`/${company}/workspace/login`, req.url)
+    );
+  }
+
+
   try {
     const currentUser = JSON.parse(user);
     const userPath = pathname.slice(`/${company}`.length);
