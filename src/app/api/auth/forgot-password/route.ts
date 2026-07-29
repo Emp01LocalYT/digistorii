@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import { pool } from "@/lib/db";
 
 const SENDER_EMAIL = process.env.LAUNCH_SENDER_EMAIL || "ytsample98@gmail.com";
 const SENDER_PASSWORD = process.env.LAUNCH_SENDER_PASSWORD || "ozjf cupa vukc edsp";
@@ -43,6 +44,20 @@ export async function POST(req: NextRequest) {
     if (!emailPattern.test(email)) {
       return NextResponse.json(
         { success: false, message: "Please enter a valid email address" },
+        { status: 400 }
+      );
+    }
+
+    const userCheck = await pool.query(
+      `SELECT u.email FROM public.users u
+       JOIN public.companies c ON c.id = u.company_id
+       WHERE u.email = $1 AND c.subdomain_url = $2`,
+      [email, company]
+    );
+
+    if (userCheck.rowCount === 0) {
+      return NextResponse.json(
+        { success: false, message: "Invalid credentials." },
         { status: 400 }
       );
     }

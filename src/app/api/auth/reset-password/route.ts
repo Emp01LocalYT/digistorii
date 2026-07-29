@@ -51,7 +51,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const { email } = decoded;
+        const { email, company } = decoded;
 
         if (!email) {
             return NextResponse.json(
@@ -63,10 +63,12 @@ export async function POST(req: Request) {
         // 3. Connect to PostgreSQL pool
         client = await pool.connect();
 
-        // 4. Check if user exists
+        // 4. Check if user exists in this company
         const userResult = await client.query(
-            `SELECT id, email FROM public.users WHERE email = $1`,
-            [email]
+            `SELECT u.id, u.email FROM public.users u
+             JOIN public.companies c ON c.id = u.company_id
+             WHERE u.email = $1 AND c.subdomain_url = $2`,
+            [email, company || '']
         );
 
         if (userResult.rowCount === 0) {
@@ -80,11 +82,12 @@ export async function POST(req: Request) {
         const hashedPassword = await bcrypt.hash(newPassword, 10);
 
         // 6. Update user password in DB
+        const userId = userResult.rows[0].id;
         await client.query(
             `UPDATE public.users 
        SET password_hash = $1, created_at = NOW() 
-       WHERE email = $2`,
-            [hashedPassword, email]
+       WHERE id = $2`,
+            [hashedPassword, userId]
         );
 
         return NextResponse.json({
