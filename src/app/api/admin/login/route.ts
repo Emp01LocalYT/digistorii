@@ -80,6 +80,7 @@ export async function POST(req: NextRequest) {
         name: user.name,
         email: user.email,
         phone: user.phone,
+        company_name: tenant,
         responsibility_id: user.resolved_responsibility_id ?? user.responsibility_id ?? null,
         responsibility_name: user.responsibility_name ?? null,
         permissions: {
@@ -99,6 +100,7 @@ export async function POST(req: NextRequest) {
       name: user.name,
       email: user.email,
       phone: user.phone,
+      company_name: tenant,
       responsibility_id: user.resolved_responsibility_id ?? user.responsibility_id ?? null,
       responsibility_name: user.responsibility_name ?? null,
       permissions: {

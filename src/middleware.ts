@@ -60,6 +60,11 @@ export function middleware(req: NextRequest) {
     }
     try {
       const adminUser = JSON.parse(admin);
+      if (adminUser?.company_name !== company) {
+        return NextResponse.redirect(
+          new URL(`/${company}/admin/login`, req.url)
+        );
+      }
       const adminPath = pathname.slice(`/${company}`.length);
       const requiredPermission = getRequiredPermissionForPath(adminPath);
       if (requiredPermission && !canAccess(adminUser?.permissions, requiredPermission)) {
