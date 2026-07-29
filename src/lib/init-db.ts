@@ -82,6 +82,7 @@ export async function initializeDatabase() {
   created_at     TIMESTAMP DEFAULT NOW()
 );
 `);
+
     await client.query(`
   CREATE TABLE IF NOT EXISTS company_subscriptions (
   id                    SERIAL PRIMARY KEY,

@@ -9,7 +9,8 @@ import {
   readPersistedSelectedPlan,
   type PlanOption,
 } from "@/components/landing/Pricing";
-import { HiEye, HiEyeOff, HiMail } from "react-icons/hi";
+import { HiEye, HiEyeOff, HiMail, HiHome } from "react-icons/hi";
+import Link from "next/link";
 import {
   BillingInterval,
   ONBOARDING_STEPS,
@@ -1375,13 +1376,26 @@ export default function OnboardingWizard({
 
   return (
     <div className="space-y-8">
-      <header className="space-y-3">
-        <h1 className="text-3xl font-bold text-gray-900">Company Onboarding</h1>
-        <p className="text-sm text-gray-600">
-          Company: <span className="font-semibold">{companyName}</span> ({company})
-        </p>
-        <Stepper currentStep={currentStep} />
+      <header className="flex items-center justify-between gap-4 border-b border-gray-100 pb-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold text-gray-900">Company Onboarding</h1>
+          <p className="text-sm text-gray-600">
+            Company: <span className="font-semibold">{companyName}</span> ({company})
+          </p>
+        </div>
+
+        {/* Top-Right Redirect Icon */}
+        <Link
+          href="/"
+          title="Return to Main Page"
+          className="flex items-center justify-center p-2.5 rounded-xl border border-gray-200 bg-white text-gray-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition-all shadow-sm"
+        >
+          <HiHome className="w-5 h-5" />
+        </Link>
       </header>
+
+      {/* Stepper underneath header */}
+      <Stepper currentStep={currentStep} />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
