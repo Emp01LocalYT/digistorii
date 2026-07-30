@@ -58,12 +58,12 @@ export async function POST(req: NextRequest) {
     );
 
     let updatedMaxUsers = 0;
-    if (checkSub.rowCount === 0) {
+    if ((checkSub.rowCount ?? 0) === 0) {
       // Find the first active plan or fallback
       const defaultPlan = await client.query(
         `SELECT id FROM public.plans WHERE is_active = TRUE ORDER BY id ASC LIMIT 1`
       );
-      const planId = defaultPlan.rowCount > 0 ? defaultPlan.rows[0].id : 1;
+      const planId = (defaultPlan.rowCount ?? 0) > 0 ? defaultPlan.rows[0].id : 1;
 
       const insertSub = await client.query(
         `INSERT INTO public.company_subscriptions (
