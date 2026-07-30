@@ -3,6 +3,8 @@
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
+import { BuySeatsModal } from "@/components/admin/BuySeatsModal";
+
 type User = {
   id: string;
   name: string;
@@ -22,6 +24,8 @@ export default function AdminPage() {
     : params.company;
 
   const [users, setUsers] = useState<User[]>([]);
+  const [maxUsers, setMaxUsers] = useState<number>(0);
+  const [isBuyModalOpen, setIsBuyModalOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
 
   const hasFetched = useRef(false);
@@ -35,7 +39,10 @@ export default function AdminPage() {
           headers: { "x-tenant": company || "" },
         });
         const data = await res.json();
-        if (data.success) setUsers(data.users);
+        if (data.success) {
+          setUsers(data.users);
+          setMaxUsers(data.maxUsers || 0);
+        }
       } catch (err) {
         console.error("Failed to load users", err);
       } finally {
@@ -96,9 +103,17 @@ export default function AdminPage() {
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
-        <div className="bg-white rounded-xl shadow p-4 hover:shadow-lg transition">
-          <p className="text-gray-500 text-sm">Total Users</p>
-          <p className="text-2xl font-bold">{totalUsers}</p>
+        <div className="bg-white rounded-xl shadow p-4 hover:shadow-lg transition flex justify-between items-center">
+          <div>
+            <p className="text-gray-500 text-sm">Total Users</p>
+            <p className="text-2xl font-bold">{totalUsers} / {maxUsers || "N/A"}</p>
+          </div>
+          <button
+            onClick={() => setIsBuyModalOpen(true)}
+            className="text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-semibold px-3 py-1.5 rounded-lg transition"
+          >
+            Buy More
+          </button>
         </div>
         <div className="bg-white rounded-xl shadow p-4 hover:shadow-lg transition">
           <p className="text-gray-500 text-sm">Active Users</p>
@@ -164,6 +179,14 @@ export default function AdminPage() {
           </table>
         )}
       </div>
+
+      <BuySeatsModal
+        isOpen={isBuyModalOpen}
+        onClose={() => setIsBuyModalOpen(false)}
+        maxUsers={maxUsers}
+        onSuccess={(newMax) => setMaxUsers(newMax)}
+        tenant={company || ""}
+      />
     </div>
   );
 }

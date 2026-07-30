@@ -102,9 +102,14 @@ export async function GET(req: NextRequest) {
       [companyId]
     );
 
+    const maxUsers = await getCompanyUserLimit(client, company);
+    const currentCount = Number(result.rowCount || 0);
+
     return NextResponse.json({
       success: true,
       users: result.rows,
+      maxUsers,
+      currentCount,
     });
   } catch (error) {
     console.error("GET USERS ERROR:", error);

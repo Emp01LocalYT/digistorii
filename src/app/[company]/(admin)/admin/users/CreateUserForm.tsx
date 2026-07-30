@@ -10,6 +10,7 @@ import {
   ArrowLeftIcon, EyeIcon, EyeSlashIcon
 } from "@heroicons/react/24/outline";
 import { useNotify } from "@/hooks/useNotify";
+import { BuySeatsModal } from "@/components/admin/BuySeatsModal";
 
 
 const FormField = ({
@@ -124,6 +125,8 @@ export default function CreateUserForm({ company, userId }: Props) {
   const tenant = Array.isArray(company) ? company[0] : company;
   const [errors, setErrors]: any = useState([]);
   const [apiError, setApiError] = useState("");
+  const [maxUsers, setMaxUsers] = useState<number>(0);
+  const [isBuyModalOpen, setIsBuyModalOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
@@ -222,18 +225,21 @@ export default function CreateUserForm({ company, userId }: Props) {
     if (!tenant) return;
     const loadMasterOptions = async () => {
       try {
-        const [locationRes, warehouseRes, responsibilityRes] = await Promise.all([
+        const [locationRes, warehouseRes, responsibilityRes, usersRes] = await Promise.all([
           fetch("/api/locations", { headers: { "x-tenant": tenant } }),
           fetch("/api/warehouses", { headers: { "x-tenant": tenant } }),
           fetch("/api/user-responsibilities", { headers: { "x-tenant": tenant } }),
+          fetch("/api/admin/users", { headers: { "x-tenant": tenant } }),
         ]);
         const locationData = await locationRes.json();
         const warehouseData = await warehouseRes.json();
         const responsibilityData = await responsibilityRes.json();
+        const usersData = await usersRes.json();
 
         if (locationRes.ok && locationData?.success) setLocations(locationData.data || []);
         if (warehouseRes.ok && warehouseData?.success) setWarehouses(warehouseData.data || []);
         if (responsibilityData?.success) setResponsibilities(responsibilityData.data || []);
+        if (usersRes.ok && usersData?.success) setMaxUsers(usersData.maxUsers || 0);
       } catch (err) {
         console.error("Failed to load options", err);
       }
@@ -452,7 +458,20 @@ export default function CreateUserForm({ company, userId }: Props) {
       </div>
 
       {/* Messages */}
-      {apiError && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in">{apiError}</div>}
+      {apiError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <span>{apiError}</span>
+          {apiError.toLowerCase().includes("cannot create more than") && (
+            <button
+              type="button"
+              onClick={() => setIsBuyModalOpen(true)}
+              className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-sm transition whitespace-nowrap cursor-pointer"
+            >
+              Buy More Seats
+            </button>
+          )}
+        </div>
+      )}
       {success && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 mb-6 rounded-md text-sm font-medium shadow-sm animate-fade-in">{success}</div>}
 
       {/* Dynamic Grid Layout Wrapper */}
@@ -642,6 +661,16 @@ export default function CreateUserForm({ company, userId }: Props) {
         </div>
       )}
 
+      <BuySeatsModal
+        isOpen={isBuyModalOpen}
+        onClose={() => setIsBuyModalOpen(false)}
+        maxUsers={maxUsers}
+        onSuccess={(newMax) => {
+          setMaxUsers(newMax);
+          setApiError("");
+        }}
+        tenant={tenant || ""}
+      />
     </div>
   );
 }
