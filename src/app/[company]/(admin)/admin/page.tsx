@@ -4,6 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
 import { PencilSquareIcon } from "@heroicons/react/24/outline";
 import { BuySeatsModal } from "@/components/admin/BuySeatsModal";
+import { PlanStatusCard } from "@/components/admin/RenewalBannerAndModal";
 
 type User = {
   id: string;
@@ -27,8 +28,25 @@ export default function AdminPage() {
   const [maxUsers, setMaxUsers] = useState<number>(0);
   const [isBuyModalOpen, setIsBuyModalOpen] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
+  const [subscription, setSubscription] = useState<any>(null);
 
   const hasFetched = useRef(false);
+
+  useEffect(() => {
+    const fetchSubscription = async () => {
+      if (!company) return;
+      try {
+        const res = await fetch(`/api/onboarding?company=${encodeURIComponent(company)}`);
+        const data = await res.json();
+        if (data.success && data.subscription) {
+          setSubscription(data.subscription);
+        }
+      } catch (err) {
+        console.error("Failed to load subscription info", err);
+      }
+    };
+    fetchSubscription();
+  }, [company]);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -119,10 +137,7 @@ export default function AdminPage() {
           <p className="text-gray-500 text-sm">Active Users</p>
           <p className="text-2xl font-bold">{activeUsers}</p>
         </div>
-        <div className="bg-white rounded-xl shadow p-4 hover:shadow-lg transition">
-          <p className="text-gray-500 text-sm">New Users Today</p>
-          <p className="text-2xl font-bold">{newUsers}</p>
-        </div>
+        <PlanStatusCard subscription={subscription} />
       </div>
 
       {/* Users Table */}

@@ -114,6 +114,7 @@ export async function initializeDatabase() {
         subscription_id       INTEGER REFERENCES company_subscriptions(id),
         plan_name             TEXT NOT NULL,
         plan_price            INTEGER NOT NULL,
+        payment_type          VARCHAR(50) DEFAULT 'SUBSCRIPTION_NEW',
         billing_interval      VARCHAR(20) DEFAULT 'monthly',
         razorpay_order_id     TEXT,
         razorpay_payment_id   TEXT,
@@ -124,6 +125,7 @@ export async function initializeDatabase() {
         payment_status        TEXT DEFAULT 'created',
         subscription_start    TIMESTAMP,
         subscription_end      TIMESTAMP,
+         metadata JSONB DEFAULT '{}'::jsonb,
         created_at            TIMESTAMP DEFAULT NOW(),
         updated_at            TIMESTAMP DEFAULT NOW()
       );
@@ -222,6 +224,18 @@ SET
     value_int  = EXCLUDED.value_int,
     value_bool = EXCLUDED.value_bool;
     `);
+    // Apply migrations/alters as specified in requirements
+    await client.query(`
+      ALTER TABLE public.company_subscriptions 
+      ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'active';
+    `);
+
+    await client.query(`
+      ALTER TABLE public.payments 
+      ADD COLUMN IF NOT EXISTS payment_type VARCHAR(50) DEFAULT 'SUBSCRIPTION_NEW',
+      ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+    `);
+
     await ensureResponsibilitySchema(client);
     await client.query("COMMIT");
     console.log("DB initialized successfully");

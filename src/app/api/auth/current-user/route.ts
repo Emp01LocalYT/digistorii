@@ -42,6 +42,30 @@ export async function GET() {
     }
 
     const user = result.rows[0];
+    const tenant = user.company_name;
+
+    const companyCheck = await client.query(
+      `SELECT c.status AS company_status, cs.subscription_end, cs.status AS sub_status
+       FROM public.companies c
+       LEFT JOIN public.company_subscriptions cs ON cs.company_id = c.id
+       WHERE c.subdomain_url = $1
+       ORDER BY cs.updated_at DESC LIMIT 1`,
+      [tenant]
+    );
+
+    const isExpired = companyCheck.rows[0]?.company_status === 'EXPIRED' || 
+                      (companyCheck.rows[0]?.subscription_end && new Date() > new Date(companyCheck.rows[0].subscription_end));
+
+    if (isExpired) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          message: "Subscription expired please contact administrator" 
+        },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
       user

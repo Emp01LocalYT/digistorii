@@ -1,6 +1,7 @@
 let initialized = false;
  
 import { initializeDatabase } from "./init-db";
+import { startBillingCron } from "./cron";
  
 export async function ensureDB() {
   if (initialized) return;
@@ -10,6 +11,7 @@ export async function ensureDB() {
     await initializeDatabase();
  
     initialized = true;
+    startBillingCron();
  
     console.log("DB ready");
   } catch (err) {

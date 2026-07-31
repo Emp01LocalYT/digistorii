@@ -123,6 +123,7 @@ async function getPlanForCompany(client: any, companyId: number) {
     `SELECT
        cs.plan_id,
        cs.plan_code,
+       (SELECT name FROM public.plans WHERE id = cs.plan_id) AS plan_name,
        cs.ecommerce_access,
        cs.max_users,
        cs.max_warehouses,
@@ -252,6 +253,8 @@ export async function GET(req: NextRequest) {
           plan_id: Number(subscription.plan_id),
           plan_code: subscription.plan_code,
           plan_name: subscription.plan_code,
+          subscription_end: subscription.subscription_end,
+          subscription_start: subscription.subscription_start,
           ecommerce_access: Boolean(subscription.ecommerce_access),
           max_users: Number(subscription.max_users ?? 5),
           max_locations: Number(subscription.max_locations ?? subscription.max_warehouses ?? 1),

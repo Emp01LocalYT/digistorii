@@ -11,6 +11,29 @@ export async function POST(req: NextRequest) {
     console.log("Admin Login Backend Tenant : ", tenant);
     if (!tenant) return NextResponse.json({ success: false, message: "Company required" }, { status: 400 });
 
+    // Check if the subscription is expired
+    const companyCheck = await pool.query(
+      `SELECT c.status AS company_status, cs.subscription_end, cs.status AS sub_status
+       FROM public.companies c
+       LEFT JOIN public.company_subscriptions cs ON cs.company_id = c.id
+       WHERE c.subdomain_url = $1
+       ORDER BY cs.updated_at DESC LIMIT 1`,
+      [tenant]
+    );
+
+    const isExpired = companyCheck.rows[0]?.company_status === 'EXPIRED' ||
+      (companyCheck.rows[0]?.subscription_end && new Date() > new Date(companyCheck.rows[0].subscription_end));
+
+    // if (isExpired) {
+    //   return NextResponse.json(
+    //     { 
+    //       success: false, 
+    //       message: "Subscription expired please contact administrator" 
+    //     },
+    //     { status: 403 }
+    //   );
+    // }
+
     // get company
     const companyResult = await pool.query(
       "SELECT id FROM public.companies WHERE subdomain_url = $1",

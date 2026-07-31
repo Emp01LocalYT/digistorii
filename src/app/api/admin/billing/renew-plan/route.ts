@@ -12,26 +12,18 @@ export async function POST(req: NextRequest) {
   try {
     const { company } = await getTenantSchema(req);
     const body = await req.json();
-    const seatCount = Number(body?.seatCount || 0);
+    const interval = String(body?.interval || "monthly").toLowerCase();
 
     if (!company) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "INVALID_REQUEST",
-          message: "Tenant header is missing",
-        },
+        { success: false, error: "INVALID_REQUEST", message: "Tenant header is missing" },
         { status: 400 }
       );
     }
 
-    if (!seatCount || !Number.isInteger(seatCount) || seatCount <= 0) {
+    if (interval !== "monthly" && interval !== "yearly") {
       return NextResponse.json(
-        {
-          success: false,
-          error: "INVALID_REQUEST",
-          message: "Missing or invalid seatCount",
-        },
+        { success: false, error: "INVALID_REQUEST", message: "Invalid interval. Must be 'monthly' or 'yearly'" },
         { status: 400 }
       );
     }
@@ -43,20 +35,37 @@ export async function POST(req: NextRequest) {
 
     if (!companyResult.rowCount) {
       return NextResponse.json(
-        {
-          success: false,
-          error: "INVALID_REQUEST",
-          message: "Company not found",
-        },
+        { success: false, error: "INVALID_REQUEST", message: "Company not found" },
         { status: 404 }
       );
     }
 
     const companyId = Number(companyResult.rows[0].id);
 
-    // Dynamic price calculation: ₹100 per seat
-    const pricePerSeat = 100;
-    const amountInINR = seatCount * pricePerSeat;
+    const subResult = await client.query(
+      `SELECT plan_id FROM public.company_subscriptions WHERE company_id = $1 ORDER BY updated_at DESC, id DESC LIMIT 1`,
+      [companyId]
+    );
+
+    let planId = 1;
+    if (subResult.rowCount) {
+      planId = subResult.rows[0].plan_id;
+    }
+
+    const planResult = await client.query(
+      `SELECT name, price_monthly, price_yearly FROM public.plans WHERE id = $1`,
+      [planId]
+    );
+
+    if (!planResult.rowCount) {
+      return NextResponse.json(
+        { success: false, error: "INVALID_REQUEST", message: "Plan not found" },
+        { status: 404 }
+      );
+    }
+
+    const plan = planResult.rows[0];
+    const amountInINR = interval === "yearly" ? Number(plan.price_yearly) : Number(plan.price_monthly);
     const amountInPaise = Math.round(amountInINR * 100);
 
     const razorpayKeyId = process.env.RAZORPAY_KEY_ID;
@@ -73,7 +82,7 @@ export async function POST(req: NextRequest) {
     const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
-      receipt: `seats_${companyId}_${Date.now()}`,
+      receipt: `renew_${companyId}_${Date.now()}`,
     });
 
     await client.query("BEGIN");
@@ -95,20 +104,20 @@ export async function POST(req: NextRequest) {
         created_at,
         updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
       RETURNING id`,
       [
         companyId,
-        `ADDITIONAL_SEATS_${seatCount}`,
+        plan.name,
         amountInINR,
-        "one-time",
+        interval,
         amountInPaise,
         "INR",
         "created",
         "created",
         order.id,
-        "ADDITIONAL_SEATS",
-        JSON.stringify({ seatCount }),
+        "SUBSCRIPTION_RENEWAL",
+        JSON.stringify({ interval, planId }),
       ]
     );
 
@@ -117,8 +126,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      reused: false,
-      seatCount,
+      interval,
       amount_inr: amountInINR,
       order: {
         id: order.id,
@@ -134,7 +142,6 @@ export async function POST(req: NextRequest) {
     if (transactionStarted) {
       await client.query("ROLLBACK");
     }
-
     return NextResponse.json(
       {
         success: false,

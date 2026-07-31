@@ -8,6 +8,7 @@ import useIdleLogout from "@/hooks/useIdleLogout";
 import { useUser } from "@/context/CurrentUserContext";
 import AdminHeader from "@/components/admin/AdminHeader";
 import { TenantProvider } from "@/context/TenantContext";
+import { RenewalBannerAndModal } from "@/components/admin/RenewalBannerAndModal";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -24,6 +25,7 @@ export default function AdminLayout({
   const router = useRouter();
   const { user, setUser } = useUser();
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [subscription, setSubscription] = useState<any>(null);
 
   const companyParam = params.company;
 
@@ -32,6 +34,22 @@ export default function AdminLayout({
 
   //   // Idle logout after 5 minutes
   useIdleLogout(tenant, "admin");
+
+  const triggerOnboardingRefresh = async () => {
+    try {
+      const onboardingRes = await fetch(
+        `/api/onboarding?company=${encodeURIComponent(tenant)}`
+      );
+      if (onboardingRes.ok) {
+        const onboardingData = await onboardingRes.json();
+        if (onboardingData?.subscription) {
+          setSubscription(onboardingData.subscription);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to refresh subscription data:", err);
+    }
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -66,6 +84,9 @@ export default function AdminLayout({
           );
           if (onboardingRes.ok) {
             const onboardingData = await onboardingRes.json();
+            if (onboardingData?.subscription) {
+              setSubscription(onboardingData.subscription);
+            }
             if (
               onboardingData?.success &&
               onboardingData?.company?.setup_stage &&
@@ -110,6 +131,11 @@ export default function AdminLayout({
       <div className={`${inter.className} min-h-screen bg-gray-100`}>
         <AdminHeader company={tenant} />
         <div className="p-6">{children}</div>
+        <RenewalBannerAndModal
+          subscription={subscription}
+          tenant={tenant}
+          onRenewSuccess={triggerOnboardingRefresh}
+        />
       </div>
     </TenantProvider>
   );
