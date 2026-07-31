@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-
+import { ExclamationTriangleIcon, BellIcon } from "@heroicons/react/24/outline";
 interface RenewalBannerAndModalProps {
   subscription: {
     plan_id: number;
@@ -213,26 +213,28 @@ export const RenewalBannerAndModal: React.FC<RenewalBannerAndModalProps> = ({
     return (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-900 rounded-3xl max-w-md w-full p-8 shadow-2xl border border-gray-100 dark:border-gray-800 animate-in fade-in zoom-in-95 duration-200 animate-fade-in">
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-3">
             {isExpired ? (
-              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto text-3xl font-bold animate-bounce">
-                ⚠️
+              <div className="w-14 h-14 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner ring-8 ring-red-50 dark:ring-red-950/30">
+                <ExclamationTriangleIcon className="w-8 h-8 animate-bounce" />
               </div>
             ) : (
-              <div className="w-14 h-14 bg-amber-100 dark:bg-amber-900/20 text-amber-500 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
-                🔔
+              <div className="w-14 h-14 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto ring-8 ring-amber-50 dark:ring-amber-950/30">
+                <BellIcon className="w-8 h-8" />
               </div>
             )}
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {isExpired ? "Subscription Expired" : "Renew Subscription"}
-            </h2>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {isExpired
-                ? `Your subscription has expired on ${formatDate(subscription?.subscription_end)}. Please renew to restore normal operations.`
-                : `Current plan expires on ${formatDate(subscription?.subscription_end)}. Please renew to restore normal operations.`}
-            </p>
-          </div>
 
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">
+                {isExpired ? "Subscription Expired" : "Renew Subscription"}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
+                {isExpired
+                  ? `Your access was suspended on ${formatDate(subscription?.subscription_end)}. Please renew to restore full system access.`
+                  : `Current plan expires on ${formatDate(subscription?.subscription_end)}. Renew early to avoid service interruption.`}
+              </p>
+            </div>
+          </div>
           <div className="mt-6 space-y-4 bg-gray-50 dark:bg-gray-800/40 p-4 rounded-2xl border border-gray-100 dark:border-gray-800">
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">

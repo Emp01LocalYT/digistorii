@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { HiEye, HiEyeOff, HiMail, HiArrowLeft } from "react-icons/hi";
+import { UserCircleIcon, ShieldCheckIcon } from "@heroicons/react/24/outline";
 import { useUser } from "@/context/CurrentUserContext";
 
 interface Props {
@@ -117,16 +118,16 @@ export default function AdminLoginForm({ company }: Props) {
 
         <div className="p-10 space-y-6">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-xl bg-blue-600 text-white flex items-center justify-center text-xl font-bold shadow-md">
-              ⚙️
+            <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 text-white w-14 h-14 flex items-center justify-center rounded-2xl shadow-lg shadow-blue-500/20">
+              <ShieldCheckIcon className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-xl font-semibold text-gray-800">
+            <h2 className="text-2xl font-bold text-gray-800 tracking-tight">
               {isForgotPassword ? "Reset Admin Password" : "Admin Portal"}
             </h2>
-            <p className="text-sm text-gray-500 text-center">
+            <p className="text-sm text-gray-500 text-center leading-relaxed">
               {isForgotPassword
                 ? "Enter your admin email to receive a reset link"
-                : `Secure access to ${company} system`}
+                : `Secure access to ${company} management platform`}
             </p>
           </div>
 
