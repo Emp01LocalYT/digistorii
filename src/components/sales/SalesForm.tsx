@@ -24,6 +24,7 @@ import {
     generateSalesNo,
     getCustomerAddress,
     getCustomerDisplayName,
+    mapCustomerToSelectOption,
     roundMoney,
 } from "@/components/sales/salesUtils";
 import { useResolvedWarehouseContext } from "@/components/sales/useResolvedWarehouseContext";
@@ -113,6 +114,13 @@ export default function SalesForm() {
     const isEdit = Boolean(salesId);
     const { company } = useTenant();
     const { user } = useUser();
+
+    const [returnSelectionBill, setReturnSelectionBill] = useState<SalesIndexRow | null>(null);
+    const [returnItems, setReturnItems] = useState<any[]>([]);
+    const [returnLoading, setReturnLoading] = useState(false);
+    const [returnError, setReturnError] = useState("");
+    const [isReturnSelectionView, setIsReturnSelectionView] = useState(false);
+    const [returnedItemsList, setReturnedItemsList] = useState<any[]>([]);
     const {
         items: lookupItems,
         loading: lookupLoading,
@@ -449,6 +457,18 @@ export default function SalesForm() {
     }, [billsList]);
 
     const billingTotals = useMemo(() => calculateSalesTotals(details), [details]);
+
+    const returnedCreditValue = useMemo(() => {
+        return returnedItemsList.reduce(
+            (sum, item) => sum + Number(item.return_qty || 0) * Number(item.unit_price || 0),
+            0
+        );
+    }, [returnedItemsList]);
+
+    const netTotalAmount = useMemo(() => {
+        return roundMoney(billingTotals.total - returnedCreditValue);
+    }, [billingTotals.total, returnedCreditValue]);
+
     const {
         activeWarehouseId,
         activeLocationId,
@@ -463,12 +483,12 @@ export default function SalesForm() {
     );
 
     const balanceAmount = useMemo(
-        () => roundMoney(Math.max(Number(billingTotals.total || 0) - totalPaidAmount, 0)),
-        [billingTotals.total, totalPaidAmount]
+        () => roundMoney(Math.max(Number(netTotalAmount || 0) - totalPaidAmount, 0)),
+        [netTotalAmount, totalPaidAmount]
     );
     const balanceAmountstore = useMemo(
-        () => roundMoney(Math.max(Number(totalPaidAmount) - (billingTotals.total || 0), 0)),
-        [totalPaidAmount, billingTotals.total]
+        () => roundMoney(Math.max(Number(totalPaidAmount) - (netTotalAmount || 0), 0)),
+        [totalPaidAmount, netTotalAmount]
     );
     const resolvedActiveLineIndex = useMemo(() => {
         if (details.length === 0) return null;
@@ -1136,7 +1156,7 @@ export default function SalesForm() {
     }, [company]);
 
     useEffect(() => {
-        const nextPaymentStatus = calculatePaymentStatus(billingTotals.total, totalPaidAmount);
+        const nextPaymentStatus = calculatePaymentStatus(netTotalAmount, totalPaidAmount);
         setHeader((prev) => ({
             ...prev,
             warehouse_id: activeWarehouseId ?? prev.warehouse_id ?? "",
@@ -1145,7 +1165,7 @@ export default function SalesForm() {
             location_name: selectedLocationName || prev.location_name || "",
             subtotal: Number(billingTotals.taxable.toFixed(2)),
             tax_amount: Number(billingTotals.tax.toFixed(2)),
-            total_amount: Number(billingTotals.total.toFixed(2)),
+            total_amount: Number(netTotalAmount.toFixed(2)),
             payment_status: nextPaymentStatus,
         }));
     }, [
@@ -1157,6 +1177,7 @@ export default function SalesForm() {
         selectedWarehouseName,
         setHeader,
         totalPaidAmount,
+        netTotalAmount,
     ]);
 
     useEffect(() => {
@@ -1242,7 +1263,7 @@ export default function SalesForm() {
                     if (prev.some((payment) => payment.payment_mode_id === mode.id)) return prev;
                     return [
                         ...prev,
-                        createPaymentEntry(mode, prev, billingTotals.total, selectedWarehouse),
+                        createPaymentEntry(mode, prev, netTotalAmount, selectedWarehouse),
                     ];
                 }
                 return prev.filter((payment) => payment.payment_mode_id !== mode.id);
@@ -1254,7 +1275,7 @@ export default function SalesForm() {
                 return next;
             });
         },
-        [billingTotals.total, selectedWarehouse, setErrors, setPayments]
+        [netTotalAmount, selectedWarehouse, setErrors, setPayments]
     );
 
     const updatePaymentAmount = useCallback(
@@ -1313,7 +1334,7 @@ export default function SalesForm() {
 
                 if (willSelect) {
                     const currentPaid = payments.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
-                    const remaining = Math.max(0, billingTotals.total - currentPaid);
+                    const remaining = Math.max(0, netTotalAmount - currentPaid);
                     updatePaymentAmount(mode.id, remaining === 0 ? "" : String(remaining));
 
                     // Jump to amount input after toggling on
@@ -1344,17 +1365,87 @@ export default function SalesForm() {
         router.push(`/${company}/workspace/transactions/sales/add?id=${bill.id}`);
     };
 
+    const handleOpenReturnSelection = async (bill: SalesIndexRow) => {
+        setReturnSelectionBill(bill);
+        setIsReturnSelectionView(true);
+        setReturnLoading(true);
+        setReturnError("");
+        setReturnItems([]);
+
+        try {
+            const detailsRes = await fetch(`/api/sales/${bill.id}`, {
+                headers: { "x-tenant": company || "" },
+            });
+            const detailsData = await detailsRes.json();
+            if (!detailsData.success) {
+                throw new Error(detailsData.error || "Failed to load invoice items");
+            }
+
+            const returnsRes = await fetch(`/api/sales-returns/previous-returns?sales_invoice_id=${bill.id}`, {
+                headers: { "x-tenant": company || "" },
+            });
+            const returnsData = await returnsRes.json();
+            if (!returnsData.success) {
+                throw new Error(returnsData.error || "Failed to load previous returns");
+            }
+
+            const returnedQtyMap = new Map<number, number>();
+            if (returnsData.data) {
+                returnsData.data.forEach((r: any) => {
+                    returnedQtyMap.set(Number(r.sales_invoice_line_id), Number(r.total_returned_qty));
+                });
+            }
+
+            const origHeader = detailsData.data.header || {};
+            const billAny = bill as any;
+            const mappedReturnItems = detailsData.data.details.map((d: any) => {
+                const soldQty = Number(d.qty || 0);
+                const returnedQty = returnedQtyMap.get(Number(d.id)) || 0;
+                const availableQty = Math.max(soldQty - returnedQty, 0);
+
+                return {
+                    id: d.id,
+                    product_id: d.product_id,
+                    product_name: d.product_name,
+                    sku: d.sku,
+                    sold_qty: soldQty,
+                    already_returned_qty: returnedQty,
+                    available_qty: availableQty,
+                    unit_price: Number(d.rate || 0),
+                    warehouse_id: d.warehouse_id || origHeader.warehouse_id || billAny.warehouse_id,
+                    locator_id: d.locator_id || origHeader.locator_id || billAny.locator_id,
+                    return_qty: 0,
+                };
+            });
+
+            setReturnItems(mappedReturnItems);
+        } catch (err: any) {
+            setReturnError(err.message || "Failed to load items");
+        } finally {
+            setReturnLoading(false);
+        }
+    };
+
     const validate = () => {
         const newErrors: Record<string, string> = {};
         if (!header.sales_no.trim()) newErrors.sales_no = "Bill No required";
         if (!header.customer_id) newErrors.customer_id = "Customer required";
         if (!header.sales_date) newErrors.sales_date = "Bill date required";
 
-        if (header.total_amount <= 0)
-            newErrors.total_amount = "Total amount must be greater than 0";
+        const hasReturns = returnedItemsList.length > 0;
+        if (!hasReturns) {
+            if (header.total_amount <= 0)
+                newErrors.total_amount = "Total amount must be greater than 0";
 
-        if (details.length === 0) {
-            newErrors.details = "At least one service row is required";
+            if (details.length === 0) {
+                newErrors.details = "At least one service row is required";
+            } else {
+                details.forEach((d, index) => {
+                    if (!d.product_id) newErrors[`product_${index}`] = "Service Id required";
+                    if (Number(d.rate || 0) <= 0) newErrors[`rate_${index}`] = "Unit Price must be > 0";
+                    if (Number(d.qty || 0) <= 0) newErrors[`qty_${index}`] = "Qty must be > 0";
+                });
+            }
         } else {
             details.forEach((d, index) => {
                 if (!d.product_id) newErrors[`product_${index}`] = "Service Id required";
@@ -1366,7 +1457,8 @@ export default function SalesForm() {
         const normalizedTotalPaid = roundMoney(
             payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
         );
-        if (normalizedTotalPaid - Number(header.total_amount || 0) > 0.01) {
+        const targetTotal = hasReturns ? netTotalAmount : Number(header.total_amount || 0);
+        if (targetTotal > 0 && normalizedTotalPaid - targetTotal > 0.01) {
             newErrors.payments = "Paid amount cannot exceed grand total";
         }
         payments.forEach((payment) => {
@@ -1382,6 +1474,10 @@ export default function SalesForm() {
     const resetFormAfterSave = async () => {
         setDiscountMode("percent");
         setPrintData(null);
+        setReturnSelectionBill(null);
+        setReturnItems([]);
+        setReturnedItemsList([]);
+        setIsReturnSelectionView(false);
         setFormState((prev) => ({
             ...prev,
             header: {
@@ -1450,36 +1546,38 @@ export default function SalesForm() {
 
         updateUiState({ loading: true });
         try {
-            const stockCheckRes = await fetch("/api/pricing", {
-                method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                    "x-tenant": company,
-                    "x-warehouse-id": String(activeWarehouseId),
-                },
-                body: JSON.stringify({
-                    items: details.map((d) => ({
-                        product_id: d.product_id,
-                        qty: Number(d.qty),
-                    })),
-                }),
-            });
-            const stockCheckData = await stockCheckRes.json();
-            if (!stockCheckData.success) {
-                console.error("Stock check failed:", stockCheckData);
-                const stockErrors: Record<string, string> = {};
-                (stockCheckData.errors ?? []).forEach((e: any) => {
-                    const idx = details.findIndex((d) => String(d.product_id) === String(e.product_id));
-                    if (idx >= 0) {
-                        stockErrors[`qty_${idx}`] = `Only ${e.available} available (requested ${e.requested})`;
-                    }
+            if (details && details.length > 0) {
+                const stockCheckRes = await fetch("/api/pricing", {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "x-tenant": company,
+                        "x-warehouse-id": String(activeWarehouseId),
+                    },
+                    body: JSON.stringify({
+                        items: details.map((d) => ({
+                            product_id: d.product_id,
+                            qty: Number(d.qty),
+                        })),
+                    }),
                 });
-                setErrors((prev) => ({ ...prev, ...stockErrors }));
-                updateUiState({
-                    errorMessage: "Insufficient stock for one or more items. See highlighted rows.",
-                    loading: false,
-                });
-                return;
+                const stockCheckData = await stockCheckRes.json();
+                if (!stockCheckData.success) {
+                    console.error("Stock check failed:", stockCheckData);
+                    const stockErrors: Record<string, string> = {};
+                    (stockCheckData.errors ?? []).forEach((e: any) => {
+                        const idx = details.findIndex((d) => String(d.product_id) === String(e.product_id));
+                        if (idx >= 0) {
+                            stockErrors[`qty_${idx}`] = `Only ${e.available} available (requested ${e.requested})`;
+                        }
+                    });
+                    setErrors((prev) => ({ ...prev, ...stockErrors }));
+                    updateUiState({
+                        errorMessage: "Insufficient stock for one or more items. See highlighted rows.",
+                        loading: false,
+                    });
+                    return;
+                }
             }
             const url = salesId ? `/api/sales/${salesId}` : "/api/sales";
             const method = salesId ? "PUT" : "POST";
@@ -1505,10 +1603,23 @@ export default function SalesForm() {
                         user_name: user?.name,
                         warehouse_id: selectedWarehouse?.id ?? activeWarehouseId ?? header.warehouse_id,
                         location_id: selectedWarehouse?.location_id ?? activeLocationId ?? header.location_id,
-                        payment_status: calculatePaymentStatus(billingTotals.total, totalPaidAmount),
+                        payment_status: calculatePaymentStatus(netTotalAmount, totalPaidAmount),
+                        total_amount: Number(netTotalAmount.toFixed(2)),
                     },
                     details: payloadDetails,
                     payments: payloadPayments,
+                    returns: returnedItemsList.length > 0 ? {
+                        sales_invoice_id: returnSelectionBill?.id,
+                        refund_amount: returnedCreditValue,
+                        items: returnedItemsList.map((item) => ({
+                            sales_invoice_line_id: item.id,
+                            product_id: item.product_id,
+                            warehouse_id: item.warehouse_id,
+                            locator_id: item.locator_id,
+                            returned_qty: item.return_qty,
+                            unit_price: item.unit_price,
+                        })),
+                    } : null,
                 }),
             });
             const data = await res.json();
@@ -1937,7 +2048,7 @@ export default function SalesForm() {
                                     {details.length} item{details.length === 1 ? "" : "s"} in bill
                                 </div>
                             </div>
-                            <SalesTable
+                             <SalesTable
                                 details={details}
                                 errors={errors}
                                 taxes={allTaxes}
@@ -1949,6 +2060,38 @@ export default function SalesForm() {
                                 onRemove={removeRow}
                                 onSelectRow={setActiveLineIndex}
                             />
+                            {returnedItemsList.length > 0 && (
+                                <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm">
+                                    <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                                        <span className="text-sm font-bold text-indigo-900">Returned Items (Credit Note)</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setReturnedItemsList([])}
+                                            className="text-xs font-semibold text-red-600 hover:text-red-800"
+                                        >
+                                            Clear All
+                                        </button>
+                                    </div>
+                                    <div className="mt-2 divide-y divide-indigo-100/50 text-xs text-indigo-950">
+                                        {returnedItemsList.map((item, idx) => (
+                                            <div key={idx} className="flex justify-between py-1.5">
+                                                <div>
+                                                    <span className="font-semibold">{item.product_name}</span>
+                                                    <span className="ml-2 font-mono text-gray-500">({item.sku})</span>
+                                                </div>
+                                                <div>
+                                                    <span>{item.return_qty} &times; {item.unit_price.toFixed(2)}</span>
+                                                    <span className="ml-4 font-bold">{(item.return_qty * item.unit_price).toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 flex justify-between border-t border-indigo-100 pt-2 text-sm font-bold text-indigo-900">
+                                        <span>Total Return Credit</span>
+                                        <span>{returnedCreditValue.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
                         </section>
                     </div>
 
@@ -1964,34 +2107,35 @@ export default function SalesForm() {
                                 </div>
                                 <div className="flex justify-between">
                                     <span>Total Qty</span>
-                                    <span className="font-medium">
-                                        {details.reduce((sum, row) => sum + Number(row.qty || 0), 0).toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span>Sub Total</span>
+                                    <span className="text-gray-500">Subtotal</span>
                                     <span>{billingTotals.subtotal.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span>Discount Amount</span>
+                                <div className="mt-1 flex justify-between">
+                                    <span className="text-gray-500">Discount</span>
                                     <span>-{billingTotals.discount.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span>Tax Amount</span>
+                                <div className="mt-1 flex justify-between">
+                                    <span className="text-gray-500">Tax</span>
                                     <span>{billingTotals.tax.toFixed(2)}</span>
                                 </div>
-                                <div className="flex justify-between">
-                                    <span>Round Off</span>
+                                <div className="mt-1 flex justify-between">
+                                    <span className="text-gray-500">Rounding</span>
                                     <span>{(billingTotals.total - billingTotals.taxable - billingTotals.tax).toFixed(2)}</span>
                                 </div>
-                                <div className="rounded-xl bg-slate-900 px-3 py-3 text-white">
-                                    <div className="flex items-center justify-between text-xs uppercase tracking-wide text-slate-300">
-                                        <span>Net Amount</span>
-                                        <span>{header.payment_status ? header.payment_status.toUpperCase() : "UNPAID"}</span>
+                                {returnedCreditValue > 0 && (
+                                    <div className="mt-1 flex justify-between text-indigo-600 font-semibold">
+                                        <span>Return Credit</span>
+                                        <span>-{returnedCreditValue.toFixed(2)}</span>
                                     </div>
-                                    <div className="mt-1 text-2xl font-bold">{billingTotals.total.toFixed(2)}</div>
+                                )}
+                                <div className="mt-2 border-t border-gray-200 pt-2">
+                                    <div className="flex justify-between text-base font-bold text-gray-900">
+                                        <span>Total Payable</span>
+                                        <span>{netTotalAmount.toFixed(2)}</span>
+                                    </div>
                                 </div>
-                                <div className="rounded-xl border border-gray-200 p-3">
+                            </div>
+                                <div className="rounded-xl border border-gray-200 p-3 mt-3">
                                     <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                                         Payment Mode (F4)
                                     </label>
@@ -2101,7 +2245,7 @@ export default function SalesForm() {
                                         <p className="mt-2 text-xs text-red-500">{errors.payments}</p>
                                     ) : null}
                                 </div>
-                                <div className="border-t border-gray-100 pt-2">
+                                <div className="border-t border-gray-100 pt-2 mt-2">
                                     <div className="flex justify-between">
                                         <span>Paid</span>
                                         <span>{totalPaidAmount.toFixed(2)}</span>
@@ -2116,7 +2260,6 @@ export default function SalesForm() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
                         <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
                             <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -2258,53 +2401,193 @@ export default function SalesForm() {
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto">
-                                {billsLoading && (
-                                    <div className="p-5 text-sm text-gray-500">Loading bills...</div>
-                                )}
-                                {billsError && <div className="p-5 text-sm text-red-500">{billsError}</div>}
-                                {!billsLoading && !billsError && (
-                                    <table className="w-full text-sm">
-                                        <thead className="bg-gray-50 text-gray-600 sticky top-0">
-                                            <tr>
-                                                <th className="p-3 text-left">Bill No</th>
-                                                <th className="p-3 text-left">Customer</th>
-                                                <th className="p-3 text-left">Date</th>
-                                                <th className="p-3 text-left">Time</th>
-                                                <th className="p-3 text-right">Total Amount</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortedBills.length === 0 && (
-                                                <tr>
-                                                    <td className="p-4 text-sm text-gray-400" colSpan={5}>
-                                                        No bills available.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {sortedBills.map((bill) => (
-                                                <tr
-                                                    key={bill.id}
-                                                    onClick={() => handleSelectBill(bill)}
-                                                    className="border-t hover:bg-blue-50 cursor-pointer transition"
-                                                >
-                                                    <td className="p-3 font-medium text-gray-700">{bill.sales_no}</td>
-                                                    <td className="p-3 text-gray-600">
-                                                        {bill.customer_name || bill.customer_id}
-                                                    </td>
-                                                    <td className="p-3 text-gray-600">
-                                                        {formatDateLabel(bill.sales_date || bill.created_at)}
-                                                    </td>
-                                                    <td className="p-3 text-gray-600">
-                                                        {formatTimeLabel(bill.created_at)}
-                                                    </td>
-                                                    <td className="p-3 text-right font-semibold text-gray-700">
-                                                        {Number(bill.total_amount || 0).toFixed(2)}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                            <div className="flex-1 overflow-y-auto flex flex-col">
+                                {isReturnSelectionView && returnSelectionBill ? (
+                                    <div className="flex-1 p-5 flex flex-col space-y-4">
+                                        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsReturnSelectionView(false)}
+                                                className="text-indigo-600 hover:underline"
+                                            >
+                                                &larr; Back to Bills
+                                            </button>
+                                            <span>/</span>
+                                            <span>Return Selection</span>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-base font-bold text-gray-900">
+                                                Return for Bill: {returnSelectionBill.sales_no}
+                                            </h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">
+                                                Customer: {returnSelectionBill.customer_name || returnSelectionBill.customer_id}
+                                            </p>
+                                        </div>
+
+                                        {returnLoading && (
+                                            <div className="text-sm text-gray-500 py-4 text-center">Loading items...</div>
+                                        )}
+                                        {returnError && (
+                                            <div className="text-sm text-red-500 py-4 text-center">{returnError}</div>
+                                        )}
+
+                                        {!returnLoading && !returnError && (
+                                            <div className="flex-1 overflow-auto max-h-[60vh] border rounded-lg">
+                                                <table className="w-full text-xs">
+                                                    <thead className="bg-slate-50 text-gray-600 sticky top-0 border-b">
+                                                        <tr>
+                                                            <th className="p-2.5 text-left font-semibold">Item</th>
+                                                            <th className="p-2.5 text-center font-semibold">Sold</th>
+                                                            <th className="p-2.5 text-center font-semibold">Returned</th>
+                                                            <th className="p-2.5 text-center font-semibold">Available</th>
+                                                            <th className="p-2.5 text-center font-semibold w-20">Return Qty</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-gray-100">
+                                                        {returnItems.map((item, index) => (
+                                                            <tr key={item.id} className="hover:bg-slate-50/50">
+                                                                <td className="p-2.5">
+                                                                    <span className="font-semibold block text-gray-800">{item.product_name}</span>
+                                                                    <span className="text-[10px] text-gray-400 font-mono block">SKU: {item.sku}</span>
+                                                                </td>
+                                                                <td className="p-2.5 text-center text-gray-600">{item.sold_qty}</td>
+                                                                <td className="p-2.5 text-center text-gray-600">{item.already_returned_qty}</td>
+                                                                <td className="p-2.5 text-center font-semibold text-gray-700">{item.available_qty}</td>
+                                                                <td className="p-2.5 text-center">
+                                                                    <input
+                                                                        type="number"
+                                                                        min="0"
+                                                                        max={item.available_qty}
+                                                                        value={item.return_qty || ""}
+                                                                        onChange={(e) => {
+                                                                            const val = Math.min(
+                                                                                Math.max(Number(e.target.value || 0), 0),
+                                                                                item.available_qty
+                                                                            );
+                                                                            setReturnItems((prev) =>
+                                                                                prev.map((it, idx) =>
+                                                                                    idx === index
+                                                                                        ? { ...it, return_qty: val }
+                                                                                        : it
+                                                                                )
+                                                                            );
+                                                                        }}
+                                                                        className="w-16 border rounded p-1 text-center font-bold"
+                                                                    />
+                                                                </td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+
+                                        <div className="pt-4 border-t flex gap-3 justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsReturnSelectionView(false)}
+                                                className="px-4 py-2 border rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={!returnItems.some((item) => item.return_qty > 0)}
+                                                onClick={() => {
+                                                    const selected = returnItems.filter((item) => item.return_qty > 0);
+                                                    setReturnedItemsList(selected);
+                                                    updateUiState({ showBillsPanel: false });
+                                                    setIsReturnSelectionView(false);
+
+                                                    if (returnSelectionBill?.customer_id) {
+                                                        setHeader((prev) => ({
+                                                            ...prev,
+                                                            customer_id: String(returnSelectionBill.customer_id),
+                                                        }));
+                                                        const cust = allCustomers.find((c) => String(c.id) === String(returnSelectionBill.customer_id));
+                                                        if (cust) {
+                                                            setSelectedCustomerOption(mapCustomerToSelectOption(cust));
+                                                        }
+                                                    }
+                                                }}
+                                                className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                                            >
+                                                Exchange (Load Credit)
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {billsLoading && (
+                                            <div className="p-5 text-sm text-gray-500">Loading bills...</div>
+                                        )}
+                                        {billsError && <div className="p-5 text-sm text-red-500">{billsError}</div>}
+                                        {!billsLoading && !billsError && (
+                                            <table className="w-full text-sm">
+                                                <thead className="bg-gray-50 text-gray-600 sticky top-0 border-b">
+                                                    <tr>
+                                                        <th className="p-3 text-left font-semibold">Bill No</th>
+                                                        <th className="p-3 text-left font-semibold">Customer</th>
+                                                        <th className="p-3 text-left font-semibold">Date</th>
+                                                        <th className="p-3 text-right font-semibold">Total Amount</th>
+                                                        <th className="p-3 text-center font-semibold">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sortedBills.length === 0 && (
+                                                        <tr>
+                                                            <td className="p-4 text-sm text-gray-400" colSpan={5}>
+                                                                No bills available.
+                                                            </td>
+                                                        </tr>
+                                                    )}
+                                                    {sortedBills.map((bill) => (
+                                                        <tr
+                                                            key={bill.id}
+                                                            className="border-t hover:bg-blue-50 transition"
+                                                        >
+                                                            <td
+                                                                onClick={() => handleSelectBill(bill)}
+                                                                className="p-3 font-medium text-gray-700 cursor-pointer"
+                                                            >
+                                                                {bill.sales_no}
+                                                            </td>
+                                                            <td
+                                                                onClick={() => handleSelectBill(bill)}
+                                                                className="p-3 text-gray-600 cursor-pointer"
+                                                            >
+                                                                {bill.customer_name || bill.customer_id}
+                                                            </td>
+                                                            <td
+                                                                onClick={() => handleSelectBill(bill)}
+                                                                className="p-3 text-gray-600 cursor-pointer"
+                                                            >
+                                                                {formatDateLabel(bill.sales_date || bill.created_at)}
+                                                            </td>
+                                                            <td
+                                                                onClick={() => handleSelectBill(bill)}
+                                                                className="p-3 text-right font-semibold text-gray-700 cursor-pointer"
+                                                            >
+                                                                {Number(bill.total_amount || 0).toFixed(2)}
+                                                            </td>
+                                                            <td className="p-3 text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        void handleOpenReturnSelection(bill);
+                                                                    }}
+                                                                    className="inline-flex items-center gap-1 rounded bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition"
+                                                                >
+                                                                    Return/Exch
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>

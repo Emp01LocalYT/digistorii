@@ -38,18 +38,21 @@ export async function loginUser(company: string, email: string, password: string
         message:
           "Incorrect email or password. Please try again."
       };
-    // throw new Error("Invalid credentials");
-
     const user = userResult.rows[0];
+    if (!user.is_active) {
+      return {
+        success: false,
+        message: "Your account is deactivated. Please contact your administrator."
+      };
+    }
     console.log("User found:", user);
     console.log("Verifying password for user:", email);
     const validPassword = await verifyPassword(password, user.password_hash);
     console.log("Password valid:", validPassword);
     if (!validPassword)
-      // throw new Error("Invalid credentials");
       return {
         success: false,
-        message: "Invalid credentials."
+        message: "Incorrect email or password. Please try again."
       };
 
     // return { user: { id: user.id,name:user.name,username:user.username,email: user.email,phone:user.phone }, schema };

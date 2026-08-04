@@ -1,3 +1,4 @@
+//C:\Users\yanna\digistorii\src\app\api\purchase\[id]\route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getNextProductCodeByType } from "@/lib/document-number-generator";

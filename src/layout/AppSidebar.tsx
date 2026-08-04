@@ -57,6 +57,7 @@ const navItems: NavItem[] = [
       { name: "Purchase Order", path: "/workspace/transactions/purchase", pro: false },
       { name: "Purchase Order Approval", path: "/workspace/transactions/purchase-approval", pro: false },
       { name: "GRN", path: "/workspace/transactions/grn", pro: false },
+      { name: "Purchase Return", path: "/workspace/transactions/purchase-return", pro: false },
     ],
   },
   {
@@ -69,7 +70,7 @@ const navItems: NavItem[] = [
       { name: "Image Master", path: "/workspace/inventory/image-master-v2", pro: false },
       // { name: "Add Product", path: "/workspace/inventory/product/add-products", pro: false },
       { name: "Opening Stock", path: "/workspace/inventory/opening-stock", pro: false },
-
+      { name: "Stock Adjustment", path: "/workspace/inventory/stock-adjustment", pro: false },
     ],
   },
   {

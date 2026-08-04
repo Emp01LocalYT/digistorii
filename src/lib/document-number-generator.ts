@@ -129,6 +129,50 @@ export async function generateGRNNo(schema: string) {
   }
 }
 
+export async function generatePurchaseReturnNo(schema: string) {
+  if (!schema) {
+    throw new Error("Schema name is empty");
+  }
+  try {
+    const datePart = new Date().toISOString().split("T")[0].replaceAll("-", ""); // YYYYMMDD
+ 
+    // Find last purchase return number for today
+    const lastRes = await pool.query(
+      `SELECT purchase_return_no FROM ${schema}.purchase_returns
+     WHERE purchase_return_no LIKE $1
+     ORDER BY id DESC LIMIT 1`,
+      [`PRN-${datePart}-%`]
+    );
+ 
+    let nextNumber = "0001";
+    if (lastRes.rows.length) {
+      const lastNo = lastRes.rows[0].purchase_return_no; // e.g., PRN-20260305-0001
+      if (lastNo) {
+        const parts = lastNo.split("-");
+        if (parts.length >= 3) {
+          const num = parseInt(parts[2], 10);
+          if (!isNaN(num)) {
+            nextNumber = String(num + 1).padStart(4, "0");
+          }
+        }
+      }
+    }
+ 
+    const returnNo = `PRN-${datePart}-${nextNumber}`;
+    console.log("Generated Purchase Return No:", returnNo);
+ 
+    return returnNo;
+  } catch (err: any) {
+    if (err.code === "42P01") {
+      throw new Error(
+        `Table "${schema}.purchase_returns" does not exist.`
+      );
+    }
+    throw new Error(`Generate PurchaseReturnNo DB Error: ${err.message}`);
+  }
+}
+
+
 export async function getNextProductCodeByType(
   schema: string,
   type: string,

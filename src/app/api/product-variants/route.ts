@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
           pv.barcode,
           pv.color_id,
           pv.size,
-          pv.fitting,
+          pv.fitting_id,
           pv.gender
         FROM "${schema}".product_variants pv
         INNER JOIN "${schema}".products p

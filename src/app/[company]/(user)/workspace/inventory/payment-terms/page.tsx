@@ -497,6 +497,7 @@ export default function PaymentTermsMasterPage() {
               <label className="text-sm font-semibold mb-1 block">Description(if any)</label>
               <textarea
                 data-rules="no-symbols"
+                data-optional="true"
                 data-field="description"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}

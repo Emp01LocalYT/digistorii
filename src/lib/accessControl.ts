@@ -39,7 +39,7 @@ const FIRST_ACCESSIBLE_PATHS: Array<{ permission: ResponsibilityAccessKey; path:
 
 const ROUTE_RULES: ProtectedRouteRule[] = [
   {
-    prefixes: ["/workspace/purchase", "/workspace/transactions/purchase", "/workspace/transactions/purchase-approval", "/workspace/transactions/grn"],
+    prefixes: ["/workspace/purchase", "/workspace/transactions/purchase", "/workspace/transactions/purchase-approval", "/workspace/transactions/grn", "/workspace/transactions/purchase-return"],
     permission: "purchase_access",
   },
   {

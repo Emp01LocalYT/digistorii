@@ -2,8 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { generateSalesNo } from "@/lib/document-number-generator";
 import { getTenantSchema } from "@/lib/tenant";
-import { isFinalStatus } from "@/lib/stockLedger";
+import { isFinalStatus, insertStockLedgerEntry } from "@/lib/stockLedger";
 import { allocateSalesStockFIFO } from "@/lib/stockAllocation";
+
+async function ensureSalesReturnTables(client: any, schema: string) {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".sales_returns (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id VARCHAR(80) NOT NULL,
+      sales_invoice_id INT NOT NULL REFERENCES "${schema}".sales_header(id) ON DELETE RESTRICT,
+      txn_date DATE NOT NULL,
+      refund_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      created_by VARCHAR(100),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".sales_return_items (
+      id BIGSERIAL PRIMARY KEY,
+      sales_return_id BIGINT NOT NULL REFERENCES "${schema}".sales_returns(id) ON DELETE CASCADE,
+      sales_invoice_line_id INT NOT NULL REFERENCES "${schema}".sales_detail(id) ON DELETE RESTRICT,
+      product_id BIGINT NOT NULL REFERENCES "${schema}".product_variants(id) ON DELETE RESTRICT,
+      warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
+      locator_id INT REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
+      returned_qty NUMERIC(12,2) NOT NULL DEFAULT 0,
+      unit_price NUMERIC(12,2) NOT NULL DEFAULT 0
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_sales_return_items_header
+    ON "${schema}".sales_return_items(sales_return_id);
+  `);
+}
 
 async function resolveVariantId(
   client: any,
@@ -215,15 +247,18 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { header, details, payments } = body;
+    const { header, details, payments, returns } = body;
 
-    if (!header || !details?.length) {
+    if (!header || (!details?.length && !returns?.items?.length)) {
       return NextResponse.json(
-        { success: false, error: "Header and at least one detail are required" },
+        { success: false, error: "Header and at least one detail or return item are required" },
         { status: 400 }
       );
     }
     await client.query("BEGIN");
+
+    // Ensure Sales Return Tables exist
+    await ensureSalesReturnTables(client, schema);
 
     const warehouseContext = await resolveWarehouseContext(client, schema, warehouseId);
     const locatorId = null;
@@ -296,35 +331,122 @@ export async function POST(req: NextRequest) {
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
       RETURNING id
     `;
-    for (const d of details) {
-      const variantId = await resolveVariantId(client, schema, d.product_id);
-      const taxMasterId = d.tax_id && d.tax_id > 0 ? d.tax_id : null;
-      const detailRes = await client.query(detailQuery, [
-        salesId,
-        variantId,
-        d.uom,
-        d.rate,
-        d.qty,
-        d.discount,
-        taxMasterId,
-        d.tax_amount,
-        d.line_total,
-        userId
-      ]);
-      if (shouldAllocate) {
-        const salesDetailId = Number(detailRes.rows[0]?.id);
-        await allocateSalesStockFIFO(client, {
-          schema,
-          tenantId: company,
+    if (details && details.length > 0) {
+      for (const d of details) {
+        const variantId = await resolveVariantId(client, schema, d.product_id);
+        const taxMasterId = d.tax_id && d.tax_id > 0 ? d.tax_id : null;
+        const detailRes = await client.query(detailQuery, [
           salesId,
-          salesDetailId,
-          productId: variantId,
-          qtyToSell: Number(d.qty || 0),
-          warehouseId: allocationWarehouseId!,
-          txnDate: header.sales_date
+          variantId,
+          d.uom,
+          d.rate,
+          d.qty,
+          d.discount,
+          taxMasterId,
+          d.tax_amount,
+          d.line_total,
+          userId
+        ]);
+        if (shouldAllocate) {
+          const salesDetailId = Number(detailRes.rows[0]?.id);
+          await allocateSalesStockFIFO(client, {
+            schema,
+            tenantId: company,
+            salesId,
+            salesDetailId,
+            productId: variantId,
+            qtyToSell: Number(d.qty || 0),
+            warehouseId: allocationWarehouseId!,
+            txnDate: header.sales_date
+          });
+        }
+      }
+    }
+
+    // Process returns (if present)
+    if (returns && returns.items && returns.items.length > 0) {
+      const returnRes = await client.query(
+        `INSERT INTO "${schema}".sales_returns
+          (tenant_id, sales_invoice_id, txn_date, refund_amount, created_by, created_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         RETURNING id`,
+        [company, returns.sales_invoice_id, header.sales_date, returns.refund_amount, userId]
+      );
+      const returnId = returnRes.rows[0].id;
+
+      for (const item of returns.items) {
+        const qtyCheck = await client.query(
+          `SELECT qty FROM "${schema}".sales_detail WHERE id = $1`,
+          [item.sales_invoice_line_id]
+        );
+        const originalQty = Number(qtyCheck.rows[0]?.qty || 0);
+
+        const prevReturnedRes = await client.query(
+          `SELECT COALESCE(SUM(sri.returned_qty), 0) AS prev_returned
+           FROM "${schema}".sales_return_items sri
+           JOIN "${schema}".sales_returns sr ON sr.id = sri.sales_return_id
+           WHERE sri.sales_invoice_line_id = $1`,
+          [item.sales_invoice_line_id]
+        );
+        const prevReturned = Number(prevReturnedRes.rows[0]?.prev_returned || 0);
+
+        if (prevReturned + Number(item.returned_qty) > originalQty) {
+          throw new Error(`Returned quantity for variant ${item.product_id} exceeds available returnable quantity`);
+        }
+
+        const retItemRes = await client.query(
+          `INSERT INTO "${schema}".sales_return_items
+            (sales_return_id, sales_invoice_line_id, product_id, warehouse_id, locator_id, returned_qty, unit_price)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING id`,
+          [
+            returnId,
+            item.sales_invoice_line_id,
+            item.product_id,
+            item.warehouse_id || warehouseId,
+            item.locator_id || null,
+            item.returned_qty,
+            item.unit_price
+          ]
+        );
+        const returnLineItemId = retItemRes.rows[0].id;
+
+        // Find original locator used
+        const origLedgerRes = await client.query(
+          `SELECT locator_id FROM "${schema}".stock_ledger
+           WHERE ref_type = 'sales_header' AND ref_id = $1 AND ref_line_id = $2
+           LIMIT 1`,
+          [returns.sales_invoice_id, item.sales_invoice_line_id]
+        );
+        let finalLocatorId = origLedgerRes.rows[0]?.locator_id || item.locator_id;
+        if (!finalLocatorId) {
+          const defaultLocRes = await client.query(
+            `SELECT id FROM "${schema}".locators WHERE warehouse_id = $1 LIMIT 1`,
+            [item.warehouse_id || warehouseId]
+          );
+          finalLocatorId = defaultLocRes.rows[0]?.id;
+        }
+        if (!finalLocatorId) {
+          throw new Error("No locator found for returning stock");
+        }
+
+        // Insert stock ledger entry for return
+        await insertStockLedgerEntry(client, schema, {
+          tenant_id: company,
+          txn_date: header.sales_date,
+          txn_type: "Sales Return",
+          ref_type: "SalesReturn",
+          ref_id: Number(returnId),
+          ref_line_id: Number(returnLineItemId),
+          warehouse_id: Number(item.warehouse_id || warehouseId),
+          locator_id: Number(finalLocatorId),
+          product_id: Number(item.product_id),
+          qty_in: Number(item.returned_qty),
+          qty_out: 0
         });
       }
     }
+
     await client.query("COMMIT");
 
     return NextResponse.json({

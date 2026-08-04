@@ -10,7 +10,7 @@ import {
 } from "@/lib/product-barcode";
 type VariantInput = {
   color_id?: number | null;
-  color? :string;
+  color?: string;
   gender?: string | null;
   fitting_id?: number | null;
   size?: string;
@@ -72,9 +72,9 @@ async function barcodeExists(client: any, schema: string, barcode: string): Prom
 
 const VARIANT_STATUSES = new Set(["draft", "active", "inactive"]);
 
-function normalizeVariantStatus(value: any): "draft" | "active" | "inactive"  {
+function normalizeVariantStatus(value: any): "draft" | "active" | "inactive" {
   if (typeof value === "string" && VARIANT_STATUSES.has(value)) {
-    return value as "draft" | "active" | "inactive" ;
+    return value as "draft" | "active" | "inactive";
   }
   return "draft";
 }
@@ -129,7 +129,7 @@ export async function GET(req: NextRequest) {
             pv.id AS variant_id,
             pv.color_id,
             pv.size,
-            pv.fitting,
+            pv.fitting_id,
             pv.gender,
             pv.sku,
             pv.barcode
@@ -148,14 +148,14 @@ export async function GET(req: NextRequest) {
         product: matched,
         variant: matched
           ? {
-              id: matched.variant_id,
-              sku: matched.sku,
-              color: matched.color,
-              size: matched.size,
-              fitting: matched.fitting,
-              gender: matched.gender,
-              barcode: matched.barcode,
-            }
+            id: matched.variant_id,
+            sku: matched.sku,
+            color: matched.color,
+            size: matched.size,
+            fitting: matched.fitting,
+            gender: matched.gender,
+            barcode: matched.barcode,
+          }
           : null,
       });
     }
@@ -273,11 +273,11 @@ export async function POST(req: NextRequest) {
     }
     const cleanedVariants = Array.isArray(variantsInput)
       ? variantsInput.filter(
-          (variant) =>
-            variant.color_id ||
-            String(variant.size || "").trim() ||
-            String(variant.sku || "").trim()
-        )
+        (variant) =>
+          variant.color_id ||
+          String(variant.size || "").trim() ||
+          String(variant.sku || "").trim()
+      )
       : [];
 
     if (type === "finished_good" && cleanedVariants.length === 0) {
@@ -286,7 +286,7 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-      
+
 
     const { company, schema } = await getTenantSchema(req);
 
@@ -319,14 +319,14 @@ export async function POST(req: NextRequest) {
 
     const productId = productResult.rows[0].id as number;
     const insertedVariantIds: number[] = [];
-    const insertedVariants: Array<{ id: number; sku: string ; barcode:string}> = [];
+    const insertedVariants: Array<{ id: number; sku: string; barcode: string }> = [];
 
     const variantsToInsert: VariantInput[] =
       cleanedVariants.length > 0
         ? cleanedVariants
         : type === "finished_good"
-        ? []
-        : [
+          ? []
+          : [
             {
               color: "NA",
               size: "NA",
@@ -408,25 +408,25 @@ export async function POST(req: NextRequest) {
       const finalBarcode = barcodeText
         ? barcodeText
         : String(
-            (
-              await client.query(
-                `
+          (
+            await client.query(
+              `
                   UPDATE "${schema}".product_variants
                   SET barcode = $2
                   WHERE id = $1
                   RETURNING barcode
                 `,
-                [variantRow.id, buildInternalBarcode(Number(variantRow.id))]
-              )
-            ).rows[0]?.barcode || ""
-          );
+              [variantRow.id, buildInternalBarcode(Number(variantRow.id))]
+            )
+          ).rows[0]?.barcode || ""
+        );
       insertedVariantIds.push(variantRow.id as number);
       insertedVariants.push({
         id: variantRow.id as number,
         sku: String(variantRow.sku || sku),
         barcode: finalBarcode,
       });
-      console.log("inserted variants pro 290",insertedVariants);    
+      console.log("inserted variants pro 290", insertedVariants);
     }
 
 

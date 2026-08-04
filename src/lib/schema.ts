@@ -784,6 +784,69 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
         );
       `);
 
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".sales_returns (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id VARCHAR(80) NOT NULL,
+      sales_invoice_id INT NOT NULL REFERENCES "${schema}".sales_header(id) ON DELETE RESTRICT,
+      txn_date DATE NOT NULL,
+      refund_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      created_by VARCHAR(100),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".sales_return_items (
+      id BIGSERIAL PRIMARY KEY,
+      sales_return_id BIGINT NOT NULL REFERENCES "${schema}".sales_returns(id) ON DELETE CASCADE,
+      sales_invoice_line_id INT NOT NULL REFERENCES "${schema}".sales_detail(id) ON DELETE RESTRICT,
+      product_id BIGINT NOT NULL REFERENCES "${schema}".product_variants(id) ON DELETE RESTRICT,
+      warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
+      locator_id INT REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
+      returned_qty NUMERIC(12,2) NOT NULL DEFAULT 0,
+      unit_price NUMERIC(12,2) NOT NULL DEFAULT 0
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_sales_return_items_header
+    ON "${schema}".sales_return_items(sales_return_id);
+  `);
+
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".purchase_returns (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id VARCHAR(80) NOT NULL,
+      grn_id INT NOT NULL REFERENCES "${schema}".grn_header(id) ON DELETE RESTRICT,
+      purchase_return_no VARCHAR(100) UNIQUE,
+      txn_date DATE NOT NULL,
+      refund_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      created_by VARCHAR(100),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".purchase_return_items (
+      id BIGSERIAL PRIMARY KEY,
+      purchase_return_id BIGINT NOT NULL REFERENCES "${schema}".purchase_returns(id) ON DELETE CASCADE,
+      grn_line_id INT NOT NULL REFERENCES "${schema}".grn_detail(id) ON DELETE RESTRICT,
+      product_id BIGINT NOT NULL REFERENCES "${schema}".product_variants(id) ON DELETE RESTRICT,
+      warehouse_id INT REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
+      locator_id INT REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
+      returned_qty NUMERIC(12,2) NOT NULL DEFAULT 0,
+      unit_price NUMERIC(12,2) NOT NULL DEFAULT 0
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_purchase_return_items_header
+    ON "${schema}".purchase_return_items(purchase_return_id);
+  `);
+
+
 
   await client.query(`
     CREATE TABLE IF NOT EXISTS "${schema}".product_import_mapping_templates (
@@ -958,6 +1021,35 @@ CREATE TABLE IF NOT EXISTS "${schema}".product_images (
   await client.query(`
     CREATE INDEX IF NOT EXISTS idx_opening_stock_items_header
     ON "${schema}".opening_stock_items(opening_stock_id);
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".stock_adjustments (
+      id BIGSERIAL PRIMARY KEY,
+      tenant_id VARCHAR(80) NOT NULL,
+      txn_date DATE NOT NULL,
+      warehouse_id INT NOT NULL REFERENCES "${schema}".warehouses(id) ON DELETE RESTRICT,
+      locator_id INT NOT NULL REFERENCES "${schema}".locators(id) ON DELETE RESTRICT,
+      reason TEXT,
+      created_by VARCHAR(100),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS "${schema}".stock_adjustment_items (
+      id BIGSERIAL PRIMARY KEY,
+      adjustment_id BIGINT NOT NULL REFERENCES "${schema}".stock_adjustments(id) ON DELETE CASCADE,
+      product_id BIGINT NOT NULL REFERENCES "${schema}".product_variants(id) ON DELETE RESTRICT,
+      system_qty NUMERIC(12,2) NOT NULL DEFAULT 0,
+      physical_qty NUMERIC(12,2) NOT NULL DEFAULT 0,
+      adjustment_qty NUMERIC(12,2) NOT NULL DEFAULT 0
+    );
+  `);
+
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS idx_stock_adjustment_items_header
+    ON "${schema}".stock_adjustment_items(adjustment_id);
   `);
 
   await client.query(`

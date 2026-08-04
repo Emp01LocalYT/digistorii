@@ -24,8 +24,13 @@ export async function GET(
                 d.*,
                 p.product_code,
                 p.name AS product_name,
-                p.description,u.uom_code,u.uom_name
+                p.description,
+                u.uom_code,
+                u.uom_name,
+                COALESCE(pd.rate, 0) AS unit_price
             FROM ${schema}.grn_detail d
+            LEFT JOIN ${schema}.grn_header h ON h.id = d.grn_id
+            LEFT JOIN ${schema}.purchase_detail pd ON pd.purchase_id = h.purchase_id AND pd.product_id = d.product_id
             LEFT JOIN ${schema}.product_variants pv
             ON pv.id = d.product_id
             LEFT JOIN ${schema}.products p

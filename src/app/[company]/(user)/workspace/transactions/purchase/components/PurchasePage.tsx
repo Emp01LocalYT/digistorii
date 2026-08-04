@@ -39,9 +39,18 @@ type LocalProductSavePayload = {
     product_code?: string;
   };
   variants: Array<{
+    id?: number;
     color?: string;
+    color_id?: number | null;
+    gender?: string | null;
+    fitting_id?: number | null;
     size?: string;
     sku?: string;
+    barcode?: string;
+    qty?: number;
+    low_stock_threshold?: number;
+    backorders_allowed?: boolean;
+    status?: string;
   }>;
 };
 
@@ -52,6 +61,18 @@ type TempProductCatalogItem = ProductCatalogItem & {
     sku: string;
     categoryId: string;
     source: "own" | "vendor";
+  };
+  rawVariant?: {
+    color_id?: number | null;
+    gender?: string | null;
+    fitting_id?: number | null;
+    size?: string;
+    sku?: string;
+    qty?: number;
+    low_stock_threshold?: number;
+    backorders_allowed?: boolean;
+    status?: string;
+    barcode?: string;
   };
 };
 
@@ -407,14 +428,26 @@ export default function PurchasePage() {
         uom_name: uomName,
         hsn_code: hsnNo,
         sku,
-        color: String(variant?.color || ""),
-        barcode: "",
+        color: String(variant?.color || variant?.color_id || ""),
+        barcode: String(variant?.barcode || ""),
         temp_variant_id: tempVariantId,
         newProduct: {
           name: productName,
           sku,
           categoryId,
           source,
+        },
+        rawVariant: {
+          color_id: variant?.color_id || null,
+          gender: variant?.gender || null,
+          fitting_id: variant?.fitting_id || null,
+          size: variant?.size || "NA",
+          sku,
+          qty: variant?.qty ?? 0,
+          low_stock_threshold: variant?.low_stock_threshold ?? 5,
+          backorders_allowed: variant?.backorders_allowed ?? false,
+          status: variant?.status || "draft",
+          barcode: variant?.barcode || "",
         },
       };
     });
@@ -841,35 +874,62 @@ export default function PurchasePage() {
       );
       const createdProductRefs: Array<{ temp_id: string; product_id: number; variant_id: number }> = [];
 
+      // Helper function to extract base temp ID
+      const getBaseTempId = (tempVariantId: string) => {
+        const parts = tempVariantId.split("-v");
+        if (parts.length > 1) {
+          return parts.slice(0, -1).join("-v");
+        }
+        return tempVariantId;
+      };
+
+      // Gather unique base temp IDs for the new products in details
+      const newProductBaseIds = new Set<string>();
       for (const detail of details) {
         const tempKey = String(detail.temp_id || detail.product_id || "");
         const tempItem = tempProductMap.get(tempKey);
-        console.log("Creating product:", tempItem);
-        if (!tempItem) continue;
+        if (tempItem) {
+          const baseId = getBaseTempId(tempItem.temp_variant_id);
+          newProductBaseIds.add(baseId);
+        }
+      }
+
+      for (const baseId of Array.from(newProductBaseIds)) {
+        const productVariants = tempProducts.filter(
+          (item) => getBaseTempId(item.temp_variant_id) === baseId
+        );
+        if (productVariants.length === 0) continue;
+
+        const firstVariant = productVariants[0];
 
         const productPayload = {
           product: {
-            name: tempItem.newProduct.name,
-            type: tempItem.type,
-            category: tempItem.newProduct.categoryId,
-            source: tempItem.newProduct.source,
-            description: tempItem.description || "",
-            uom: tempItem.uom || "",
-            uom_code: tempItem.uom_code || "",
-            uom_name: tempItem.uom_name || "",
-            hsn_code: tempItem.hsn_code || "",
-            product_code: tempItem.product_code,
+            name: firstVariant.newProduct.name,
+            type: firstVariant.type,
+            category: firstVariant.newProduct.categoryId,
+            source: firstVariant.newProduct.source,
+            description: firstVariant.description || "",
+            uom: firstVariant.uom || "",
+            uom_code: firstVariant.uom_code || "",
+            uom_name: firstVariant.uom_name || "",
+            hsn_code: firstVariant.hsn_code || "",
+            product_code: firstVariant.product_code,
           },
-          variants: [
-            {
-              sku: tempItem.newProduct.sku || "",
-              color: tempItem.color || "NA",
-              size: "NA",
-              qty: 0,
-              barcode: "",
-            },
-          ],
+          variants: productVariants.map((v) => ({
+            sku: v.sku || "",
+            color_id: v.rawVariant?.color_id || null,
+            gender: v.rawVariant?.gender || null,
+            fitting_id: v.rawVariant?.fitting_id || null,
+            size: v.rawVariant?.size || "NA",
+            qty: v.rawVariant?.qty ?? 0,
+            barcode: v.rawVariant?.barcode || "",
+            status: v.rawVariant?.status || "draft",
+            low_stock_threshold: v.rawVariant?.low_stock_threshold ?? 5,
+            backorders_allowed: v.rawVariant?.backorders_allowed ?? false,
+          })),
         };
+
+        console.log("Creating product with multiple variants:", productPayload);
 
         const productRes = await fetch("/api/products", {
           method: "POST",
@@ -879,18 +939,23 @@ export default function PurchasePage() {
           },
           body: JSON.stringify(productPayload),
         });
+
         const productData = await productRes.json();
         if (!productRes.ok || !productData?.variants?.length) {
           throw new Error(productData?.message || "Failed to save new product");
         }
 
-        const createdVariant = productData.variants[0];
-        createdProductRefs.push({
-          temp_id: String(tempItem.temp_variant_id),
-          product_id: Number(productData?.product?.id || createdVariant?.product_id || 0),
-          variant_id: Number(createdVariant?.variant_id || 0),
+        productData.variants.forEach((createdVariant: any, index: number) => {
+          const origVariant = productVariants[index];
+          if (origVariant) {
+            createdProductRefs.push({
+              temp_id: String(origVariant.temp_variant_id),
+              product_id: Number(productData?.product?.id || createdVariant?.product_id || 0),
+              variant_id: Number(createdVariant?.variant_id || 0),
+            });
+          }
         });
-        console.log("Created Product Refs:", createdProductRefs);
+        console.log("Created Product Refs for product:", createdProductRefs);
       }
 
       const persistedProductMap = new Map(createdProductRefs.map((item) => [item.temp_id, item]));
