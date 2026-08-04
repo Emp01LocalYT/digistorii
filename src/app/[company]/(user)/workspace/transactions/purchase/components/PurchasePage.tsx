@@ -30,6 +30,7 @@ type LocalProductSavePayload = {
     name?: string;
     type?: "finished_good" | "raw_material" | "other";
     category?: string;
+    material?: string;
     source?: "own" | "vendor";
     description?: string;
     uom?: string;
@@ -60,6 +61,7 @@ type TempProductCatalogItem = ProductCatalogItem & {
     name: string;
     sku: string;
     categoryId: string;
+    materialId: string | null;
     source: "own" | "vendor";
   };
   rawVariant?: {
@@ -398,7 +400,8 @@ export default function PurchasePage() {
     const uomCode = String(localPayload?.product?.uom_code || "");
     const uomName = String(localPayload?.product?.uom_name || "");
     const hsnNo = String(localPayload?.product?.hsn_code || "");
-    const categoryId = String(localPayload?.product?.category || "");
+    const categoryId = String(localPayload?.product?.category || "").trim();
+    const materialId = String(localPayload?.product?.material || "").trim();
     const source = localPayload?.product?.source === "vendor" ? "vendor" : "own";
     const type =
       localPayload?.product?.type === "raw_material" || localPayload?.product?.type === "other"
@@ -435,6 +438,7 @@ export default function PurchasePage() {
           name: productName,
           sku,
           categoryId,
+          materialId: materialId || null,
           source,
         },
         rawVariant: {
@@ -907,6 +911,7 @@ export default function PurchasePage() {
             name: firstVariant.newProduct.name,
             type: firstVariant.type,
             category: firstVariant.newProduct.categoryId,
+            material: firstVariant.newProduct.materialId || null,
             source: firstVariant.newProduct.source,
             description: firstVariant.description || "",
             uom: firstVariant.uom || "",

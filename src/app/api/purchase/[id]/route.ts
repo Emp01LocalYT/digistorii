@@ -72,6 +72,7 @@ async function createVariantForNewProduct(
   const source =
     detail?.source === "vendor" || newProduct?.source === "vendor" ? "vendor" : "own";
   const categoryId = String(detail?.category_id || newProduct?.categoryId || "").trim();
+  const materialId = String(detail?.material || newProduct?.materialId || "").trim();
   const providedProductCode = String(detail?.product_code || newProduct?.product_code || "").trim();
   let productCode = providedProductCode;
   if (providedProductCode) {
@@ -97,7 +98,7 @@ async function createVariantForNewProduct(
       productCode,
       productName,
       categoryId || null,
-      null,
+      materialId || null,
       String(detail?.uom || "").trim() || null,
       String(detail?.hsn_no || "").trim() || null,
       String(detail?.description || "").trim() || null,
