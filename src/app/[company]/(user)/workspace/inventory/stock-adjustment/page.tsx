@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ArrowPathIcon,
   TrashIcon,
   MagnifyingGlassIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
@@ -28,12 +30,8 @@ type StockAdjustmentRow = {
   reason: string | null;
   warehouse_name: string | null;
   locator_name: string | null;
-  system_qty: string | number;
-  physical_qty: string | number;
-  adjustment_qty: string | number;
-  product_name: string;
-  sku: string;
-  color: string | null;
+  total_items: string | number;
+  total_variance: string | number;
 };
 
 type StockAdjustmentLineItem = {
@@ -662,19 +660,17 @@ export default function StockAdjustmentPage() {
               <thead className="bg-indigo-50 text-gray-600 uppercase text-xs">
                 <tr className="border-t hover:bg-blue-50 transition">
                   <th className="p-4 text-left">Date</th>
-                  <th className="p-4 text-left">SKU</th>
-                  <th className="p-4 text-left">Product Name</th>
-                  <th className="p-4 text-left">Color</th>
                   <th className="p-4 text-left">Location</th>
-                  <th className="p-4 text-right">System Qty</th>
-                  <th className="p-4 text-right">Physical Qty</th>
-                  <th className="p-4 text-right">Adjustment Qty</th>
+                  <th className="p-4 text-left">Reason</th>
+                  <th className="p-4 text-center">Items</th>
+                  <th className="p-4 text-center">Total Variance</th>
+                  <th className="p-4 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {tableLoading ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-gray-400 animate-pulse">
+                    <td colSpan={6} className="text-center py-10 text-gray-400 animate-pulse">
                       Loading stock adjustments...
                     </td>
                   </tr>
@@ -682,9 +678,6 @@ export default function StockAdjustmentPage() {
                   paginatedListItems.map((row) => (
                     <tr key={row.adjustment_id} className="border-t hover:bg-blue-50 transition">
                       <td className="p-4">{new Date(row.txn_date).toLocaleDateString()}</td>
-                      <td className="p-4 font-mono font-medium">{row.sku}</td>
-                      <td className="p-4 font-medium">{row.product_name}</td>
-                      <td className="p-4">{row.color || "-"}</td>
                       <td className="p-4">
                         <span className="text-xs px-2 py-1 rounded bg-gray-100 font-semibold text-gray-600 block sm:inline mr-1">
                           {row.warehouse_name || "-"}
@@ -693,17 +686,25 @@ export default function StockAdjustmentPage() {
                           {row.locator_name || "-"}
                         </span>
                       </td>
-                      <td className="p-4 text-right">{row.system_qty}</td>
-                      <td className="p-4 text-right font-semibold text-gray-900">{row.physical_qty}</td>
-                      <td className={`p-4 text-right font-bold ${Number(row.adjustment_qty) > 0 ? "text-green-600" : "text-red-600"
-                        }`}>
-                        {Number(row.adjustment_qty) > 0 ? `+${row.adjustment_qty}` : row.adjustment_qty}
+                      <td className="p-4">{row.reason || "-"}</td>
+                      <td className="p-4 text-center font-medium">{row.total_items}</td>
+                      <td className={`p-4 text-center font-bold ${Number(row.total_variance) > 0 ? "text-green-600" : Number(row.total_variance) < 0 ? "text-red-600" : "text-gray-500"}`}>
+                        {Number(row.total_variance) > 0 ? `+${row.total_variance}` : row.total_variance}
+                      </td>
+                      <td className="p-4 text-center">
+                        <Link
+                          href={`/${company}/workspace/inventory/stock-adjustment/${row.adjustment_id}`}
+                          className="inline-flex items-center justify-center text-indigo-600 hover:text-indigo-900 transition-colors p-2 hover:bg-indigo-50 rounded-full"
+                          title="View Details"
+                        >
+                          <EyeIcon className="h-5 w-5" />
+                        </Link>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-gray-500">
+                    <td colSpan={6} className="px-6 py-10 text-center text-gray-500">
                       No stock adjustments found.
                     </td>
                   </tr>
@@ -712,14 +713,14 @@ export default function StockAdjustmentPage() {
             </table>
           </div>
 
-          <div className="border-t border-gray-200 px-4 py-4 sm:px-6">
+          <div className="ui-pagination-wrapper border-t border-gray-200 px-4 py-4 sm:px-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-gray-700">
+              <p className="ui-pagination-info">
                 Showing <span className="font-medium">{showingFrom}</span> to{" "}
                 <span className="font-medium">{showingTo}</span> of{" "}
                 <span className="font-medium">{totalItems}</span> results
               </p>
-              <div className="flex items-center gap-2">
+              <div className="ui-table-actions">
                 <label htmlFor="adjust-rows-per-page" className="text-sm text-gray-600">
                   Rows per page
                 </label>
@@ -727,21 +728,45 @@ export default function StockAdjustmentPage() {
                   id="adjust-rows-per-page"
                   value={rowsPerPage}
                   onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                  className="border rounded-md px-2 py-1 text-sm bg-white"
+                  className="ui-pagination-select"
                 >
                   <option value={5}>5</option>
                   <option value={10}>10</option>
                   <option value={20}>20</option>
                   <option value={50}>50</option>
                 </select>
+              </div>
+            </div>
 
-                <nav aria-label="Pagination" className="isolate inline-flex -space-x-px rounded-md shadow-sm">
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex flex-1 justify-between sm:hidden">
+                <button
+                  type="button"
+                  onClick={goToPreviousPage}
+                  disabled={currentPage === 1}
+                  className="ui-pagination-icon-btn rounded-md"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={goToNextPage}
+                  disabled={currentPage === totalPages}
+                  className="ui-pagination-icon-btn rounded-md ml-3"
+                >
+                  Next
+                </button>
+              </div>
+
+              <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-end">
+                <nav aria-label="Pagination" className="ui-pagination-nav">
                   <button
                     type="button"
                     onClick={goToPreviousPage}
                     disabled={currentPage === 1}
-                    className="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="ui-pagination-icon-btn rounded-l-md"
                   >
+                    <span className="sr-only">Previous</span>
                     <ChevronLeftIcon className="h-5 w-5" />
                   </button>
 
@@ -749,7 +774,7 @@ export default function StockAdjustmentPage() {
                     page === "..." ? (
                       <span
                         key={`ellipsis-${idx}`}
-                        className="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300"
+                        className="ui-pagination-btn ui-pagination-btn-inactive"
                       >
                         ...
                       </span>
@@ -757,8 +782,9 @@ export default function StockAdjustmentPage() {
                       <button
                         key={`page-${page}`}
                         type="button"
-                        onClick={() => goToPage(page)}
-                        className={`relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 ${currentPage === page ? "z-10 bg-indigo-600 text-white" : "text-gray-900 hover:bg-gray-50"
+                        onClick={() => goToPage(page as number)}
+                        aria-current={currentPage === page ? "page" : undefined}
+                        className={`ui-pagination-btn ${currentPage === page ? "ui-pagination-btn-active" : "ui-pagination-btn-inactive"
                           }`}
                       >
                         {page}
@@ -770,8 +796,9 @@ export default function StockAdjustmentPage() {
                     type="button"
                     onClick={goToNextPage}
                     disabled={currentPage === totalPages}
-                    className="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-500 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="ui-pagination-icon-btn rounded-r-md"
                   >
+                    <span className="sr-only">Next</span>
                     <ChevronRightIcon className="h-5 w-5" />
                   </button>
                 </nav>

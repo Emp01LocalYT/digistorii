@@ -49,21 +49,15 @@ export async function GET(req: NextRequest) {
           sa.reason,
           w.name AS warehouse_name,
           l.locator_name,
-          sai.system_qty,
-          sai.physical_qty,
-          sai.adjustment_qty,
-          p.name AS product_name,
-          pv.sku,
-          pc.color_name AS color
+          COUNT(sai.id) AS total_items,
+          SUM(sai.adjustment_qty) AS total_variance
         FROM "${schema}".stock_adjustments sa
-        JOIN "${schema}".stock_adjustment_items sai ON sai.adjustment_id = sa.id
+        LEFT JOIN "${schema}".stock_adjustment_items sai ON sai.adjustment_id = sa.id
         LEFT JOIN "${schema}".warehouses w ON w.id = sa.warehouse_id
         LEFT JOIN "${schema}".locators l ON l.id = sa.locator_id
-        LEFT JOIN "${schema}".product_variants pv ON pv.id = sai.product_id
-        LEFT JOIN "${schema}".products p ON p.id = pv.product_id
-        LEFT JOIN "${schema}".product_colors pc ON pc.id::text = pv.color_id::text
         WHERE sa.tenant_id = $1
-        ORDER BY sa.id DESC, sai.id ASC
+        GROUP BY sa.id, sa.txn_date, sa.reason, w.name, l.locator_name
+        ORDER BY sa.id DESC
       `,
       [company]
     );
