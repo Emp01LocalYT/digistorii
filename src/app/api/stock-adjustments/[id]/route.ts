@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { pool } from "@/lib/db";
 import { getTenantSchema } from "@/lib/tenant";
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   const client = await pool.connect();
   try {
     const { company, schema } = await getTenantSchema(req);
-    const adjustmentId = Number(params.id);
+    const { id } = await context.params;
+    const adjustmentId = Number(id);
 
     if (isNaN(adjustmentId)) {
       return NextResponse.json({ success: false, error: "Invalid adjustment ID" }, { status: 400 });
