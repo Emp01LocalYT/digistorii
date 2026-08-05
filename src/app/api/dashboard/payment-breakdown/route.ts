@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
     // Removing WHERE 1=1 AND tenant_id to avoid crash if tenant_id doesn't exist, we rely on the schema segregation.
     // Actually, in digistorii, tables inside the tenant schema also usually have tenant_id. Let's include it.
-    params.unshift(company); 
+    params.unshift(company);
     const tenantCondition = `sp.tenant_id = $1`;
 
     const query = `
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         pm.id AS mode_id,
         pm.name AS mode_name,
         SUM(sp.amount) AS total_amount
-      FROM "${schema}".sales_payment sp
+      FROM "${schema}".sales_payments sp
       JOIN "${schema}".payment_modes pm ON sp.payment_mode_id = pm.id
       WHERE ${tenantCondition} ${dateCondition}
       GROUP BY pm.id, pm.name
@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
             pm.id AS mode_id,
             pm.name AS mode_name,
             SUM(sp.amount) AS total_amount
-          FROM "${schema}".sales_payment sp
+          FROM "${schema}".sales_payments sp
           JOIN "${schema}".payment_modes pm ON sp.payment_mode_id = pm.id
           WHERE 1=1 ${dateCondition}
           GROUP BY pm.id, pm.name
