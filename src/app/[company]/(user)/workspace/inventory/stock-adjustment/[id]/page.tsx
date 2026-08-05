@@ -31,8 +31,7 @@ type StockAdjustmentDetails = {
 export default function StockAdjustmentViewPage() {
   const params = useParams();
   const router = useRouter();
-  const { tenant } = useTenant();
-  const company = tenant?.company_slug;
+  const { company } = useTenant();
   const id = params.id as string;
 
   const [details, setDetails] = useState<StockAdjustmentDetails | null>(null);
@@ -46,13 +45,14 @@ export default function StockAdjustmentViewPage() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiFetch(`/api/stock-adjustments/${id}`, {
-          headers: { "x-tenant-id": company }
+        const res = await fetch(`/api/stock-adjustments/${id}`, {
+          headers: { "x-tenant": company },
         });
-        if (res.success) {
-          setDetails(res.data);
+        const data = await res.json();
+        if (data.success) {
+          setDetails(data.data);
         } else {
-          setError(res.error || "Failed to load stock adjustment details");
+          setError(data.error || "Failed to load stock adjustment details");
         }
       } catch (err: any) {
         setError(err.message || "An unexpected error occurred");
@@ -80,7 +80,7 @@ export default function StockAdjustmentViewPage() {
     return (
       <div className="p-6 max-w-7xl mx-auto space-y-6 text-center py-20">
         <div className="text-red-500 text-xl font-medium mb-4">{error}</div>
-        <Link 
+        <Link
           href={`/${company}/workspace/inventory/stock-adjustment`}
           className="text-indigo-600 hover:text-indigo-800 font-medium"
         >
