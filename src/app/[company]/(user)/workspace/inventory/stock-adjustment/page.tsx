@@ -2,12 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeftIcon, ChevronRightIcon, ArrowPathIcon } from "@heroicons/react/24/outline";
+import dynamic from "next/dynamic";
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ArrowPathIcon,
+  TrashIcon,
+  MagnifyingGlassIcon,
+} from "@heroicons/react/24/outline";
 import { useTenant } from "@/context/TenantContext";
 import { apiFetch } from "@/lib/apiFetch";
 import { useProductLookup } from "@/hooks/useProductLookup";
 import { usePagination } from "@/hooks/usePagination";
 import { attachRuleValidationListeners, getRuleValidationError } from "@/lib/formValidationRules";
+import type { ProductLookupItem } from "@/lib/product-lookup";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useNotify } from "@/hooks/useNotify";
 
@@ -28,12 +36,25 @@ type StockAdjustmentRow = {
   color: string | null;
 };
 
+type StockAdjustmentLineItem = {
+  variant_id: number;
+  product_id?: number;
+  sku: string;
+  name: string;
+  color?: string | null;
+  barcode?: string | null;
+  system_qty: number | null;
+  physical_qty: string;
+  reason?: string;
+  loading_stock?: boolean;
+};
+
 type StockAdjustmentForm = {
   txn_date: string;
   warehouse_id: string;
   locator_id: string;
   reason: string;
-  physical_qty: string;
+  items: StockAdjustmentLineItem[];
 };
 
 function todayISO() {
@@ -46,9 +67,14 @@ function initialForm(): StockAdjustmentForm {
     warehouse_id: "",
     locator_id: "",
     reason: "",
-    physical_qty: "",
+    items: [],
   };
 }
+
+const ProductLookupModal = dynamic(
+  () => import("@/components/product/ProductLookupModal"),
+  { ssr: false }
+);
 
 export default function StockAdjustmentPage() {
   const { company } = useTenant();
@@ -57,6 +83,7 @@ export default function StockAdjustmentPage() {
 
   const [form, setForm] = useState<StockAdjustmentForm>(initialForm());
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [lineItemErrors, setLineItemErrors] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [tableLoading, setTableLoading] = useState(false);
@@ -64,16 +91,29 @@ export default function StockAdjustmentPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [locators, setLocators] = useState<LocatorOption[]>([]);
 
-  // Product lookup state
+  // Fast inline product lookup search state
   const [productSearch, setProductSearch] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-  const [systemStock, setSystemStock] = useState<number | null>(null);
-  const [loadingStock, setLoadingStock] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+
+  // Product lookup modal state
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [productModalError, setProductModalError] = useState("");
+  const [selectedVariantMap, setSelectedVariantMap] = useState<Record<string, boolean>>({});
+  const [barcodeValue, setBarcodeValue] = useState("");
+  const [barcodeMessage, setBarcodeMessage] = useState("");
 
   const formRef = useRef<HTMLFormElement | null>(null);
 
-  const { items: lookupItems, loading: lookupLoading } = useProductLookup({
+  const {
+    items: lookupItems,
+    loading: lookupLoading,
+    filters: lookupFilters,
+    setFilters: setLookupFilters,
+    page: lookupPage,
+    setPage: setLookupPage,
+    itemsPerPage: lookupItemsPerPage,
+    categoryOptions: lookupCategoryOptions,
+  } = useProductLookup({
     enabled: Boolean(company),
   });
 
@@ -124,35 +164,257 @@ export default function StockAdjustmentPage() {
     }
   }, [availableLocators, form.locator_id]);
 
-  // Fetch system stock dynamically when selection changes
+  // Modal dataset calculation
+  const selectedVariantIdSet = useMemo(
+    () => new Set(form.items.map((item) => item.variant_id)),
+    [form.items]
+  );
+
+  const filteredLookupItems = useMemo(() => {
+    const search = lookupFilters.search.trim().toLowerCase();
+    const withoutSelected = lookupItems.filter((item) => !selectedVariantIdSet.has(item.variant_id));
+    return withoutSelected.filter((item) => {
+      const matchSearch = search
+        ? `${item.sku} ${item.name}`.toLowerCase().includes(search)
+        : true;
+      const matchType = lookupFilters.type ? item.type === lookupFilters.type : true;
+      const matchCategory = lookupFilters.category
+        ? String(item.category_name || "") === lookupFilters.category
+        : true;
+      const matchSource = lookupFilters.source ? item.source === lookupFilters.source : true;
+      return matchSearch && matchType && matchCategory && matchSource;
+    });
+  }, [lookupFilters, lookupItems, selectedVariantIdSet]);
+
+  const sortedLookupItems = useMemo(() => {
+    return [...filteredLookupItems].sort((a, b) => {
+      if (b.product_id !== a.product_id) return b.product_id - a.product_id;
+      return b.variant_id - a.variant_id;
+    });
+  }, [filteredLookupItems]);
+
+  const lookupTotalCount = sortedLookupItems.length;
+  const lookupTotalPages = Math.max(1, Math.ceil(lookupTotalCount / lookupItemsPerPage));
+  const lookupCurrentPage = Math.min(lookupPage, lookupTotalPages);
+  const lookupPaginatedItems = sortedLookupItems.slice(
+    (lookupCurrentPage - 1) * lookupItemsPerPage,
+    lookupCurrentPage * lookupItemsPerPage
+  );
+
   useEffect(() => {
-    if (!company || !form.warehouse_id || !form.locator_id || !selectedProduct) {
-      setSystemStock(null);
+    if (lookupPage > lookupTotalPages) {
+      setLookupPage(lookupTotalPages);
+    }
+  }, [lookupPage, lookupTotalPages, setLookupPage]);
+
+  const toggleSelectAll = (checked: boolean, rows: ProductLookupItem[]) => {
+    if (!checked) {
+      setSelectedVariantMap((prev) => {
+        const next = { ...prev };
+        rows.forEach((row) => {
+          delete next[String(row.variant_id)];
+        });
+        return next;
+      });
       return;
     }
+    setSelectedVariantMap((prev) => {
+      const next = { ...prev };
+      rows.forEach((row) => {
+        next[String(row.variant_id)] = true;
+      });
+      return next;
+    });
+  };
 
-    async function fetchSystemStock() {
-      setLoadingStock(true);
+  const toggleVariantSelection = (item: ProductLookupItem) => {
+    const key = String(item.variant_id);
+    setSelectedVariantMap((prev) => {
+      if (prev[key]) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return { ...prev, [key]: true };
+    });
+  };
+
+  const selectedVariantIds = useMemo(
+    () => Object.keys(selectedVariantMap).map((id) => Number(id)).filter((id) => Number.isFinite(id)),
+    [selectedVariantMap]
+  );
+
+  const lookupItemMap = useMemo(() => {
+    return new Map<number, ProductLookupItem>(lookupItems.map((item) => [item.variant_id, item]));
+  }, [lookupItems]);
+
+  // Fetch system stock dynamically for a variant
+  const fetchSystemStockForVariant = useCallback(
+    async (variantId: number, warehouseId: string, locatorId: string) => {
+      if (!company || !warehouseId || !locatorId) return;
+
+      setForm((prev) => ({
+        ...prev,
+        items: prev.items.map((item) =>
+          item.variant_id === variantId ? { ...item, loading_stock: true } : item
+        ),
+      }));
+
       try {
         const res = await apiFetch(
-          `/api/stock-adjustments/current-stock?warehouse_id=${form.warehouse_id}&locator_id=${form.locator_id}&product_id=${selectedProduct.variant_id}`,
+          `/api/stock-adjustments/current-stock?warehouse_id=${warehouseId}&locator_id=${locatorId}&product_id=${variantId}`,
           company
         );
         const data = await res.json();
-        if (data.success) {
-          setSystemStock(Number(data.current_stock ?? 0));
-        }
+        const stock = data.success ? Number(data.current_stock ?? 0) : 0;
+
+        setForm((prev) => ({
+          ...prev,
+          items: prev.items.map((item) =>
+            item.variant_id === variantId
+              ? { ...item, system_qty: stock, loading_stock: false }
+              : item
+          ),
+        }));
       } catch (err) {
-        console.error("Error fetching system stock:", err);
-      } finally {
-        setLoadingStock(false);
+        console.error("Error fetching system stock for variant:", variantId, err);
+        setForm((prev) => ({
+          ...prev,
+          items: prev.items.map((item) =>
+            item.variant_id === variantId
+              ? { ...item, system_qty: 0, loading_stock: false }
+              : item
+          ),
+        }));
       }
+    },
+    [company]
+  );
+
+  // Refetch stock for all items when warehouse or locator changes
+  useEffect(() => {
+    if (!company || !form.warehouse_id || !form.locator_id || form.items.length === 0) {
+      return;
+    }
+    form.items.forEach((item) => {
+      void fetchSystemStockForVariant(item.variant_id, form.warehouse_id, form.locator_id);
+    });
+  }, [company, form.warehouse_id, form.locator_id, fetchSystemStockForVariant]);
+
+  // Helper to add a product variant to line items
+  const addProductToItems = useCallback(
+    (product: ProductLookupItem) => {
+      if (!form.warehouse_id || !form.locator_id) {
+        notify("Please select a Warehouse and Locator first.", { severity: "error" });
+        return false;
+      }
+
+      const exists = form.items.some((item) => item.variant_id === product.variant_id);
+      if (exists) {
+        notify(`Product "${product.name}" (${product.sku}) is already in the list.`, { severity: "warning" });
+        return false;
+      }
+
+      const newItem: StockAdjustmentLineItem = {
+        variant_id: product.variant_id,
+        product_id: product.product_id,
+        sku: product.sku,
+        name: product.name,
+        color: product.color,
+        barcode: product.barcode,
+        system_qty: null,
+        physical_qty: "",
+        reason: "",
+        loading_stock: false,
+      };
+
+      setForm((prev) => ({
+        ...prev,
+        items: [...prev.items, newItem],
+      }));
+
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next.items;
+        return next;
+      });
+
+      void fetchSystemStockForVariant(product.variant_id, form.warehouse_id, form.locator_id);
+      return true;
+    },
+    [form.warehouse_id, form.locator_id, form.items, notify, fetchSystemStockForVariant]
+  );
+
+  // Modal functions
+  function openProductModal() {
+    if (!form.warehouse_id || !form.locator_id) {
+      notify("Please select a Warehouse and Locator first.", { severity: "error" });
+      return;
+    }
+    setProductModalOpen(true);
+    setProductModalError("");
+    setSelectedVariantMap({});
+    setBarcodeValue("");
+    setBarcodeMessage("");
+  }
+
+  function closeProductModal() {
+    setProductModalOpen(false);
+    setProductModalError("");
+    setSelectedVariantMap({});
+    setBarcodeValue("");
+    setBarcodeMessage("");
+  }
+
+  function addSelectedProductsFromModal() {
+    if (selectedVariantIds.length === 0) {
+      setProductModalError("Select at least one product.");
+      return;
     }
 
-    void fetchSystemStock();
-  }, [company, form.warehouse_id, form.locator_id, selectedProduct]);
+    let addedCount = 0;
+    selectedVariantIds.forEach((variantId) => {
+      const item = lookupItemMap.get(variantId);
+      if (!item) return;
+      const exists = form.items.some((line) => line.variant_id === item.variant_id);
+      if (exists) return;
 
-  // Autocomplete suggestions
+      if (addProductToItems(item)) {
+        addedCount++;
+      }
+    });
+
+    if (addedCount === 0) {
+      setProductModalError("All selected products are already in the table.");
+      return;
+    }
+
+    setProductModalError("");
+    closeProductModal();
+  }
+
+  const handleModalBarcodeSubmit = (value?: string) => {
+    const barcode = String(value ?? barcodeValue).trim();
+    if (!barcode) return;
+    const match = lookupItems.find((item) => String(item.barcode || "") === barcode);
+    if (!match) {
+      setBarcodeMessage(`Barcode "${barcode}" not found.`);
+      return;
+    }
+
+    const exists = form.items.some((line) => line.variant_id === match.variant_id);
+    if (exists) {
+      setBarcodeMessage(`Barcode "${barcode}" is already in the list.`);
+      return;
+    }
+
+    addProductToItems(match);
+    setSelectedVariantMap((prev) => ({ ...prev, [String(match.variant_id)]: true }));
+    setBarcodeValue("");
+    setBarcodeMessage("");
+  };
+
+  // Fast inline search suggestions
   const suggestedProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
     if (!query) return [];
@@ -167,43 +429,80 @@ export default function StockAdjustmentPage() {
       .slice(0, 10);
   }, [productSearch, lookupItems]);
 
-  // Handle barcode scanning / fast selection
+  const handleSelectSuggestedProduct = (product: ProductLookupItem) => {
+    if (addProductToItems(product)) {
+      setProductSearch("");
+      setSearchFocused(false);
+    }
+  };
+
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
       const query = productSearch.trim();
       if (!query) return;
 
-      // Check exact barcode match first
       const exactMatch = lookupItems.find(
         (item) => String(item.barcode || "") === query || item.sku.toLowerCase() === query.toLowerCase()
       );
 
       if (exactMatch) {
-        setSelectedProduct(exactMatch);
-        setProductSearch(`${exactMatch.sku} - ${exactMatch.name}`);
-        setSearchFocused(false);
+        if (addProductToItems(exactMatch)) {
+          setProductSearch("");
+          setSearchFocused(false);
+        }
       } else if (suggestedProducts.length > 0) {
-        const first = suggestedProducts[0];
-        setSelectedProduct(first);
-        setProductSearch(`${first.sku} - ${first.name}`);
-        setSearchFocused(false);
+        if (addProductToItems(suggestedProducts[0])) {
+          setProductSearch("");
+          setSearchFocused(false);
+        }
+      } else {
+        notify("No matching product found.", { severity: "error" });
       }
     }
   };
 
-  // Calculate Variance
-  const varianceInfo = useMemo(() => {
-    if (systemStock === null || !form.physical_qty) return null;
-    const physical = Number(form.physical_qty);
-    if (isNaN(physical) || physical < 0) return null;
-    const diff = physical - systemStock;
-    return {
-      diff,
-      color: diff > 0 ? "text-green-600 font-bold" : diff < 0 ? "text-red-600 font-bold" : "text-gray-500 font-medium",
-      indicator: diff > 0 ? `+${diff} (Stock Gain)` : diff < 0 ? `${diff} (Stock Loss)` : "0 (No Change)",
-    };
-  }, [systemStock, form.physical_qty]);
+  // Line item field updates
+  function updateLinePhysicalQty(variantId: number, qtyStr: string) {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.variant_id === variantId ? { ...item, physical_qty: qtyStr } : item
+      ),
+    }));
+
+    setLineItemErrors((prev) => {
+      const next = { ...prev };
+      delete next[variantId];
+      return next;
+    });
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next.items;
+      return next;
+    });
+  }
+
+  function updateLineReason(variantId: number, reasonStr: string) {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.map((item) =>
+        item.variant_id === variantId ? { ...item, reason: reasonStr } : item
+      ),
+    }));
+  }
+
+  function removeLineItem(variantId: number) {
+    setForm((prev) => ({
+      ...prev,
+      items: prev.items.filter((item) => item.variant_id !== variantId),
+    }));
+    setLineItemErrors((prev) => {
+      const next = { ...prev };
+      delete next[variantId];
+      return next;
+    });
+  }
 
   const {
     currentPage,
@@ -224,43 +523,60 @@ export default function StockAdjustmentPage() {
   });
 
   const inputClass = (key: string) =>
-    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500"
+    `w-full mt-2 border rounded-lg p-3 outline-none focus:ring-2 ${
+      errors[key] ? "border-red-500 focus:ring-red-400" : "focus:ring-indigo-500 border-gray-300"
     }`;
 
   function openForm() {
     setShowForm(true);
     setForm(initialForm());
-    setSelectedProduct(null);
     setProductSearch("");
-    setSystemStock(null);
+    setProductModalOpen(false);
     setErrors({});
+    setLineItemErrors({});
   }
 
   function validate(): boolean {
     const next: Record<string, string> = {};
+    const itemErrorsNext: Record<number, string> = {};
+
     if (!form.txn_date) next.txn_date = "Date is required";
     if (!form.warehouse_id) next.warehouse_id = "Warehouse is required";
     if (!form.locator_id) next.locator_id = "Store locator is required";
-    if (!selectedProduct) next.product_search = "Product selection is required";
-
-    const physical = Number(form.physical_qty);
-    if (!form.physical_qty) {
-      next.physical_qty = "Physical quantity is required";
-    } else if (isNaN(physical) || physical < 0) {
-      next.physical_qty = "Quantity must be a positive number";
-    }
-
-    if (varianceInfo && varianceInfo.diff === 0) {
-      next.physical_qty = "Physical quantity matches system quantity. Zero-variance adjustment is not allowed.";
-    }
 
     if (form.reason && form.reason.trim()) {
       const reasonMessage = getRuleValidationError("alphanumeric-spaces-hyphens", form.reason);
       if (reasonMessage) next.reason = reasonMessage;
     }
 
+    if (form.items.length === 0) {
+      next.items = "At least one product variant must be added to the adjustment table.";
+    } else {
+      let hasNonZeroVariance = false;
+      form.items.forEach((item) => {
+        if (item.physical_qty === "" || item.physical_qty === null || item.physical_qty === undefined) {
+          itemErrorsNext[item.variant_id] = "Physical qty required";
+        } else {
+          const physical = Number(item.physical_qty);
+          if (isNaN(physical) || physical < 0) {
+            itemErrorsNext[item.variant_id] = "Must be >= 0";
+          } else if (item.system_qty !== null) {
+            const diff = physical - item.system_qty;
+            if (diff !== 0) {
+              hasNonZeroVariance = true;
+            }
+          }
+        }
+      });
+
+      if (Object.keys(itemErrorsNext).length === 0 && !hasNonZeroVariance) {
+        next.items = "All line items have 0 variance (physical qty matches system qty). Stock adjustment requires at least one item with inventory variance.";
+      }
+    }
+
     setErrors(next);
-    return Object.keys(next).length === 0;
+    setLineItemErrors(itemErrorsNext);
+    return Object.keys(next).length === 0 && Object.keys(itemErrorsNext).length === 0;
   }
 
   async function submit() {
@@ -273,8 +589,11 @@ export default function StockAdjustmentPage() {
         warehouse_id: Number(form.warehouse_id),
         locator_id: Number(form.locator_id),
         reason: form.reason.trim() || null,
-        product_id: selectedProduct.variant_id,
-        physical_qty: Number(form.physical_qty),
+        items: form.items.map((item) => ({
+          product_id: item.variant_id,
+          physical_qty: Number(item.physical_qty),
+          reason: item.reason?.trim() || form.reason.trim() || null,
+        })),
       };
 
       const res = await apiFetch("/api/stock-adjustments", company, {
@@ -529,54 +848,8 @@ export default function StockAdjustmentPage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 border-t pt-6">
-            <div className="relative">
-              <label className="text-sm font-semibold mb-1 block">
-                Select Product Variant <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={productSearch}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-                onChange={(e) => {
-                  setProductSearch(e.target.value);
-                  setSelectedProduct(null);
-                  setSystemStock(null);
-                }}
-                onKeyDown={handleSearchKeyDown}
-                className={inputClass("product_search")}
-                placeholder="Scan barcode or type Name / SKU..."
-              />
-              {errors.product_search && <p className="text-red-500 text-sm mt-1">{errors.product_search}</p>}
-
-              {searchFocused && suggestedProducts.length > 0 && (
-                <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto border bg-white rounded-lg shadow-xl divide-y">
-                  {suggestedProducts.map((item) => (
-                    <div
-                      key={item.variant_id}
-                      onMouseDown={() => {
-                        setSelectedProduct(item);
-                        setProductSearch(`${item.sku} - ${item.name}`);
-                      }}
-                      className="p-3 hover:bg-indigo-50 cursor-pointer flex justify-between items-center text-sm"
-                    >
-                      <div>
-                        <span className="font-semibold block text-gray-800">{item.name}</span>
-                        <span className="text-xs text-gray-500 font-mono">SKU: {item.sku} | Color: {item.color || "NA"}</span>
-                      </div>
-                      {item.barcode && (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 font-mono">
-                          {item.barcode}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
             <div>
-              <label className="text-sm font-semibold mb-1 block">Reason / Remarks</label>
+              <label className="text-sm font-semibold mb-1 block">Header Reason / Remarks</label>
               <textarea
                 data-rules="alphanumeric-spaces-hyphens"
                 data-field="reason"
@@ -591,49 +864,177 @@ export default function StockAdjustmentPage() {
             </div>
           </div>
 
-          <div className="bg-gray-50 p-6 rounded-xl border space-y-6">
-            <h3 className="text-md font-bold text-gray-800">Stock Count & Calculation</h3>
-
-            <div className="grid sm:grid-cols-3 gap-6">
-              <div>
-                <label className="text-sm font-semibold text-gray-600 mb-1 block">Current System Stock</label>
-                <div className="w-full mt-2 border rounded-lg p-3 bg-gray-100 font-bold text-lg text-gray-700 flex items-center gap-2">
-                  {loadingStock ? (
-                    <ArrowPathIcon className="h-5 w-5 animate-spin text-gray-400" />
-                  ) : systemStock !== null ? (
-                    systemStock
-                  ) : (
-                    <span className="text-sm font-normal text-gray-400">Select Warehouse, Locator & Product</span>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold text-gray-700 mb-1 block">
-                  Physical Count Quantity <span className="text-red-500">*</span>
-                </label>
+          {/* Inline Product Lookup & Browse Modal Trigger */}
+          <div className="border-t pt-6 space-y-2">
+            <label className="text-sm font-semibold block">
+              Add Product Variants <span className="text-red-500">*</span>
+            </label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
                 <input
-                  type="number"
-                  min="0"
-                  disabled={systemStock === null}
-                  value={form.physical_qty}
-                  onChange={(e) => setForm({ ...form, physical_qty: e.target.value })}
-                  className={`${inputClass("physical_qty")} text-lg font-bold`}
-                  placeholder="Enter physical qty"
+                  type="text"
+                  value={productSearch}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  onKeyDown={handleSearchKeyDown}
+                  className={inputClass("items")}
+                  placeholder="Scan barcode or type Name / SKU..."
                 />
-                {errors.physical_qty && <p className="text-red-500 text-sm mt-1">{errors.physical_qty}</p>}
+
+                {searchFocused && suggestedProducts.length > 0 && (
+                  <div className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto border bg-white rounded-lg shadow-xl divide-y">
+                    {suggestedProducts.map((item) => (
+                      <div
+                        key={item.variant_id}
+                        onMouseDown={() => handleSelectSuggestedProduct(item)}
+                        className="p-3 hover:bg-indigo-50 cursor-pointer flex justify-between items-center text-sm"
+                      >
+                        <div>
+                          <span className="font-semibold block text-gray-800">{item.name}</span>
+                          <span className="text-xs text-gray-500 font-mono">
+                            SKU: {item.sku} | Color: {item.color || "NA"}
+                          </span>
+                        </div>
+                        {item.barcode && (
+                          <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600 font-mono">
+                            {item.barcode}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="text-sm font-semibold text-gray-600 mb-1 block">Calculated Variance</label>
-                <div className="w-full mt-2 border rounded-lg p-3 bg-gray-100 font-bold text-lg text-gray-700">
-                  {varianceInfo ? (
-                    <span className={varianceInfo.color}>{varianceInfo.indicator}</span>
+              <button
+                type="button"
+                onClick={openProductModal}
+                className="mt-2 sm:mt-0 flex items-center justify-center gap-2 px-5 py-3 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg font-medium transition"
+              >
+                <MagnifyingGlassIcon className="h-5 w-5" />
+                Browse Products
+              </button>
+            </div>
+            {errors.items && <p className="text-red-500 text-sm mt-1">{errors.items}</p>}
+          </div>
+
+          {/* Line Items Table */}
+          <div className="bg-gray-50 rounded-xl border p-4 space-y-4">
+            <div className="flex justify-between items-center">
+              <h3 className="text-md font-bold text-gray-800">
+                Adjustment Line Items ({form.items.length})
+              </h3>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm bg-white rounded-lg overflow-hidden shadow-sm border border-gray-200">
+                <thead className="bg-gray-100 text-gray-700 uppercase text-xs">
+                  <tr>
+                    <th className="p-3 text-left">#</th>
+                    <th className="p-3 text-left">SKU / Barcode</th>
+                    <th className="p-3 text-left">Product Name & Variant</th>
+                    <th className="p-3 text-right w-36">System Qty</th>
+                    <th className="p-3 text-right w-44">Physical Count Qty *</th>
+                    <th className="p-3 text-center w-44">Calculated Variance</th>
+                    <th className="p-3 text-left w-56">Item Reason (Optional)</th>
+                    <th className="p-3 text-center w-16">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {form.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-gray-500 text-sm">
+                        No products added yet. Use the search input or "Browse Products" button above to add item variants to adjust.
+                      </td>
+                    </tr>
                   ) : (
-                    <span className="text-sm font-normal text-gray-400">Enter Physical Count</span>
+                    form.items.map((item, idx) => {
+                      const physical = Number(item.physical_qty);
+                      const isValidPhysical = item.physical_qty !== "" && !isNaN(physical) && physical >= 0;
+                      const diff = isValidPhysical && item.system_qty !== null ? physical - item.system_qty : null;
+
+                      return (
+                        <tr key={item.variant_id} className="hover:bg-blue-50/50 transition">
+                          <td className="p-3 text-gray-500 font-mono text-xs">{idx + 1}</td>
+                          <td className="p-3">
+                            <div className="font-mono font-medium text-gray-900">{item.sku}</div>
+                            {item.barcode && <div className="text-xs text-gray-400 font-mono">{item.barcode}</div>}
+                          </td>
+                          <td className="p-3">
+                            <div className="font-medium text-gray-900">{item.name}</div>
+                            {item.color && (
+                              <div className="text-xs text-gray-500">Color: {item.color}</div>
+                            )}
+                          </td>
+                          <td className="p-3 text-right font-semibold text-gray-700">
+                            {item.loading_stock ? (
+                              <ArrowPathIcon className="h-4 w-4 animate-spin text-indigo-500 inline-block" />
+                            ) : item.system_qty !== null ? (
+                              item.system_qty
+                            ) : (
+                              <span className="text-gray-400 text-xs">--</span>
+                            )}
+                          </td>
+                          <td className="p-3 text-right">
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.physical_qty}
+                              onChange={(e) => updateLinePhysicalQty(item.variant_id, e.target.value)}
+                              className={`w-full text-right p-2 border rounded-md font-bold outline-none focus:ring-2 ${
+                                lineItemErrors[item.variant_id]
+                                  ? "border-red-500 focus:ring-red-400"
+                                  : "focus:ring-indigo-500 border-gray-300"
+                              }`}
+                              placeholder="Enter qty"
+                            />
+                            {lineItemErrors[item.variant_id] && (
+                              <p className="text-red-500 text-xs mt-1 text-right">{lineItemErrors[item.variant_id]}</p>
+                            )}
+                          </td>
+                          <td className="p-3 text-center">
+                            {diff !== null ? (
+                              <span
+                                className={`inline-block px-2.5 py-1 rounded-full text-xs font-bold ${
+                                  diff > 0
+                                    ? "bg-green-100 text-green-700"
+                                    : diff < 0
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-gray-100 text-gray-600"
+                                }`}
+                              >
+                                {diff > 0 ? `+${diff} (Stock Gain)` : diff < 0 ? `${diff} (Stock Loss)` : "0 (No Change)"}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">Enter Qty</span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <input
+                              type="text"
+                              value={item.reason || ""}
+                              onChange={(e) => updateLineReason(item.variant_id, e.target.value)}
+                              className="w-full p-2 border border-gray-300 rounded-md text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                              placeholder={form.reason ? `Default: "${form.reason}"` : "Line item reason..."}
+                            />
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => removeLineItem(item.variant_id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                              title="Remove item"
+                            >
+                              <TrashIcon className="h-5 w-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
-                </div>
-              </div>
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -647,7 +1048,6 @@ export default function StockAdjustmentPage() {
             </button>
             <button
               type="submit"
-              // disabled={systemStock === null || !form.physical_qty || (varianceInfo && varianceInfo.diff === 0)}
               className="px-5 py-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               Save Stock Adjustment
@@ -655,6 +1055,39 @@ export default function StockAdjustmentPage() {
           </div>
         </form>
       )}
+
+      {/* Product Lookup Modal */}
+      <ProductLookupModal
+        open={productModalOpen}
+        onClose={closeProductModal}
+        onAddSelected={addSelectedProductsFromModal}
+        errorMessage={productModalError}
+        items={lookupPaginatedItems}
+        loading={lookupLoading}
+        filters={lookupFilters}
+        onFiltersChange={(next) => {
+          setLookupFilters(next);
+          setLookupPage(1);
+        }}
+        categoryOptions={lookupCategoryOptions}
+        page={lookupCurrentPage}
+        totalPages={lookupTotalPages}
+        itemsPerPage={lookupItemsPerPage}
+        totalCount={lookupTotalCount}
+        onPageChange={setLookupPage}
+        isSelected={(item) => Boolean(selectedVariantMap[String(item.variant_id)])}
+        onToggle={toggleVariantSelection}
+        onToggleAll={toggleSelectAll}
+        showBarcodeInput
+        barcodeValue={barcodeValue}
+        barcodeMessage={barcodeMessage}
+        onBarcodeChange={(value) => {
+          setBarcodeValue(value);
+          setBarcodeMessage("");
+        }}
+        onBarcodeSubmit={handleModalBarcodeSubmit}
+      />
     </div>
   );
 }
+
