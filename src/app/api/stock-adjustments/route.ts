@@ -89,9 +89,25 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { txn_date, warehouse_id, locator_id, reason, product_id, physical_qty } = body;
 
-    if (!txn_date || !warehouse_id || !locator_id || !product_id || physical_qty === undefined) {
+    const requiredFields = {
+      txn_date,
+      warehouse_id,
+      locator_id,
+      product_id,
+      physical_qty,
+    };
+
+    const missingFields = Object.entries(requiredFields)
+      .filter(([key, value]) => key === "physical_qty" ? value === undefined || value === null : !value)
+      .map(([key]) => key);
+
+    if (missingFields.length > 0) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields" },
+        {
+          success: false,
+          error: `Missing required field(s): ${missingFields.join(", ")}`,
+          missingFields,
+        },
         { status: 400 }
       );
     }
@@ -144,7 +160,7 @@ export async function POST(req: NextRequest) {
       try {
         const user = JSON.parse(userCookie);
         createdBy = user.name || user.username || "system";
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Start transaction
