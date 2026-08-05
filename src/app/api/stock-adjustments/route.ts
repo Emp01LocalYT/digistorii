@@ -87,18 +87,17 @@ export async function POST(req: NextRequest) {
     await ensureStockAdjustmentTables(client, schema);
 
     const body = await req.json();
-    const { txn_date, warehouse_id, locator_id, reason, product_id, physical_qty } = body;
+    const { txn_date, warehouse_id, locator_id, reason, items } = body;
 
     const requiredFields = {
       txn_date,
       warehouse_id,
       locator_id,
-      product_id,
-      physical_qty,
+      items,
     };
 
     const missingFields = Object.entries(requiredFields)
-      .filter(([key, value]) => key === "physical_qty" ? value === undefined || value === null : !value)
+      .filter(([key, value]) => !value)
       .map(([key]) => key);
 
     if (missingFields.length > 0) {
@@ -112,12 +111,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const parsedPhysicalQty = Number(physical_qty);
-    if (isNaN(parsedPhysicalQty) || parsedPhysicalQty < 0) {
+    if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Physical stock input cannot be less than 0" },
+        { success: false, error: "Items array is required and cannot be empty" },
         { status: 400 }
       );
+    }
+
+    for (const item of items) {
+      const { product_id, physical_qty } = item;
+      if (!product_id || physical_qty === undefined || physical_qty === null) {
+        return NextResponse.json(
+          { success: false, error: "Each item must have a product_id and physical_qty" },
+          { status: 400 }
+        );
+      }
+      const parsedPhysicalQty = Number(physical_qty);
+      if (isNaN(parsedPhysicalQty) || parsedPhysicalQty < 0) {
+        return NextResponse.json(
+          { success: false, error: "Physical stock input cannot be less than 0" },
+          { status: 400 }
+        );
+      }
     }
 
     // Reason validation: alphanumeric-spaces-hyphens (Only letters, numbers, spaces, hyphens, and commas)
@@ -129,28 +144,6 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-    }
-
-    // Get current stock
-    const stockRes = await client.query(
-      `
-        SELECT COALESCE(SUM(current_stock), 0) AS current_stock
-        FROM "${schema}".current_stock
-        WHERE tenant_id = $1
-          AND warehouse_id = $2
-          AND locator_id = $3
-          AND product_id = $4
-      `,
-      [company, warehouse_id, locator_id, product_id]
-    );
-    const systemQty = Number(stockRes.rows[0]?.current_stock || 0);
-    const adjustmentQty = parsedPhysicalQty - systemQty;
-
-    if (adjustmentQty === 0) {
-      return NextResponse.json(
-        { success: false, error: "Zero-variance adjustments (Physical = System) are not allowed" },
-        { status: 400 }
-      );
     }
 
     // Get user details if available from cookies
@@ -180,36 +173,73 @@ export async function POST(req: NextRequest) {
     );
     const adjustmentId = headerRes.rows[0].id;
 
-    // 2. Insert item
-    const itemRes = await client.query(
-      `
-        INSERT INTO "${schema}".stock_adjustment_items
-          (adjustment_id, product_id, system_qty, physical_qty, adjustment_qty)
-        VALUES
-          ($1, $2, $3, $4, $5)
-        RETURNING id
-      `,
-      [adjustmentId, product_id, systemQty, parsedPhysicalQty, adjustmentQty]
-    );
-    const itemId = itemRes.rows[0].id;
+    let totalAdjustmentsProcessed = 0;
 
-    // 3. Insert into stock_ledger
-    const qtyIn = adjustmentQty > 0 ? adjustmentQty : 0;
-    const qtyOut = adjustmentQty < 0 ? Math.abs(adjustmentQty) : 0;
+    for (const item of items) {
+      const { product_id, physical_qty } = item;
+      const parsedPhysicalQty = Number(physical_qty);
 
-    await insertStockLedgerEntry(client, schema, {
-      tenant_id: company,
-      txn_date: txn_date,
-      txn_type: "Adjustment",
-      ref_type: "stock_adjustment",
-      ref_id: Number(adjustmentId),
-      ref_line_id: Number(itemId),
-      warehouse_id: Number(warehouse_id),
-      locator_id: Number(locator_id),
-      product_id: Number(product_id),
-      qty_in: qtyIn,
-      qty_out: qtyOut
-    });
+      // Get current stock
+      const stockRes = await client.query(
+        `
+          SELECT COALESCE(SUM(current_stock), 0) AS current_stock
+          FROM "${schema}".current_stock
+          WHERE tenant_id = $1
+            AND warehouse_id = $2
+            AND locator_id = $3
+            AND product_id = $4
+        `,
+        [company, warehouse_id, locator_id, product_id]
+      );
+      const systemQty = Number(stockRes.rows[0]?.current_stock || 0);
+      const adjustmentQty = parsedPhysicalQty - systemQty;
+
+      if (adjustmentQty === 0) {
+        continue;
+      }
+
+      // 2. Insert item
+      const itemRes = await client.query(
+        `
+          INSERT INTO "${schema}".stock_adjustment_items
+            (adjustment_id, product_id, system_qty, physical_qty, adjustment_qty)
+          VALUES
+            ($1, $2, $3, $4, $5)
+          RETURNING id
+        `,
+        [adjustmentId, product_id, systemQty, parsedPhysicalQty, adjustmentQty]
+      );
+      const itemId = itemRes.rows[0].id;
+
+      // 3. Insert into stock_ledger
+      const qtyIn = adjustmentQty > 0 ? adjustmentQty : 0;
+      const qtyOut = adjustmentQty < 0 ? Math.abs(adjustmentQty) : 0;
+
+      await insertStockLedgerEntry(client, schema, {
+        tenant_id: company,
+        txn_date: txn_date,
+        txn_type: "Adjustment",
+        ref_type: "stock_adjustment",
+        ref_id: Number(adjustmentId),
+        ref_line_id: Number(itemId),
+        warehouse_id: Number(warehouse_id),
+        locator_id: Number(locator_id),
+        product_id: Number(product_id),
+        qty_in: qtyIn,
+        qty_out: qtyOut
+      });
+
+      totalAdjustmentsProcessed++;
+    }
+
+    if (totalAdjustmentsProcessed === 0) {
+      await client.query("ROLLBACK");
+      inTransaction = false;
+      return NextResponse.json(
+        { success: false, error: "Zero-variance adjustments (Physical = System) are not allowed" },
+        { status: 400 }
+      );
+    }
 
     await client.query("COMMIT");
     inTransaction = false;
@@ -218,10 +248,7 @@ export async function POST(req: NextRequest) {
       success: true,
       message: "Stock adjustment saved successfully",
       data: {
-        adjustment_id: adjustmentId,
-        adjustment_qty: adjustmentQty,
-        system_qty: systemQty,
-        physical_qty: parsedPhysicalQty
+        adjustment_id: adjustmentId
       }
     });
 
