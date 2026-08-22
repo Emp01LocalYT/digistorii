@@ -9,7 +9,7 @@ export async function loginUser(company: string, email: string, password: string
 
     // Get schema for company
     const companyData = await pool.query(
-      "SELECT id,schema_name,company_name FROM public.companies WHERE subdomain_url = $1",
+      "SELECT id,schema_name,company_name,has_completed_guided_setup FROM public.companies WHERE subdomain_url = $1",
       [company]
     );
     console.log("Company data:", companyData);
@@ -109,6 +109,25 @@ export async function loginUser(company: string, email: string, password: string
       mappedUser = responsibilityResult.rows[0] || {};
     }
 
+    let defaultLocationId = mappedUser.location_id ?? null;
+    let defaultWarehouseId = mappedUser.warehouse_id ?? null;
+
+    if (!defaultLocationId || !defaultWarehouseId) {
+      try {
+        const defaultLocRes = await pool.query(`SELECT id FROM "${schema}".locations WHERE is_default = TRUE LIMIT 1`);
+        if (defaultLocRes.rowCount) {
+          defaultLocationId = defaultLocationId ?? defaultLocRes.rows[0].id;
+        }
+        
+        const defaultWhRes = await pool.query(`SELECT id FROM "${schema}".warehouses WHERE is_default = TRUE LIMIT 1`);
+        if (defaultWhRes.rowCount) {
+          defaultWarehouseId = defaultWarehouseId ?? defaultWhRes.rows[0].id;
+        }
+      } catch (err) {
+        console.error("Failed to fetch default location/warehouse", err);
+      }
+    }
+
     const subscriptionResult = await pool.query(
       `SELECT
        cs.plan_id,
@@ -156,8 +175,8 @@ export async function loginUser(company: string, email: string, password: string
         real_company_name: realCompanyName,
         company_name: company,
         subdomain_url: company,
-        location_id: mappedUser.location_id ?? null,
-        warehouse_id: mappedUser.warehouse_id ?? null,
+        location_id: defaultLocationId,
+        warehouse_id: defaultWarehouseId,
         plan_id: subscription.plan_id ?? null,
         max_warehouse: maxWarehouse,
         max_location: maxLocation,
@@ -169,6 +188,7 @@ export async function loginUser(company: string, email: string, password: string
         phone: user.phone,
         responsibility_id: mappedUser.responsibility_id ?? user.responsibility_id ?? null,
         responsibility_name: mappedUser.responsibility_name ?? null,
+        has_completed_guided_setup: Boolean(companyData.rows[0].has_completed_guided_setup),
         permissions: {
           dashboard_access: Boolean(mappedUser.dashboard_access),
           purchase_access: Boolean(mappedUser.purchase_access),

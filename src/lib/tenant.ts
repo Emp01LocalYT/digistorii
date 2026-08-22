@@ -25,6 +25,28 @@ export async function getTenantSchema(req: NextRequest) {
     schema: res.rows[0].schema_name
   };
 }
+
+export async function getTenantSchemaByCompany(company: string) {
+  if (!company) {
+    throw new Error("Company name is required");
+  }
+
+  const res = await pool.query(
+    `SELECT schema_name
+     FROM public.companies
+     WHERE subdomain_url = $1`,
+    [company]
+  );
+
+  if (res.rowCount === 0) {
+    throw new Error(`Tenant not found for: ${company}`);
+  }
+
+  return {
+    company,
+    schema: res.rows[0].schema_name
+  };
+}
 export function normalizeSku(value: string): string {
   return value
     .trim()

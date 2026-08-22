@@ -34,7 +34,7 @@ const FIRST_ACCESSIBLE_PATHS: Array<{ permission: ResponsibilityAccessKey; path:
   { permission: "sales_access", path: "/workspace/sales/customer" },
   { permission: "sales_billing_access", path: "/workspace/transactions/sales" },
   { permission: "reports_access", path: "/workspace/reports/stock-ledger-report" },
-  { permission: "settings_access", path: "/workspace/settings/user-responsibilities" },
+  { permission: "settings_access", path: "/workspace/administration/user-responsibilities" },
 ];
 
 const ROUTE_RULES: ProtectedRouteRule[] = [
@@ -74,7 +74,7 @@ const ROUTE_RULES: ProtectedRouteRule[] = [
       "/workspace/inventory/despatch-terms",
       "/workspace/inventory/company-settings",
       "/workspace/inventory/user-settings",
-      "/workspace/settings/user-responsibilities",
+      "/workspace/administration/user-responsibilities",
       "/admin",
     ],
     permission: "settings_access",
