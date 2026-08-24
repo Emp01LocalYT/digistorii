@@ -43,6 +43,7 @@ export async function initializeDatabase() {
         setup_stage VARCHAR(40) DEFAULT 'ACCOUNT_CREATED',
         status VARCHAR(20) DEFAULT 'ACTIVE',
         has_completed_guided_setup BOOLEAN DEFAULT FALSE,
+        year_type VARCHAR(20) DEFAULT 'fiscal',
         created_at TIMESTAMP DEFAULT now(),
         updated_at TIMESTAMP DEFAULT now(),
         verification_token TEXT UNIQUE
@@ -246,6 +247,11 @@ ADD COLUMN IF NOT EXISTS gst_available BOOLEAN NOT NULL DEFAULT FALSE;
     await client.query(`
       ALTER TABLE public.companies
       ADD COLUMN IF NOT EXISTS has_completed_guided_setup BOOLEAN DEFAULT FALSE;
+    `);
+
+    await client.query(`
+      ALTER TABLE public.companies
+      ADD COLUMN IF NOT EXISTS year_type VARCHAR(20) DEFAULT 'fiscal';
     `);
 
     await ensureResponsibilitySchema(client);
